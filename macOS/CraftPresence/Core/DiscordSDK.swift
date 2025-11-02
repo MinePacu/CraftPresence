@@ -33,10 +33,10 @@ final class DiscordSDKManager: @unchecked Sendable {
 
 // MARK: - Public API
 extension DiscordSDKManager {
-    /// SDK를 초기화합니다.
+    /// Initialize the SDK.
     /// - Parameters:
-    ///   - applicationId: Discord Developer Portal의 애플리케이션 ID
-    ///   - autoAuthorize: 앱 시작 시 자동 인증 시도 여부
+    ///   - applicationId: Application ID of Discord Developer Portal
+    ///   - autoAuthorize: Whether to attempt automatic authentication at the start of the app
     func configure(applicationId: String = DiscordAppConfig.applicationId, autoAuthorize: Bool = true) {
         queue.sync {
             self.wrapper = DiscordppWrapper(std.string(applicationId))
@@ -78,7 +78,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// 로그아웃합니다.
+    /// logout the current user
     func logout(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, var wrapper = self.wrapper else {
@@ -105,7 +105,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// 현재 로그인한 사용자 정보를 가져옵니다.
+    /// Get Current User Info
     func fetchCurrentUser(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, var wrapper = self.wrapper else {
@@ -139,7 +139,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// 활동(Rich Presence)을 업데이트합니다.
+    /// Update Rich Presence
     func updateActivity(
         state: String?,
         details: String?,
@@ -186,7 +186,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// 활동 정보를 제거합니다.
+    /// clear rich presence activity
     func clearActivity(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, var wrapper = self.wrapper else {
@@ -303,8 +303,8 @@ public enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
 }
 
 // MARK: - DiscordSocialSDK 가정 인터페이스 브릿지
-// 실제 DiscordSocialSDK의 타입/메서드 시그니처에 맞춰 아래 프로토콜/익스텐션을 조정하세요.
-// 이 샘플은 프로젝트가 컴파일될 수 있도록 최소한의 브릿지 형태를 제공합니다.
+// Adjust the protocol/extension below to match the type/method signature of the actual DiscordSocial SDK.
+// This sample provides minimal bridge form for the project to be compiled.
 private protocol _DiscordClientProto {
     var isAuthorized: Bool { get }
     init(applicationId: String)
@@ -315,7 +315,7 @@ private protocol _DiscordClientProto {
     func clearActivity(completion: @escaping (Result<Void, Error>) -> Void)
 }
 
-// DiscordSDKManager를 사용하는 DiscordClient 구현
+// Implementing DiscordClient Using DiscordSDKManager
 private final class DiscordClient: _DiscordClientProto {
     private let manager = DiscordSDKManager.shared
     private let appId: String
