@@ -1,9 +1,6 @@
 //
 //  Item.swift
 //  CraftPresence
-//
-//  Created by 노현수 on 10/31/25.
-//
 
 import Foundation
 import SwiftData

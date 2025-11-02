@@ -31,7 +31,7 @@ public final class ProgramDetector: NSObject {
     private let axQueue = DispatchQueue(label: "ProgramDetector.AXQueue")
 
     // Polling fallback to catch title changes that don't fire AX notifications
-    // Configurable polling interval (default to low-impact)
+    // Configurable polling interval (default to low-impbrew install codexact)
     private var pollingInterval: TimeInterval = 2.0
     
     private var titleRetryCount: Int = 0
@@ -59,7 +59,7 @@ public final class ProgramDetector: NSObject {
     // MARK: - Public control
 
     public func start() {
-        print("[ProgramDetector] start()")
+        // logging disabled
         guard workspaceObserver == nil else { return }
 
         // Observe when the active app changes
@@ -85,7 +85,7 @@ public final class ProgramDetector: NSObject {
     }
 
     public func stop() {
-        print("[ProgramDetector] stop()")
+        // logging disabled
         if let workspaceObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(workspaceObserver)
             self.workspaceObserver = nil
@@ -125,7 +125,7 @@ public final class ProgramDetector: NSObject {
         let appName = app?.localizedName
         let bundleID = app?.bundleIdentifier
         let pid = app?.processIdentifier
-        print("[ProgramDetector] handleActivated appName=\(app?.localizedName ?? "nil") bundleID=\(app?.bundleIdentifier ?? "nil") pid=\(String(describing: app?.processIdentifier))")
+        // Removed debug print
 
         Task { @MainActor in
             self.activeAppName = appName
@@ -145,14 +145,14 @@ public final class ProgramDetector: NSObject {
     private func setupAXObserver(for pid: pid_t?) {
         stopAXObserver()
         guard let pid else { return }
-        print("[ProgramDetector] setupAXObserver pid=\(pid)")
-
+        // Removed debug print
+        // logging disabled
         let appElement = AXUIElementCreateApplication(pid)
         self.observedAppElement = appElement
 
         var observer: AXObserver?
         let status = AXObserverCreate(pid, ProgramDetector.axObserverCallback, &observer)
-        print("[ProgramDetector] AXObserverCreate status=\(status)")
+        // logging disabled
         guard status == .success, let axObserver = observer else { return }
         self.axObserver = axObserver
 
@@ -260,7 +260,7 @@ public final class ProgramDetector: NSObject {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &value)
         guard result == .success, let windowElement = value as! AXUIElement? else {
-            print("[ProgramDetector] focused window not found: \(result) retry=\(titleRetryCount)")
+            // Removed debug print
             // Fallback: try kAXWindows list
             var windowsValue: CFTypeRef?
             let windowsResult = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsValue)
@@ -304,7 +304,7 @@ public final class ProgramDetector: NSObject {
         if titleResult == .success, let title = titleValue as? String {
             updateWindowTitle(title)
         } else {
-            print("[ProgramDetector] title read failed: \(titleResult)")
+            // Removed debug print
             updateWindowTitle(nil)
         }
     }

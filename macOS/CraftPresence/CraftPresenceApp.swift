@@ -1,9 +1,6 @@
 //
 //  CraftPresenceApp.swift
 //  CraftPresence
-//
-//  Created by 노현수 on 10/31/25.
-//
 
 import SwiftUI
 import SwiftData
@@ -43,8 +40,8 @@ struct CraftPresenceApp: App {
                 
                 let execPath = Bundle.main.executableURL?.path ?? "(unknown)"
                 let cwd = FileManager.default.currentDirectoryPath
-                print("[CraftPresence] Executable path: \(execPath)")
-                print("[CraftPresence] Current working directory: \(cwd)")
+                // logging disabled
+                // logging disabled
             }
         }
         .modelContainer(sharedModelContainer)
@@ -72,3 +69,4 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 #endif
+

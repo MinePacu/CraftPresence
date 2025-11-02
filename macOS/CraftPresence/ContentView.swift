@@ -1,9 +1,6 @@
 //
 //  ContentView.swift
 //  CraftPresence
-//
-//  Created by 노현수 on 10/31/25.
-//
 
 import SwiftUI
 import SwiftData
@@ -13,7 +10,11 @@ import AppKit
 import ApplicationServices
 #endif
 
+// MARK: - ContentView
+
 struct ContentView: View {
+    // MARK: Types & Identifiers
+
     private enum DetailSelection: Equatable {
         case overview
         case programs
@@ -31,6 +32,8 @@ struct ContentView: View {
         }
     }
 
+    // MARK: State & Model Bindings
+
     @State private var selectionStack: [DetailSelection] = []
 
     @State private var selection: DetailSelection = .overview
@@ -45,7 +48,38 @@ struct ContentView: View {
     @State private var activeBundleID: String? = nil
     @State private var activeWindowTitle: String? = nil
 
+    // MARK: Settings Model
+
+    // Program Settings UI State
+    @State private var activityType: ActivityType = .playing
+    @State private var detailText: String = ""
+    @State private var stateText: String = ""
+
+    @State private var useAppIconForLargeImage: Bool = true
+    @State private var largeImageKey: String = ""
+    @State private var largeImageText: String = ""
+
+    @State private var smallImageKey: String = ""
+    @State private var smallImageText: String = ""
+
+    @State private var partyCurrent: Int = 1
+    @State private var partyMax: Int = 1
+
+    enum ActivityType: String, CaseIterable, Identifiable {
+        case playing = "Playing"
+        case streaming = "Streaming"
+        case listening = "Listening"
+        case watching = "Watching"
+        case competing = "Competing"
+
+        var id: String { rawValue }
+        var localizedLabel: String { rawValue }
+    }
+
+    // MARK: Body
+
     var body: some View {
+        // MARK: Sidebar (Navigation List)
         NavigationSplitView {
             List(selection: Binding(get: {
                 switch selection {
@@ -94,6 +128,7 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 180, ideal: 220)
         } detail: {
             Group {
+                // MARK: Detail - Overview
                 switch selection {
                 case .overview:
                     VStack(alignment: .leading, spacing: 12) {
@@ -134,6 +169,7 @@ struct ContentView: View {
                         Spacer()
                     }
                     //.padding(.vertical, 4)
+                // MARK: Detail - Programs
                 case .programs:
                     VStack(alignment: .leading, spacing: 12) {
                         Label("Programs", systemImage: "list.bullet.rectangle")
@@ -230,35 +266,141 @@ struct ContentView: View {
 
                         Spacer()
                     }
+                    // MARK: Programs - Settings Sheet
                     .sheet(isPresented: $showingProgramSettings) {
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                Image(systemName: "gearshape")
-                                Text("프로그램 설정")
-                                    .font(.title3).bold()
-                            }
-                            if let id = selectedProgramIDForSettings {
-                                Text("선택된 Bundle ID: " + id)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("선택된 항목이 없습니다.")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Divider()
-                            Text("여기에 프로그램별 상세 설정 UI를 추가하세요.")
-                                .foregroundStyle(.secondary)
-                            HStack {
-                                Spacer()
-                                Button("닫기") {
-                                    showingProgramSettings = false
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack {
+                                    Button("취소") {
+                                        showingProgramSettings = false
+                                    }
+                                    Spacer()
+                                    Button("저장") {
+                                        // TODO: Persist settings for selectedProgramIDForSettings
+                                        // Hook for save logic via ConfigUtility per bundle ID
+                                        showingProgramSettings = false
+                                    }
+                                    .keyboardShortcut(.defaultAction)
                                 }
-                                .keyboardShortcut(.cancelAction)
+                                .padding(.bottom, 4)
+
+                                Divider()
+
+                                Form {
+                                    Section {
+                                        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
+                                            GridRow(alignment: .firstTextBaseline) {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("활동 유형")
+                                                        .font(.headline)
+                                                    Picker("활동 유형", selection: $activityType) {
+                                                        ForEach(ActivityType.allCases) { t in
+                                                            Text(t.localizedLabel).tag(t)
+                                                        }
+                                                    }
+                                                    .pickerStyle(.segmented)
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                            GridRow(alignment: .firstTextBaseline) {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("세부 내용")
+                                                        .font(.headline)
+                                                    TextField("예: 게임 이름 또는 작업 설명", text: $detailText)
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                            GridRow(alignment: .firstTextBaseline) {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("상태 메시지")
+                                                        .font(.headline)
+                                                    TextField("예: 현재 단계, 챕터 등", text: $stateText)
+                                                }
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                        }
+                                    }
+
+                                    Divider()
+
+                                    Section {
+                                        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
+                                            GridRow {
+                                                Toggle("큰 이미지에 앱 아이콘 사용", isOn: $useAppIconForLargeImage)
+                                                    .help("활성화 시 큰 이미지는 앱 아이콘으로 표시됩니다.")
+                                            }
+                                            if !useAppIconForLargeImage {
+                                                GridRow {
+                                                    VStack(alignment: .leading, spacing: 6) {
+                                                        Text("큰 이미지 키")
+                                                            .font(.headline)
+                                                        TextField("Discord 개발자 포털에 등록된 키", text: $largeImageKey)
+                                                    }
+                                                }
+                                            }
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("큰 이미지 텍스트")
+                                                        .font(.headline)
+                                                    TextField("큰 이미지에 표시될 텍스트", text: $largeImageText)
+                                                }
+                                            }
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("작은 이미지 키")
+                                                        .font(.headline)
+                                                    TextField("Discord 개발자 포털에 등록된 키", text: $smallImageKey)
+                                                }
+                                            }
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("작은 이미지 텍스트")
+                                                        .font(.headline)
+                                                    TextField("작은 이미지에 표시될 텍스트", text: $smallImageText)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Divider()
+
+                                    Section {
+                                        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("현재 인원")
+                                                        .font(.headline)
+                                                    HStack {
+                                                        Stepper(value: $partyCurrent, in: 0...max(0, partyMax)) { EmptyView() }
+                                                        Text("\(partyCurrent)")
+                                                            .foregroundStyle(.secondary)
+                                                    }
+                                                }
+                                            }
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("최대 인원")
+                                                        .font(.headline)
+                                                    HStack {
+                                                        Stepper(value: $partyMax, in: max(1, partyCurrent)...99) { EmptyView() }
+                                                        Text("\(partyMax)")
+                                                            .foregroundStyle(.secondary)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
-                        .padding(20)
-                        .frame(minWidth: 360)
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 20)
+                        .frame(minWidth: 720, idealWidth: 820)
+                        .frame(maxHeight: 720)
+                        .onAppear {
+                            // TODO: Load existing settings for selectedProgramIDForSettings
+                            // Reset or populate fields here as needed
+                        }
                     }
                     .task {
                         // Load saved bundle IDs when entering Programs
@@ -269,8 +411,10 @@ struct ContentView: View {
                         isLoadingPrograms = false
                     }
                     //.padding(.vertical, 4)
+                // MARK: Detail - Item
                 case .item(let item):
                     Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+                // MARK: Detail - None
                 case .none:
                     EmptyView()
                 }
@@ -305,9 +449,7 @@ struct ContentView: View {
     #if os(macOS)
             // Log current Accessibility permission state
             let initialTrusted = AXIsProcessTrusted()
-#if DEBUG
-            print("[CraftPresence] Accessibility isTrusted (initial): \(initialTrusted)")
-#endif
+            // logging disabled
 
             // If not trusted, prompt System Settings and poll until trusted or timeout
             if !initialTrusted {
@@ -319,13 +461,7 @@ struct ContentView: View {
                     for _ in 0..<20 {
                         if Task.isCancelled { break }
                         try? await Task.sleep(nanoseconds: 500_000_000)
-#if DEBUG
-                        let trusted = AXIsProcessTrusted()
-                        print("[CraftPresence] Accessibility isTrusted (poll): \(trusted)")
-                        if trusted { break }
-#else
                         if AXIsProcessTrusted() { break }
-#endif
                     }
                 }
             }
@@ -360,6 +496,9 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Actions
+
+    // Add sample Item to SwiftData (unused in UI)
     private func addItem() {
         withAnimation {
             let newItem = Item(timestamp: Date())
@@ -367,6 +506,7 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - macOS AX Helpers
 #if os(macOS)
     /// Attempts to fetch the focused window title using AX API with small delay and limited retries.
     /// - Parameters:
@@ -403,11 +543,6 @@ struct ContentView: View {
             let systemWide = AXUIElementCreateSystemWide()
             var focusedApp: AnyObject?
             let appErr = AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &focusedApp)
-#if DEBUG
-            if appErr != .success {
-                print("[CraftPresence][AX] FocusedApplication error: \(appErr.rawValue)")
-            }
-#endif
             if appErr != .success {
                 return nil
             }
@@ -415,50 +550,33 @@ struct ContentView: View {
         }
 
         guard let appElement = appAX else {
-#if DEBUG
-            print("[CraftPresence][AX] App AX element is nil")
-#endif
             return nil
         }
 
         // Get focused window
         var windowObj: AnyObject?
         let winErr = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &windowObj)
-#if DEBUG
-        if winErr != .success {
-            print("[CraftPresence][AX] FocusedWindow error: \(winErr.rawValue)")
-        }
-#endif
         if winErr != .success {
             return nil
         }
         guard let windowEl = windowObj as! AXUIElement? else {
-#if DEBUG
-            print("[CraftPresence][AX] FocusedWindow is nil")
-#endif
             return nil
         }
 
         // Get title
         var titleObj: AnyObject?
         let titleErr = AXUIElementCopyAttributeValue(windowEl, kAXTitleAttribute as CFString, &titleObj)
-#if DEBUG
-        if titleErr != .success {
-            print("[CraftPresence][AX] Title error: \(titleErr.rawValue)")
-        }
-#endif
         if titleErr != .success {
             return nil
         }
         guard let title = titleObj as? String, !title.isEmpty else {
-#if DEBUG
-            print("[CraftPresence][AX] Title empty or not string")
-#endif
             return nil
         }
         return title
     }
 #endif
+
+    // MARK: - Data Operations
 
     private func deleteItems(offsets: IndexSet) {
         withAnimation {
@@ -468,6 +586,8 @@ struct ContentView: View {
         }
     }
 }
+
+// MARK: - Reusable Views
 
 private struct SidebarRow: View {
     let title: String

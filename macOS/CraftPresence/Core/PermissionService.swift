@@ -1,9 +1,6 @@
 //
 //  PermissionService.swift
 //  CraftPresence
-//
-//  Created by 노현수 on 11/1/25.
-//
 
 import Cocoa
 import Combine
