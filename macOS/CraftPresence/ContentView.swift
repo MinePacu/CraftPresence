@@ -18,6 +18,7 @@ struct ContentView: View {
     private enum DetailSelection: Equatable {
         case overview
         case programs
+        case about
         case item(Item)
         case none
 
@@ -25,6 +26,7 @@ struct ContentView: View {
             switch (lhs, rhs) {
             case (.overview, .overview): return true
             case (.programs, .programs): return true
+            case (.about, .about): return true
             case (.none, .none): return true
             case let (.item(li), .item(ri)): return li.id == ri.id
             default: return false
@@ -85,6 +87,7 @@ struct ContentView: View {
                 switch selection {
                 case .overview: return "overview"
                 case .programs: return "programs"
+                case .about: return "about"
                 case .item(let item): return "item-\(item.id)"
                 case .none: return nil
                 }
@@ -92,6 +95,7 @@ struct ContentView: View {
                 guard let key = newValue else { return }
                 if key == "overview" { selection = .overview }
                 else if key == "programs" { selection = .programs }
+                else if key == "about" { selection = .about }
                 else if key.hasPrefix("item-") {
                     if let idString = key.split(separator: "-").last,
                        let match = items.first(where: { "\($0.id)" == idString }) {
@@ -107,6 +111,10 @@ struct ContentView: View {
                     SidebarRow(title: "Programs", systemImage: "list.bullet.rectangle", isSelected: selection == .programs, tint: .pink) {
                         if selection != .programs { selectionStack.append(selection) }
                         selection = .programs
+                    }
+                    SidebarRow(title: "About", systemImage: "info.circle", isSelected: selection == .about, tint: .pink) {
+                        if selection != .about { selectionStack.append(selection) }
+                        selection = .about
                     }
                 }
 
@@ -411,6 +419,44 @@ struct ContentView: View {
                         isLoadingPrograms = false
                     }
                     //.padding(.vertical, 4)
+
+                // MARK: Detail - About
+                case .about:
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("About", systemImage: "info.circle")
+                            .font(.title2).bold()
+
+                        Group {
+                            InfoRow(label: "App Name", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Unknown")
+                            InfoRow(label: "Version", value: {
+                                let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+                                let b = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String
+                                switch (v, b) { case let (v?, b?): return "\(v) (\(b))"; case let (v?, nil): return v; case let (nil, b?): return b; default: return "Unknown" }
+                            }())
+                            InfoRow(label: "Bundle ID", value: Bundle.main.bundleIdentifier ?? "Unknown")
+                            InfoRow(label: "Executable Path", value: Bundle.main.executableURL?.path(percentEncoded: false) ?? "-")
+    #if os(macOS)
+                            InfoRow(label: "Accessibility Permission", value: AXIsProcessTrusted() ? "Granted" : "Not Granted")
+    #endif
+                        }
+
+                        Divider().padding(.vertical, 4)
+
+                        Group {
+                            Label {
+                                Text("현재 포그라운드 창: ") + Text(activeAppName ?? "알 수 없음").foregroundStyle(.secondary)
+                            } icon: { Image(systemName: "macwindow") }
+                            Label {
+                                Text("창 타이틀: ") + Text(activeWindowTitle ?? "알 수 없음").foregroundStyle(.secondary)
+                            } icon: { Image(systemName: "text.quote") }
+                            Label {
+                                Text("Bundle ID: ") + Text(activeBundleID ?? "알 수 없음").foregroundStyle(.secondary)
+                            } icon: { Image(systemName: "barcode.viewfinder") }
+                        }
+
+                        Spacer()
+                    }
+
                 // MARK: Detail - Item
                 case .item(let item):
                     Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
@@ -589,6 +635,22 @@ struct ContentView: View {
 
 // MARK: - Reusable Views
 
+private struct InfoRow: View {
+    let label: String
+    let value: String
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.headline)
+            Spacer(minLength: 12)
+            Text(value)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
 private struct SidebarRow: View {
     let title: String
     let systemImage: String
@@ -630,4 +692,3 @@ private struct SidebarRow: View {
     ContentView()
         .modelContainer(for: Item.self, inMemory: true)
 }
-
