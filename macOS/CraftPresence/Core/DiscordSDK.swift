@@ -3,7 +3,6 @@
 //  CraftPresence
 
 import Foundation
-import Discordpp
 
 /// Discord 애플리케이션 설정 값 보관
 /// - 환경변수 `APPLICATION_ID`가 있으면 우선 사용, 없으면 하드코딩된 기본값 사용

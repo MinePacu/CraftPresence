@@ -1,0 +1,99 @@
+{
+  "" : {
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresence-primary.dia",
+    "emit-module-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresence-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresence-primary-emit-module.dia",
+    "pch" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresence-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresence-primary.swiftdeps"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/ContentView.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ContentView~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/Core/ConfigUtility.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ConfigUtility~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/Core/DiscordSDK.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/DiscordSDK~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/Core/PermissionService.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionService~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/Core/ProgramDetector.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/ProgramDetector~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/CraftPresenceApp.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/CraftPresenceApp~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/Item.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/Item~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/PermissionView.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/PermissionView~partial.swiftmodule"
+  },
+  "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/nohyeonsu/Desktop/projects/CraftPresence/build/CraftPresence.build/Debug/CraftPresence.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

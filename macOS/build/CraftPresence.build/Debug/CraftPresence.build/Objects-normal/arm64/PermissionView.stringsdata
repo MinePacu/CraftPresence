@@ -1,0 +1,48 @@
+{
+  "source": "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/PermissionView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "권한 필요 🔐",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 15
+        }
+      },
+      {
+        "comment": "",
+        "key": "이 앱에는 macOS의 손쉬운 사용(접근성) 권한이 필요합니다.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 19
+        }
+      },
+      {
+        "comment": "",
+        "key": "일반적으로 macOS에서 권한 요청 창이 표시되지만, 표시되지 않았다면 아래 버튼을 눌러 설정으로 이동하세요:",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 24
+        }
+      },
+      {
+        "comment": "",
+        "key": "권한이 허용되면 몇 초 내로 앱이 자동으로 활성화됩니다.",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 33
+        }
+      },
+      {
+        "comment": "",
+        "key": "시스템 설정 열기",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 29
+        }
+      }
+    ]
+  },
+  "version": 1
+}
