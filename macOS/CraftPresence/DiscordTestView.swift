@@ -1,6 +1,5 @@
 import SwiftUI
 import Combine
-import Discordpp
 
 struct DiscordTestView: View {
     private var sdkManager = DiscordSDKManager.shared
@@ -9,12 +8,12 @@ struct DiscordTestView: View {
     @State private var configMessage: String = ""
     @State private var actionMessage: String = ""
     @State private var isLoading: Bool = false
-    @State private var currentUser: DiscordUser? = nil
+    @State private var currentUser: Any? = nil
     
     var body: some View {
         SwiftUI.NavigationView {
             SwiftUI.Form {
-                SwiftUI.Section(header: Text("Configuration")) {
+                SwiftUI.Section("Configuration") {
                     HStack {
                         Text("APPLICATION_ID:")
                             .bold()
@@ -36,7 +35,7 @@ struct DiscordTestView: View {
                     }
                 }
                 
-                SwiftUI.Section(header: Text("Authorization")) {
+                SwiftUI.Section("Authorization") {
                     HStack {
                         Text("Status:")
                             .bold()
@@ -44,12 +43,13 @@ struct DiscordTestView: View {
                         Text(statusText(for: sdkManager.authorizationStatus))
                             .foregroundColor(color(for: sdkManager.authorizationStatus))
                     }
-                    if let user = currentUser {
+                    if let userAny = currentUser {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Current User:")
                                 .bold()
-                            Text("Username: \(user.username)#\(user.discriminator)")
-                            Text("User ID: \(user.id)")
+                            let usernameText: String = formatUsername(from: userAny)
+                            Text("Username: \(usernameText)")
+                            Text("User: \(String(describing: userAny))")
                                 .font(.footnote)
                                 .foregroundColor(.secondary)
                         }
@@ -74,9 +74,15 @@ struct DiscordTestView: View {
                         }
                         .disabled(isLoading || sdkManager.authorizationStatus != .authorized)
                     }
+                    HStack {
+                        Button("Refresh User") {
+                            Task { await loadCurrentUser() }
+                        }
+                        .disabled(isLoading)
+                    }
                 }
                 
-                SwiftUI.Section(header: Text("Activity")) {
+                SwiftUI.Section("Activity") {
                     HStack {
                         Button("Update Activity") {
                             Task {
@@ -104,9 +110,7 @@ struct DiscordTestView: View {
             .navigationTitle("DiscordSDK Tester")
             .onAppear {
                 loadApplicationID()
-                if sdkManager.authorizationStatus == .authorized {
-                    Task { await loadCurrentUser() }
-                }
+                Task { await loadCurrentUser() }
             }
             .disabled(isLoading)
             .overlay {
@@ -155,13 +159,15 @@ struct DiscordTestView: View {
     }
     
     private func loadCurrentUser() async {
+        isLoading = true
+        defer { isLoading = false }
         do {
-            // Attempt to fetch the current DiscordUser from the SDK manager
-            let user = try await sdkManager.currentUser()
-            self.currentUser = user
-        } catch {
-            // If the SDK indicates no user or an error, clear the current user
-            self.currentUser = nil
+            // If sdkManager.currentUser() is async/throws, use try await. Adjust as needed.
+            if let user = try? await (sdkManager.currentUser() as Any?) {
+                self.currentUser = user
+            } else {
+                self.currentUser = nil
+            }
         }
     }
     
@@ -171,7 +177,7 @@ struct DiscordTestView: View {
         do {
             try await sdkManager.logout()
             actionMessage = "Logged out successfully."
-            self.currentUser = nil
+            await loadCurrentUser()
         } catch {
             actionMessage = "Logout failed: \(error.localizedDescription)"
         }
@@ -200,6 +206,34 @@ struct DiscordTestView: View {
             actionMessage = "Clear activity failed: \(error.localizedDescription)"
         }
         isLoading = false
+    }
+    
+    private func formatUsername(from anyUser: Any) -> String {
+        // Try to extract common properties via reflection
+        let mirror = Mirror(reflecting: anyUser)
+        var name: String?
+        var discriminator: String?
+        var idText: String?
+        for child in mirror.children {
+            switch child.label ?? "" {
+            case "username", "name", "userName":
+                name = String(describing: child.value)
+            case "discriminator", "tag":
+                discriminator = String(describing: child.value)
+            case "id", "userID", "userId":
+                idText = String(describing: child.value)
+            default:
+                break
+            }
+        }
+        if let name = name {
+            if let disc = discriminator, !disc.isEmpty, disc != "0" {
+                return "\(name)#\(disc)"
+            }
+            return name
+        }
+        if let idText = idText { return idText }
+        return String(describing: anyUser)
     }
     
     private func color(for status: DiscordSDKManager.AuthorizationStatus) -> Color {

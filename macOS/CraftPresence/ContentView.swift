@@ -467,7 +467,8 @@ struct ContentView: View {
 
                 // MARK: Detail - DiscordTest
                 case .discordTest:
-                    DiscordTestView()
+                    let i = 0
+                    //DiscordTestView()
 
                 // MARK: Detail - Item
                 case .item(let item):
