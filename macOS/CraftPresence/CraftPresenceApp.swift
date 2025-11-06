@@ -7,6 +7,7 @@ import SwiftData
 #if os(macOS)
 import AppKit
 #endif
+//import DiscordSDKManager
 
 @main
 struct CraftPresenceApp: App {
@@ -25,6 +26,22 @@ struct CraftPresenceApp: App {
         }
     }()
 
+    private func configureDiscordSDK() {
+#if os(iOS) || targetEnvironment(macCatalyst)
+        let rawValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String
+        let appID = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if appID.isEmpty {
+            print("[DiscordSDK] APPLICATION_ID not found or empty in Info.plist")
+            return
+        }
+        let masked = appID.count > 6 ? String(appID.prefix(3)) + String(repeating: "*", count: max(0, appID.count - 6)) + String(appID.suffix(3)) : String(repeating: "*", count: appID.count)
+        print("[DiscordSDK] Loaded APPLICATION_ID: \(masked)")
+        // Initialize Discord SDK with Application ID
+        DiscordSDK.shared.configure(applicationID: appID)
+        print("[DiscordSDK] SDK configured")
+#endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -36,6 +53,7 @@ struct CraftPresenceApp: App {
             }
             .onAppear(perform: self.permissionsService.pollAccessibilityPrivileges)
             .onAppear {
+                configureDiscordSDK()
                 hideTitleBarOnCatalyst()
                 
                 let execPath = Bundle.main.executableURL?.path ?? "(unknown)"
@@ -59,6 +77,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         hideTitleBar()
         PermissionsService.acquireAccessibilityPrivileges()
+        let rawValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String
+        let appID = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if appID.isEmpty {
+            print("[DiscordSDK] APPLICATION_ID not found or empty in Info.plist (macOS)")
+        } else {
+            let masked = appID.count > 6 ? String(appID.prefix(3)) + String(repeating: "*", count: max(0, appID.count - 6)) + String(appID.suffix(3)) : String(repeating: "*", count: appID.count)
+            print("[DiscordSDK] Loaded APPLICATION_ID (macOS): \(masked)")
+            DiscordSDKManager.shared.configure(applicationId: appID,  autoAuthorize: false)
+            print("[DiscordSDK] SDK configured (macOS)")
+        }
     }
 
     func hideTitleBar() {

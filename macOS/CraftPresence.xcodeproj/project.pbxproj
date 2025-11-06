@@ -52,6 +52,9 @@
 			attributesByRelativePath = {
 				ThirdParty/DIscordSDK/lib/libdiscord_partner_sdk.dylib = (Required, );
 			};
+			membershipExceptions = (
+				Info.plist,
+			);
 			target = 4711FFDE2EB4E4D000A09A00 /* CraftPresence */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -452,6 +455,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/include",
 				);
+				INFOPLIST_FILE = CraftPresence/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -501,6 +505,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/include",
 				);
+				INFOPLIST_FILE = CraftPresence/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

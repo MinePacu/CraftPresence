@@ -23,9 +23,19 @@ enum DiscordAppConfig {
 final class DiscordSDKManager: @unchecked Sendable {
     static let shared = DiscordSDKManager()
 
+    /// 현재 인증 상태
+    public enum AuthorizationStatus: Sendable, Equatable {
+        case authorized
+        case unauthorized
+        case unknown
+    }
+
     // MARK: - Private State
     private let queue = DispatchQueue(label: "discord.sdk.manager", qos: .userInitiated)
     private var wrapper: DiscordppWrapper?
+
+    // 캐시된 인증 상태 (wrapper가 없거나 확인 불가 시 .unknown)
+    private var cachedAuthorized: Bool? = nil
 
     private init() {}
 }
@@ -39,6 +49,7 @@ extension DiscordSDKManager {
     func configure(applicationId: String = DiscordAppConfig.applicationId, autoAuthorize: Bool = true) {
         queue.sync {
             self.wrapper = DiscordppWrapper(std.string(applicationId))
+            self.cachedAuthorized = nil
         }
         if autoAuthorize { authorizeIfNeeded() }
     }
@@ -52,6 +63,7 @@ extension DiscordSDKManager {
             }
             
             if wrapper.isAuthorized() {
+                self.cachedAuthorized = true
                 self.fetchCurrentUser(completion: completion)
                 return
             }
@@ -65,8 +77,10 @@ extension DiscordSDKManager {
                 
                 DispatchQueue.main.async {
                     if success {
+                        DiscordSDKManager.shared.cachedAuthorized = true
                         DiscordSDKManager.shared.fetchCurrentUser(completion: completion)
                     } else {
+                        DiscordSDKManager.shared.cachedAuthorized = false
                         let message = errorPtr.map { String(cString: $0) } ?? "Unknown error"
                         completion?(.failure(.sdk(message)))
                     }
@@ -92,6 +106,7 @@ extension DiscordSDKManager {
                 
                 DispatchQueue.main.async {
                     if success {
+                        DiscordSDKManager.shared.cachedAuthorized = false
                         completion?(.success(()))
                     } else {
                         let message = errorPtr.map { String(cString: $0) } ?? "Unknown error"
@@ -211,6 +226,43 @@ extension DiscordSDKManager {
             wrapper.clearActivity(context, callback)
         }
     }
+
+    /// 현재 인증 상태를 동기적으로 반환합니다.
+    /// - Note: 내부 전용 큐에서 thread-safe 하게 확인합니다.
+    var authorizationStatus: AuthorizationStatus {
+        var result: AuthorizationStatus = .unknown
+        queue.sync { [weak self] in
+            guard let self else { result = .unknown; return }
+            if let wrapper = self.wrapper {
+                if wrapper.isAuthorized() {
+                    result = .authorized
+                } else {
+                    result = .unauthorized
+                }
+            } else if let cached = self.cachedAuthorized {
+                result = cached ? .authorized : .unauthorized
+            } else {
+                result = .unknown
+            }
+        }
+        return result
+    }
+
+    /// 현재 인증 상태를 비동기적으로 반환합니다.
+    func authorizationStatus(completion: @escaping (AuthorizationStatus) -> Void) {
+        queue.async { [weak self] in
+            guard let self else { DispatchQueue.main.async { completion(.unknown) }; return }
+            let status: AuthorizationStatus
+            if let wrapper = self.wrapper {
+                status = wrapper.isAuthorized() ? .authorized : .unauthorized
+            } else if let cached = self.cachedAuthorized {
+                status = cached ? .authorized : .unauthorized
+            } else {
+                status = .unknown
+            }
+            DispatchQueue.main.async { completion(status) }
+        }
+    }
 }
 
 // MARK: - Async/Await 편의 API
@@ -256,6 +308,12 @@ extension DiscordSDKManager {
     func clearActivity() async throws {
         try await withCheckedThrowingContinuation { cont in
             clearActivity { cont.resume(with: $0.mapError { $0 }) }
+        }
+    }
+
+    func authorizationStatus() async -> AuthorizationStatus {
+        await withCheckedContinuation { cont in
+            authorizationStatus { cont.resume(returning: $0) }
         }
     }
 }

@@ -1,70 +1,20 @@
 import SwiftUI
 import Combine
+import Discordpp
 
-// Mock DiscordSDKManager for demonstration purposes
-// Remove or replace with actual DiscordSDKManager when integrating
-class DiscordSDKManager: ObservableObject {
-    enum AuthorizationStatus: String {
-        case authorized = "Authorized"
-        case unauthorized = "Unauthorized"
-        case unknown = "Unknown"
-    }
-    
-    struct UserInfo {
-        let username: String
-        let discriminator: String
-        let id: String
-    }
-    
-    @Published var authorizationStatus: AuthorizationStatus = .unknown
-    @Published var currentUser: UserInfo? = nil
-    
-    static let shared = DiscordSDKManager()
-    
-    private init() {}
-    
-    func configure(with applicationID: String) async throws {
-        // Simulate some configuration delay
-        try await Task.sleep(nanoseconds: 300_000_000)
-        // Configuration logic here
-    }
-    
-    func authorize() async throws {
-        // Simulate authorization
-        try await Task.sleep(nanoseconds: 500_000_000)
-        authorizationStatus = .authorized
-        currentUser = UserInfo(username: "TestUser", discriminator: "1234", id: "567890")
-    }
-    
-    func logout() async throws {
-        try await Task.sleep(nanoseconds: 300_000_000)
-        authorizationStatus = .unauthorized
-        currentUser = nil
-    }
-    
-    func updateActivity() async throws {
-        try await Task.sleep(nanoseconds: 400_000_000)
-        // Update activity logic
-    }
-    
-    func clearActivity() async throws {
-        try await Task.sleep(nanoseconds: 200_000_000)
-        // Clear activity logic
-    }
-}
-
-struct DiscordSDKTesterView: View {
-    @StateObject private var sdkManager = DiscordSDKManager.shared
+struct DiscordTestView: View {
+    private var sdkManager = DiscordSDKManager.shared
     
     @State private var applicationID: String = ""
     @State private var configMessage: String = ""
     @State private var actionMessage: String = ""
     @State private var isLoading: Bool = false
+    @State private var currentUser: DiscordUser? = nil
     
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Configuration")) {
+        SwiftUI.NavigationView {
+            SwiftUI.Form {
+                SwiftUI.Section(header: Text("Configuration")) {
                     HStack {
                         Text("APPLICATION_ID:")
                             .bold()
@@ -86,15 +36,15 @@ struct DiscordSDKTesterView: View {
                     }
                 }
                 
-                Section(header: Text("Authorization")) {
+                SwiftUI.Section(header: Text("Authorization")) {
                     HStack {
                         Text("Status:")
                             .bold()
                         Spacer()
-                        Text(sdkManager.authorizationStatus.rawValue)
+                        Text(statusText(for: sdkManager.authorizationStatus))
                             .foregroundColor(color(for: sdkManager.authorizationStatus))
                     }
-                    if let user = sdkManager.currentUser {
+                    if let user = currentUser {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Current User:")
                                 .bold()
@@ -126,7 +76,7 @@ struct DiscordSDKTesterView: View {
                     }
                 }
                 
-                Section(header: Text("Activity")) {
+                SwiftUI.Section(header: Text("Activity")) {
                     HStack {
                         Button("Update Activity") {
                             Task {
@@ -145,7 +95,7 @@ struct DiscordSDKTesterView: View {
                 }
                 
                 if !actionMessage.isEmpty {
-                    Section {
+                    SwiftUI.Section {
                         Text(actionMessage)
                             .foregroundColor(.secondary)
                     }
@@ -154,6 +104,9 @@ struct DiscordSDKTesterView: View {
             .navigationTitle("DiscordSDK Tester")
             .onAppear {
                 loadApplicationID()
+                if sdkManager.authorizationStatus == .authorized {
+                    Task { await loadCurrentUser() }
+                }
             }
             .disabled(isLoading)
             .overlay {
@@ -180,7 +133,7 @@ struct DiscordSDKTesterView: View {
         actionMessage = ""
         isLoading = true
         do {
-            try await sdkManager.configure(with: applicationID)
+            try await sdkManager.configure(applicationId: applicationID)
             configMessage = "Successfully configured with APPLICATION_ID."
         } catch {
             configMessage = "Failed to configure SDK: \(error.localizedDescription)"
@@ -192,12 +145,24 @@ struct DiscordSDKTesterView: View {
         actionMessage = ""
         isLoading = true
         do {
-            try await sdkManager.authorize()
+            try await sdkManager.authorizeIfNeeded()
             actionMessage = "Authorization successful."
+            await loadCurrentUser()
         } catch {
             actionMessage = "Authorization failed: \(error.localizedDescription)"
         }
         isLoading = false
+    }
+    
+    private func loadCurrentUser() async {
+        do {
+            // Attempt to fetch the current DiscordUser from the SDK manager
+            let user = try await sdkManager.currentUser()
+            self.currentUser = user
+        } catch {
+            // If the SDK indicates no user or an error, clear the current user
+            self.currentUser = nil
+        }
     }
     
     private func logout() async {
@@ -206,6 +171,7 @@ struct DiscordSDKTesterView: View {
         do {
             try await sdkManager.logout()
             actionMessage = "Logged out successfully."
+            self.currentUser = nil
         } catch {
             actionMessage = "Logout failed: \(error.localizedDescription)"
         }
@@ -216,7 +182,7 @@ struct DiscordSDKTesterView: View {
         actionMessage = ""
         isLoading = true
         do {
-            try await sdkManager.updateActivity()
+            try await sdkManager.updateActivity(state: "Using DiscordSDKManager", details: "Testing Activity", largeImageKey: "large_image", smallImageKey: "small_image")
             actionMessage = "Activity updated successfully."
         } catch {
             actionMessage = "Update activity failed: \(error.localizedDescription)"
@@ -246,10 +212,21 @@ struct DiscordSDKTesterView: View {
             return .gray
         }
     }
+
+    private func statusText(for status: DiscordSDKManager.AuthorizationStatus) -> String {
+        switch status {
+        case .authorized:
+            return "Authorized"
+        case .unauthorized:
+            return "Unauthorized"
+        case .unknown:
+            return "Unknown"
+        }
+    }
 }
 
-struct DiscordSDKTesterView_Previews: PreviewProvider {
+struct DiscordTestView_Previews: PreviewProvider {
     static var previews: some View {
-        DiscordSDKTesterView()
+        DiscordTestView()
     }
 }

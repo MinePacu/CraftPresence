@@ -20,6 +20,7 @@ struct ContentView: View {
         case programs
         case about
         case item(Item)
+        case discordTest
         case none
 
         static func == (lhs: DetailSelection, rhs: DetailSelection) -> Bool {
@@ -27,6 +28,7 @@ struct ContentView: View {
             case (.overview, .overview): return true
             case (.programs, .programs): return true
             case (.about, .about): return true
+            case (.discordTest, .discordTest): return true
             case (.none, .none): return true
             case let (.item(li), .item(ri)): return li.id == ri.id
             default: return false
@@ -88,6 +90,7 @@ struct ContentView: View {
                 case .overview: return "overview"
                 case .programs: return "programs"
                 case .about: return "about"
+                case .discordTest: return "discordTest"
                 case .item(let item): return "item-\(item.id)"
                 case .none: return nil
                 }
@@ -96,6 +99,7 @@ struct ContentView: View {
                 if key == "overview" { selection = .overview }
                 else if key == "programs" { selection = .programs }
                 else if key == "about" { selection = .about }
+                else if key == "discordTest" { selection = .discordTest }
                 else if key.hasPrefix("item-") {
                     if let idString = key.split(separator: "-").last,
                        let match = items.first(where: { "\($0.id)" == idString }) {
@@ -116,9 +120,13 @@ struct ContentView: View {
                         if selection != .about { selectionStack.append(selection) }
                         selection = .about
                     }
+                    SidebarRow(title: "DiscordTest", systemImage: "gamecontroller", isSelected: selection == .discordTest, tint: .pink) {
+                        if selection != .discordTest { selectionStack.append(selection) }
+                        selection = .discordTest
+                    }
                 }
 
-                Section("보관함") {
+                Section("Test") {
                     ForEach(items) { item in
                         SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {item
                             if case .item(let selected) = selection { return selected.id == item.id }
@@ -457,6 +465,10 @@ struct ContentView: View {
                         Spacer()
                     }
 
+                // MARK: Detail - DiscordTest
+                case .discordTest:
+                    DiscordTestView()
+
                 // MARK: Detail - Item
                 case .item(let item):
                     Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
@@ -688,7 +700,9 @@ private struct SidebarRow: View {
     }
 }
 
+
 #Preview {
     ContentView()
         .modelContainer(for: Item.self, inMemory: true)
 }
+

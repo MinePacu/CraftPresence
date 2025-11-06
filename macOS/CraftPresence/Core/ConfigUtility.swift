@@ -17,12 +17,12 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case bundleIDs
     }
 
-    nonisolated(unsafe) public init(from decoder: Decoder) throws {
+    nonisolated public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.bundleIDs = try container.decodeIfPresent([String].self, forKey: .bundleIDs) ?? []
     }
 
-    nonisolated(unsafe) public func encode(to encoder: Encoder) throws {
+    nonisolated public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(bundleIDs, forKey: .bundleIDs)
     }
@@ -114,9 +114,9 @@ public actor ConfigUtility {
 
     private static func defaultSettingsURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let bundleID = Bundle.main.bundleIdentifier ?? "CraftPresence"
+        let bundleID = (Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String) ?? "CraftPresence"
         return base.appendingPathComponent(bundleID, isDirectory: true)
-                   .appendingPathComponent("settings.json", conformingTo: .json)
+                   .appendingPathComponent("settings.json")
     }
 }
 
