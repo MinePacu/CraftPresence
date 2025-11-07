@@ -11,9 +11,10 @@ struct DiscordTestView: View {
     @State private var currentUser: Any? = nil
     
     var body: some View {
-        SwiftUI.NavigationView {
-            SwiftUI.Form {
-                SwiftUI.Section("Configuration") {
+        VStack(alignment: .leading, spacing: 12) {
+
+            Form {
+                Section("Configuration") {
                     HStack {
                         Text("APPLICATION_ID:")
                             .bold()
@@ -34,8 +35,8 @@ struct DiscordTestView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                
-                SwiftUI.Section("Authorization") {
+
+                Section("Authorization") {
                     HStack {
                         Text("Status:")
                             .bold()
@@ -81,8 +82,8 @@ struct DiscordTestView: View {
                         .disabled(isLoading)
                     }
                 }
-                
-                SwiftUI.Section("Activity") {
+
+                Section("Activity") {
                     HStack {
                         Button("Update Activity") {
                             Task {
@@ -99,33 +100,47 @@ struct DiscordTestView: View {
                         .disabled(isLoading || sdkManager.authorizationStatus != .authorized)
                     }
                 }
-                
+
                 if !actionMessage.isEmpty {
-                    SwiftUI.Section {
+                    Section {
                         Text(actionMessage)
                             .foregroundColor(.secondary)
                     }
                 }
             }
-            .navigationTitle("DiscordSDK Tester")
-            .onAppear {
-                loadApplicationID()
-                Task { await loadCurrentUser() }
-            }
-            .disabled(isLoading)
-            .overlay {
-                if isLoading {
-                    ZStack {
-                        Color.black.opacity(0.3).ignoresSafeArea()
-                        ProgressView()
-                    }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .onAppear {
+            loadApplicationID()
+            Task { await loadCurrentUser() }
+        }
+        .disabled(isLoading)
+        .overlay {
+            if isLoading {
+                ZStack {
+                    Color.black.opacity(0.3).ignoresSafeArea()
+                    ProgressView()
                 }
             }
         }
     }
     
     private func loadApplicationID() {
-        if let id = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String {
+        // 1) Read from Info.plist
+        let plistValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String
+        // print("[DiscordTestView] Info.plist APPLICATION_ID = \(plistValue ?? "nil")")
+
+        // 2) Read from environment
+        let envValue = ProcessInfo.processInfo.environment["APPLICATION_ID"]
+        // print("[DiscordTestView] ENV APPLICATION_ID = \(envValue ?? "nil")")
+
+        // 3) Resolved by DiscordAppConfig (plist > env > fallback)
+        let resolved = DiscordAppConfig.applicationId
+        // print("[DiscordTestView] Resolved APPLICATION_ID (DiscordAppConfig) = \(resolved)")
+
+        if let id = plistValue, !id.isEmpty {
             applicationID = id
         } else {
             applicationID = ""

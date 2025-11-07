@@ -186,6 +186,7 @@ struct ContentView: View {
                         } icon: { Image(systemName: "gamecontroller") }
                         Spacer()
                     }
+                    .padding(.horizontal, 12)
                     //.padding(.vertical, 4)
                 // MARK: Detail - Programs
                 case .programs:
@@ -284,6 +285,7 @@ struct ContentView: View {
 
                         Spacer()
                     }
+                    .padding(.horizontal, 12)
                     // MARK: Programs - Settings Sheet
                     .sheet(isPresented: $showingProgramSettings) {
                         ScrollView {
@@ -475,6 +477,7 @@ struct ContentView: View {
 
                         Spacer()
                     }
+                    .padding(.horizontal, 12)
 
                 // MARK: Detail - DiscordTest
                 case .discordTest:
@@ -484,6 +487,7 @@ struct ContentView: View {
                         DiscordTestView()
                         Spacer()
                     }
+                    .padding(.horizontal, 12)
 
                 // MARK: Detail - Item
                 case .item(let item):
