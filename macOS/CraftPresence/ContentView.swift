@@ -1,4 +1,3 @@
-//
 //  ContentView.swift
 //  CraftPresence
 
@@ -120,13 +119,13 @@ struct ContentView: View {
                         if selection != .about { selectionStack.append(selection) }
                         selection = .about
                     }
+                }
+
+                Section("Test") {
                     SidebarRow(title: "DiscordTest", systemImage: "gamecontroller", isSelected: selection == .discordTest, tint: .pink) {
                         if selection != .discordTest { selectionStack.append(selection) }
                         selection = .discordTest
                     }
-                }
-
-                Section("Test") {
                     ForEach(items) { item in
                         SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {item
                             if case .item(let selected) = selection { return selected.id == item.id }
@@ -180,7 +179,10 @@ struct ContentView: View {
                         } icon: { Image(systemName: "checkmark.seal") }
                         // Placeholder for Discord Rich Presence summary
                         Label {
-                            Text("Discord Rich Presence: ") + Text("연결되지 않음").foregroundStyle(.secondary)
+                            HStack(spacing: 0) {
+                                Text("Discord Rich Presence: ")
+                                Text("연결되지 않음").foregroundStyle(.secondary)
+                            }
                         } icon: { Image(systemName: "gamecontroller") }
                         Spacer()
                     }
@@ -452,13 +454,22 @@ struct ContentView: View {
 
                         Group {
                             Label {
-                                Text("현재 포그라운드 창: ") + Text(activeAppName ?? "알 수 없음").foregroundStyle(.secondary)
+                                HStack(spacing: 0) {
+                                    Text("현재 포그라운드 창: ")
+                                    Text(activeAppName ?? "알 수 없음").foregroundStyle(.secondary)
+                                }
                             } icon: { Image(systemName: "macwindow") }
                             Label {
-                                Text("창 타이틀: ") + Text(activeWindowTitle ?? "알 수 없음").foregroundStyle(.secondary)
+                                HStack(spacing: 0) {
+                                    Text("창 타이틀: ")
+                                    Text(activeWindowTitle ?? "알 수 없음").foregroundStyle(.secondary)
+                                }
                             } icon: { Image(systemName: "text.quote") }
                             Label {
-                                Text("Bundle ID: ") + Text(activeBundleID ?? "알 수 없음").foregroundStyle(.secondary)
+                                HStack(spacing: 0) {
+                                    Text("Bundle ID: ")
+                                    Text(activeBundleID ?? "알 수 없음").foregroundStyle(.secondary)
+                                }
                             } icon: { Image(systemName: "barcode.viewfinder") }
                         }
 
@@ -467,8 +478,12 @@ struct ContentView: View {
 
                 // MARK: Detail - DiscordTest
                 case .discordTest:
-                    let i = 0
-                    //DiscordTestView()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Discord Test", systemImage: "gamecontroller")
+                            .font(.title2).bold()
+                        DiscordTestView()
+                        Spacer()
+                    }
 
                 // MARK: Detail - Item
                 case .item(let item):

@@ -4,26 +4,32 @@
 
 import Foundation
 
-/// Discord 애플리케이션 설정 값 보관
-/// - 환경변수 `APPLICATION_ID`가 있으면 우선 사용, 없으면 하드코딩된 기본값 사용
+/// Archive Discord application settings
+/// - If there is an environmental variable 'APPLICATION_ID', use it first. If not, use the hard-coded default value
 enum DiscordAppConfig {
-    /// 하드코딩 기본값: 필요 시 실제 Application ID로 교체하세요.
+    /// Hard-coding defaults: Replace with the actual Application ID if necessary.
     private static let fallbackId = "YOUR_APPLICATION_ID"
 
     static var applicationId: String {
+        // 1) Try Info.plist first
+        if let plistValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String, !plistValue.isEmpty {
+            return plistValue
+        }
+        // 2) Then environment variable
         if let env = ProcessInfo.processInfo.environment["APPLICATION_ID"], !env.isEmpty {
             return env
         }
+        // 3) Fallback constant
         return fallbackId
     }
 }
 
-/// Discord SDK 연동을 담당하는 매니저
-/// - 초기화, 인증, 사용자 정보, 활동(Rich Presence) 업데이트 기능 제공
+/// Manager in charge of the Discord SDK interworking
+/// - Provides initialization, authentication, user information, and Rich Presence update capabilities
 final class DiscordSDKManager: @unchecked Sendable {
     static let shared = DiscordSDKManager()
 
-    /// 현재 인증 상태
+    /// Current Authentication Status
     public enum AuthorizationStatus: Sendable, Equatable {
         case authorized
         case unauthorized
@@ -54,7 +60,7 @@ extension DiscordSDKManager {
         if autoAuthorize { authorizeIfNeeded() }
     }
 
-    /// 인증 상태를 확인하고 필요 시 인증을 시도합니다.
+    /// Check the authentication status and try to authenticate if necessary.
     func authorizeIfNeeded(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, var wrapper = self.wrapper else {
