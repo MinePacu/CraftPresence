@@ -5,3 +5,8 @@
 *.dylib
 *.modulemap
 *.gitignore
+
+# Build folders
+build/
+*.build/
+DerivedData/
