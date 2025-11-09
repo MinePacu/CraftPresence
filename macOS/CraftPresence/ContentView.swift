@@ -65,8 +65,25 @@ struct ContentView: View {
     @State private var smallImageKey: String = ""
     @State private var smallImageText: String = ""
 
+    // Party size settings
     @State private var partyCurrent: Int = 1
     @State private var partyMax: Int = 1
+
+    // Image picking & previews
+    @State private var selectedLargeImage: Image? = nil
+    @State private var selectedSmallImage: Image? = nil
+
+    // macOS-only: store NSImage for better fidelity when needed
+    #if os(macOS)
+    @State private var selectedLargeNSImage: NSImage? = nil
+    @State private var selectedSmallNSImage: NSImage? = nil
+    #endif
+
+    // iOS-only: PhotosPicker state
+    #if os(iOS)
+    @State private var isPickingLargeImage: Bool = false
+    @State private var isPickingSmallImage: Bool = false
+    #endif
 
     enum ActivityType: String, CaseIterable, Identifiable {
         case playing = "Playing"
@@ -350,12 +367,94 @@ struct ContentView: View {
                                                     .help("활성화 시 큰 이미지는 앱 아이콘으로 표시됩니다.")
                                             }
                                             if !useAppIconForLargeImage {
+                                                // Large Image Picker & Preview
                                                 GridRow {
-                                                    VStack(alignment: .leading, spacing: 6) {
-                                                        Text("큰 이미지 키")
+                                                    VStack(alignment: .leading, spacing: 8) {
+                                                        Text("큰 이미지 선택")
                                                             .font(.headline)
-                                                        TextField("Discord 개발자 포털에 등록된 키", text: $largeImageKey)
+                                                        #if os(macOS)
+                                                        HStack(spacing: 8) {
+                                                            Button {
+                                                                let panel = NSOpenPanel()
+                                                                panel.title = "이미지 선택"
+                                                                panel.message = "큰 이미지로 사용할 파일을 선택하세요."
+                                                                panel.canChooseFiles = true
+                                                                panel.canChooseDirectories = false
+                                                                panel.allowsMultipleSelection = false
+                                                                panel.allowedContentTypes = [.image]
+                                                                if panel.runModal() == .OK, let url = panel.url, let nsImage = NSImage(contentsOf: url) {
+                                                                    selectedLargeNSImage = nsImage
+                                                                    selectedLargeImage = Image(nsImage: nsImage)
+                                                                }
+                                                            } label: {
+                                                                Label("이미지 선택", systemImage: "photo.on.rectangle")
+                                                            }
+                                                            .buttonStyle(.bordered)
+
+                                                            if let img = selectedLargeImage {
+                                                                img
+                                                                    .resizable()
+                                                                    .scaledToFit()
+                                                                    .frame(width: 72, height: 72)
+                                                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                                    .overlay(
+                                                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                                                    )
+                                                                    .accessibilityLabel("큰 이미지 미리보기")
+                                                            } else {
+                                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                    .fill(Color.secondary.opacity(0.08))
+                                                                    .frame(width: 72, height: 72)
+                                                                    .overlay(
+                                                                        Image(systemName: "photo")
+                                                                            .imageScale(.large)
+                                                                            .foregroundStyle(.secondary)
+                                                                    )
+                                                                    .accessibilityLabel("큰 이미지가 선택되지 않음")
+                                                            }
+                                                        }
+                                                        #else
+                                                        HStack(spacing: 8) {
+                                                            Button {
+                                                                isPickingLargeImage = true
+                                                            } label: {
+                                                                Label("이미지 선택", systemImage: "photo.on.rectangle")
+                                                            }
+                                                            .buttonStyle(.bordered)
+
+                                                            if let img = selectedLargeImage {
+                                                                img
+                                                                    .resizable()
+                                                                    .scaledToFit()
+                                                                    .frame(width: 72, height: 72)
+                                                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                                    .overlay(
+                                                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                                                    )
+                                                                    .accessibilityLabel("큰 이미지 미리보기")
+                                                            } else {
+                                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                    .fill(Color.secondary.opacity(0.08))
+                                                                    .frame(width: 72, height: 72)
+                                                                    .overlay(
+                                                                        Image(systemName: "photo")
+                                                                            .imageScale(.large)
+                                                                            .foregroundStyle(.secondary)
+                                                                    )
+                                                                    .accessibilityLabel("큰 이미지가 선택되지 않음")
+                                                            }
+                                                        }
+                                                        #endif
                                                     }
+                                                }
+                                            }
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text("큰 이미지 키")
+                                                        .font(.headline)
+                                                    TextField("Discord 개발자 포털에 등록된 키", text: $largeImageKey)
                                                 }
                                             }
                                             GridRow {
@@ -363,6 +462,88 @@ struct ContentView: View {
                                                     Text("큰 이미지 텍스트")
                                                         .font(.headline)
                                                     TextField("큰 이미지에 표시될 텍스트", text: $largeImageText)
+                                                }
+                                            }
+                                            // Small Image Picker & Preview
+                                            GridRow {
+                                                VStack(alignment: .leading, spacing: 8) {
+                                                    Text("작은 이미지 선택")
+                                                        .font(.headline)
+                                                    #if os(macOS)
+                                                    HStack(spacing: 8) {
+                                                        Button {
+                                                            let panel = NSOpenPanel()
+                                                            panel.title = "이미지 선택"
+                                                            panel.message = "작은 이미지로 사용할 파일을 선택하세요."
+                                                            panel.canChooseFiles = true
+                                                            panel.canChooseDirectories = false
+                                                            panel.allowsMultipleSelection = false
+                                                            panel.allowedContentTypes = [.image]
+                                                            if panel.runModal() == .OK, let url = panel.url, let nsImage = NSImage(contentsOf: url) {
+                                                                selectedSmallNSImage = nsImage
+                                                                selectedSmallImage = Image(nsImage: nsImage)
+                                                            }
+                                                        } label: {
+                                                            Label("이미지 선택", systemImage: "photo.on.rectangle")
+                                                        }
+                                                        .buttonStyle(.bordered)
+
+                                                        if let img = selectedSmallImage {
+                                                            img
+                                                                .resizable()
+                                                                .scaledToFit()
+                                                                .frame(width: 48, height: 48)
+                                                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                                .overlay(
+                                                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                                                )
+                                                                .accessibilityLabel("작은 이미지 미리보기")
+                                                        } else {
+                                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                .fill(Color.secondary.opacity(0.08))
+                                                                .frame(width: 48, height: 48)
+                                                                .overlay(
+                                                                    Image(systemName: "photo")
+                                                                        .imageScale(.medium)
+                                                                        .foregroundStyle(.secondary)
+                                                                )
+                                                                .accessibilityLabel("작은 이미지가 선택되지 않음")
+                                                        }
+                                                    }
+                                                    #else
+                                                    HStack(spacing: 8) {
+                                                        Button {
+                                                            isPickingSmallImage = true
+                                                        } label: {
+                                                            Label("이미지 선택", systemImage: "photo.on.rectangle")
+                                                        }
+                                                        .buttonStyle(.bordered)
+
+                                                        if let img = selectedSmallImage {
+                                                            img
+                                                                .resizable()
+                                                                .scaledToFit()
+                                                                .frame(width: 48, height: 48)
+                                                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                                                .overlay(
+                                                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                                                                )
+                                                                .accessibilityLabel("작은 이미지 미리보기")
+                                                        } else {
+                                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                                .fill(Color.secondary.opacity(0.08))
+                                                                .frame(width: 48, height: 48)
+                                                                .overlay(
+                                                                    Image(systemName: "photo")
+                                                                        .imageScale(.medium)
+                                                                        .foregroundStyle(.secondary)
+                                                                )
+                                                                .accessibilityLabel("작은 이미지가 선택되지 않음")
+                                                        }
+                                                    }
+                                                    #endif
                                                 }
                                             }
                                             GridRow {
@@ -414,6 +595,18 @@ struct ContentView: View {
                             }
                         }
                         .padding(.horizontal, 28)
+                        #if os(iOS)
+                        .sheet(isPresented: $isPickingLargeImage) {
+                            ImagePicker { uiImage in
+                                selectedLargeImage = Image(uiImage: uiImage)
+                            }
+                        }
+                        .sheet(isPresented: $isPickingSmallImage) {
+                            ImagePicker { uiImage in
+                                selectedSmallImage = Image(uiImage: uiImage)
+                            }
+                        }
+                        #endif
                         .padding(.vertical, 20)
                         .frame(minWidth: 720, idealWidth: 820)
                         .frame(maxHeight: 720)
@@ -720,6 +913,38 @@ private struct SidebarRow: View {
     }
 }
 
+#if os(iOS)
+import PhotosUI
+
+private struct ImagePicker: UIViewControllerRepresentable {
+    var onPick: (UIImage) -> Void
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration(photoLibrary: .shared())
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let onPick: (UIImage) -> Void
+        init(onPick: @escaping (UIImage) -> Void) { self.onPick = onPick }
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            picker.dismiss(animated: true)
+            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { return }
+            provider.loadObject(ofClass: UIImage.self) { obj, _ in
+                if let uiImage = obj as? UIImage {
+                    DispatchQueue.main.async {
+                        self.onPick(uiImage)
+                    }
+                }
+            }
+        }
+    }
+}
+#endif
 
 #Preview {
     ContentView()
