@@ -1,10 +1,19 @@
+# Exclude specific Discord SDK files
+cdiscord.h
+discordpp.h
+DiscordppWrapper.cpp.backup
+
+# Exclude other C/C++ files except the ones we want to keep
 *.c
-*.cpp
-*.h
+# *.cpp - handled by specific rules below
+# *.h - handled by specific rules below
 *.hpp
 *.dylib
 *.modulemap
-*.gitignore
+
+# Include specific files (negation must come after the pattern)
+!DiscordppWrapper.cpp
+!CraftPresence-Bridging-Header.h
 
 # Build folders
 build/
