@@ -1,9 +1,6 @@
 //
 //  DiscordppWrapper.cpp
 //  CraftPresence
-//
-//  Created by 노현수 on 11/2/25.
-//
 
 #include "DiscordppWrapper.hpp"
 #define DISCORDPP_IMPLEMENTATION
