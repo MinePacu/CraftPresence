@@ -2,126 +2,168 @@ import SwiftUI
 import Combine
 
 struct DiscordTestView: View {
-    private var sdkManager = DiscordSDKManager.shared
+    @StateObject private var sdkManager = DiscordSDKManager.shared
     
     @State private var applicationID: String = ""
     @State private var configMessage: String = ""
     @State private var actionMessage: String = ""
     @State private var isLoading: Bool = false
-    @State private var currentUser: Any? = nil
+    @State private var activityName: String = "CraftPresence"
+    @State private var activityStateText: String = "Using DiscordSDKManager"
+    @State private var activityDetailsText: String = "Testing Activity"
+    @State private var activityLargeImageKey: String = "large_image"
+    @State private var activitySmallImageKey: String = "small_image"
+    @State private var selectedActivityType: DiscordActivity.ActivityType = .playing
+    @State private var includeStartTimestamp: Bool = false
+    @State private var includeEndTimestamp: Bool = false
+    @State private var activityStartDate: Date = .now
+    @State private var activityEndDate: Date = .now
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-
-            Form {
-                Section("Configuration") {
-                    HStack {
-                        Text("APPLICATION_ID:")
-                            .bold()
-                        Spacer()
-                        Text(applicationID.isEmpty ? "Not loaded" : applicationID)
-                            .foregroundColor(applicationID.isEmpty ? .secondary : .primary)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    Button("Configure DiscordSDKManager") {
-                        Task {
-                            await configureSDK()
-                        }
-                    }
-                    .disabled(isLoading || applicationID.isEmpty)
-                    if !configMessage.isEmpty {
-                        Text(configMessage)
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                Section("Authorization") {
-                    HStack {
-                        Text("Status:")
-                            .bold()
-                        Spacer()
-                        Text(statusText(for: sdkManager.authorizationStatus))
-                            .foregroundColor(color(for: sdkManager.authorizationStatus))
-                    }
-                    if let userAny = currentUser {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Current User:")
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Discord Test", systemImage: "gamecontroller")
+                    .font(.title2).bold()
+                
+                Form {
+                    Section("Configuration") {
+                        HStack {
+                            Text("APPLICATION_ID:")
                                 .bold()
-                            let usernameText: String = formatUsername(from: userAny)
-                            Text("Username: \(usernameText)")
-                            Text("User: \(String(describing: userAny))")
+                            Spacer()
+                            Text(applicationID.isEmpty ? "Not loaded" : applicationID)
+                                .foregroundColor(applicationID.isEmpty ? .secondary : .primary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        Button("Configure DiscordSDKManager") {
+                            Task {
+                                await configureSDK()
+                            }
+                        }
+                        .disabled(isLoading || applicationID.isEmpty)
+                        if !configMessage.isEmpty {
+                            Text(configMessage)
                                 .font(.footnote)
                                 .foregroundColor(.secondary)
                         }
-                        .padding(.vertical, 4)
-                    } else {
-                        Text("No user authorized")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
                     }
-                    HStack {
-                        Button("Authorize") {
-                            Task {
-                                await authorize()
-                            }
+                    
+                    Section("Authorization") {
+                        HStack {
+                            Text("Status:")
+                                .bold()
+                            Spacer()
+                            Text(statusText(for: sdkManager.authorizationStatus))
+                                .foregroundColor(color(for: sdkManager.authorizationStatus))
                         }
-                        .disabled(isLoading)
-                        Spacer()
-                        Button("Logout") {
-                            Task {
-                                await logout()
+                        if let user = sdkManager.currentUser {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Current User:")
+                                    .bold()
+                                Text("Username: \(user.username)")
+                                Text("ID: \(user.id)")
+                                    .font(.footnote)
+                                    .foregroundColor(.secondary)
                             }
+                            .padding(.vertical, 4)
+                        } else {
+                            Text("No user authorized")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
                         }
-                        .disabled(isLoading || sdkManager.authorizationStatus != .authorized)
+                        HStack {
+                            Button("Authorize") {
+                                Task {
+                                    await authorize()
+                                }
+                            }
+                            .disabled(isLoading)
+                            Spacer()
+                            Button("Logout") {
+                                Task {
+                                    await logout()
+                                }
+                            }
+                            .disabled(isLoading || sdkManager.authorizationStatus != .authorized)
+                        }
+                        HStack {
+                            Button("Refresh User") {
+                                Task { await loadCurrentUser(showErrors: true) }
+                            }
+                            .disabled(isLoading)
+                        }
                     }
-                    HStack {
-                        Button("Refresh User") {
-                            Task { await loadCurrentUser() }
+                    
+                    Section("Activity") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("App Name (e.g., CraftPresence)", text: $activityName)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("State (optional)", text: $activityStateText)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Details (optional)", text: $activityDetailsText)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Large Image Key", text: $activityLargeImageKey)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Small Image Key", text: $activitySmallImageKey)
+                                .textFieldStyle(.roundedBorder)
+                            Picker("Activity Type", selection: $selectedActivityType) {
+                                ForEach(DiscordActivity.ActivityType.allCases) { type in
+                                    Text(type.displayName).tag(type)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            Toggle("Include Start Timestamp", isOn: $includeStartTimestamp.animation())
+                            if includeStartTimestamp {
+                                DatePicker("Start Time", selection: $activityStartDate)
+                                    .datePickerStyle(.compact)
+                            }
+                            Toggle("Include End Timestamp", isOn: $includeEndTimestamp.animation())
+                            if includeEndTimestamp {
+                                DatePicker("End Time", selection: $activityEndDate)
+                                    .datePickerStyle(.compact)
+                            }
+                            Text("Leave a field empty to omit it from the payload.")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
                         }
-                        .disabled(isLoading)
+                        
+                        HStack {
+                            Button("Update Activity") {
+                                Task {
+                                    await updateActivity()
+                                }
+                            }
+                            .disabled(isLoading)
+                            Spacer()
+                            Button("Clear Activity") {
+                                Task {
+                                    await clearActivity()
+                                }
+                            }
+                            .disabled(isLoading)
+                        }
+                    }
+                    
+                    if !actionMessage.isEmpty {
+                        Section {
+                            Text(actionMessage)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-
-                Section("Activity") {
-                    HStack {
-                        Button("Update Activity") {
-                            Task {
-                                await updateActivity()
-                            }
-                        }
-                        .disabled(isLoading || sdkManager.authorizationStatus != .authorized)
-                        Spacer()
-                        Button("Clear Activity") {
-                            Task {
-                                await clearActivity()
-                            }
-                        }
-                        .disabled(isLoading || sdkManager.authorizationStatus != .authorized)
-                    }
-                }
-
-                if !actionMessage.isEmpty {
-                    Section {
-                        Text(actionMessage)
-                            .foregroundColor(.secondary)
-                    }
-                }
+                .padding(.horizontal, 12)
             }
-
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .onAppear {
-            loadApplicationID()
-            Task { await loadCurrentUser() }
-        }
-        .disabled(isLoading)
-        .overlay {
-            if isLoading {
-                ZStack {
-                    Color.black.opacity(0.3).ignoresSafeArea()
-                    ProgressView()
+            .onAppear {
+                loadApplicationID()
+                Task { await loadCurrentUser() }
+            }
+            .disabled(isLoading)
+            .overlay {
+                if isLoading {
+                    ZStack {
+                        Color.black.opacity(0.3).ignoresSafeArea()
+                        ProgressView()
+                    }
                 }
             }
         }
@@ -142,8 +184,10 @@ struct DiscordTestView: View {
 
         if let id = plistValue, !id.isEmpty {
             applicationID = id
+        } else if let envId = envValue, !envId.isEmpty {
+            applicationID = envId
         } else {
-            applicationID = ""
+            applicationID = resolved
         }
     }
     
@@ -151,12 +195,9 @@ struct DiscordTestView: View {
         configMessage = ""
         actionMessage = ""
         isLoading = true
-        do {
-            try await sdkManager.configure(applicationId: applicationID)
-            configMessage = "Successfully configured with APPLICATION_ID."
-        } catch {
-            configMessage = "Failed to configure SDK: \(error.localizedDescription)"
-        }
+        // configure는 throws하지 않으므로 try 불필요
+        sdkManager.configure(applicationId: applicationID, autoAuthorize: false)
+        configMessage = "Successfully configured with APPLICATION_ID."
         isLoading = false
     }
     
@@ -164,24 +205,22 @@ struct DiscordTestView: View {
         actionMessage = ""
         isLoading = true
         do {
-            try await sdkManager.authorizeIfNeeded()
+            _ = try await sdkManager.authorizeIfNeeded()
             actionMessage = "Authorization successful."
-            await loadCurrentUser()
         } catch {
             actionMessage = "Authorization failed: \(error.localizedDescription)"
         }
         isLoading = false
     }
     
-    private func loadCurrentUser() async {
+    private func loadCurrentUser(showErrors: Bool = false) async {
         isLoading = true
         defer { isLoading = false }
         do {
-            // If sdkManager.currentUser() is async/throws, use try await. Adjust as needed.
-            if let user = try? await (sdkManager.currentUser() as Any?) {
-                self.currentUser = user
-            } else {
-                self.currentUser = nil
+            _ = try await sdkManager.currentUser()
+        } catch {
+            if showErrors {
+                actionMessage = "Failed to load user: \(error.localizedDescription)"
             }
         }
     }
@@ -192,7 +231,6 @@ struct DiscordTestView: View {
         do {
             try await sdkManager.logout()
             actionMessage = "Logged out successfully."
-            await loadCurrentUser()
         } catch {
             actionMessage = "Logout failed: \(error.localizedDescription)"
         }
@@ -203,7 +241,35 @@ struct DiscordTestView: View {
         actionMessage = ""
         isLoading = true
         do {
-            try await sdkManager.updateActivity(state: "Using DiscordSDKManager", details: "Testing Activity", largeImageKey: "large_image", smallImageKey: "small_image")
+            let nameValue = activityName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stateValue = activityStateText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detailsValue = activityDetailsText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let largeKeyValue = activityLargeImageKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let smallKeyValue = activitySmallImageKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            let startDate = includeStartTimestamp ? activityStartDate : nil
+            let endDate = includeEndTimestamp ? activityEndDate : nil
+            
+            var activity = DiscordActivity()
+            activity.name = nameValue.isEmpty ? nil : nameValue
+            activity.state = stateValue.isEmpty ? nil : stateValue
+            activity.details = detailsValue.isEmpty ? nil : detailsValue
+            activity.assets = .init(
+                largeImage: largeKeyValue.isEmpty ? nil : largeKeyValue,
+                smallImage: smallKeyValue.isEmpty ? nil : smallKeyValue
+            )
+            activity.timestamps = .init(start: startDate, end: endDate)
+            activity.type = selectedActivityType
+            
+            try await sdkManager.updateActivity(
+                name: activity.name,
+                state: activity.state,
+                details: activity.details,
+                largeImageKey: activity.assets.largeImage,
+                smallImageKey: activity.assets.smallImage,
+                start: activity.timestamps.start,
+                end: activity.timestamps.end,
+                activityType: activity.type
+            )
             actionMessage = "Activity updated successfully."
         } catch {
             actionMessage = "Update activity failed: \(error.localizedDescription)"
@@ -221,34 +287,6 @@ struct DiscordTestView: View {
             actionMessage = "Clear activity failed: \(error.localizedDescription)"
         }
         isLoading = false
-    }
-    
-    private func formatUsername(from anyUser: Any) -> String {
-        // Try to extract common properties via reflection
-        let mirror = Mirror(reflecting: anyUser)
-        var name: String?
-        var discriminator: String?
-        var idText: String?
-        for child in mirror.children {
-            switch child.label ?? "" {
-            case "username", "name", "userName":
-                name = String(describing: child.value)
-            case "discriminator", "tag":
-                discriminator = String(describing: child.value)
-            case "id", "userID", "userId":
-                idText = String(describing: child.value)
-            default:
-                break
-            }
-        }
-        if let name = name {
-            if let disc = discriminator, !disc.isEmpty, disc != "0" {
-                return "\(name)#\(disc)"
-            }
-            return name
-        }
-        if let idText = idText { return idText }
-        return String(describing: anyUser)
     }
     
     private func color(for status: DiscordSDKManager.AuthorizationStatus) -> Color {

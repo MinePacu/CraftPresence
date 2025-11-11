@@ -103,7 +103,7 @@ struct ProgramsView: View {
                     ContentUnavailableView("등록된 프로그램이 없습니다", systemImage: "list.bullet", description: Text("Add Program 버튼을 눌러 응용프로그램(.app)을 선택하세요."))
                 } else {
                     List {
-                        ForEach(programIDs, id: \._self) { id in
+                        ForEach(programIDs, id: \.self) { id in
                             HStack {
                                 Image(systemName: "app.badge").imageScale(.medium)
                                 Text(id).font(.body)
@@ -301,8 +301,12 @@ private struct ProgramsSettingsSheet: View {
     @State var partyMx = 1
     @State var largeImg: Image? = nil
     @State var smallImg: Image? = nil
+    #if os(macOS)
+    @State var largeNSImg: NSImage? = nil
+    @State var smallNSImg: NSImage? = nil
+    #endif
 
-    return ProgramsView(
+    ProgramsView(
         programIDs: $programIDs,
         isLoadingPrograms: $isLoadingPrograms,
         showingProgramSettings: $showing,
@@ -315,6 +319,8 @@ private struct ProgramsSettingsSheet: View {
         largeImageText: $largeText,
         smallImageKey: $smallKey,
         smallImageText: $smallText,
+        selectedLargeNSImage: $largeNSImg,
+        selectedSmallNSImage: $smallNSImg,
         selectedLargeImage: $largeImg,
         selectedSmallImage: $smallImg,
         partyCurrent: $partyCur,

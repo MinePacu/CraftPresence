@@ -1,5 +1,9 @@
 import SwiftUI
+import Combine
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 
 #if os(macOS)
 
@@ -10,6 +14,9 @@ struct NowPlayingInfo: Equatable {
     var album: String
     var position: TimeInterval
     var duration: TimeInterval
+    #if os(macOS)
+    var artwork: NSImage?
+    #endif
 
     private func format(_ t: TimeInterval) -> String {
         guard t.isFinite && !t.isNaN && t >= 0 else { return "--:--" }
@@ -30,15 +37,18 @@ final class NowPlayingViewModel: ObservableObject {
     @Published var info: NowPlayingInfo? = nil
     @Published var statusMessage: String = ""
     @Published var errorMessage: String? = nil
+    @Published var debugLog: String = ""
+    @Published var showDebugLog: Bool = false
 
     private var runner = ScriptRunner()
     private var timer: Timer? = nil
 
-    deinit { stopAutoRefresh() }
-
     func fetchNowPlaying() async {
         errorMessage = nil
         statusMessage = "Querying…"
+        if showDebugLog {
+            debugLog = ""
+        }
 
         let lines: [String] = [
             "tell application \"System Events\"",
@@ -52,7 +62,42 @@ final class NowPlayingViewModel: ObservableObject {
             "set al to album of current track",
             "set pos to player position",
             "set dur to duration of current track",
-            "return t & \"||\" & ar & \"||\" & al & \"||\" & (pos as text) & \"||\" & (dur as text)",
+            "-- Get artwork - simplified approach",
+            "set artB64 to \"\"",
+            "set artInfo to \"none\"",
+            "try",
+            "set tr to current track",
+            "set artCount to 0",
+            "try",
+            "set artCount to count of artworks of tr",
+            "end try",
+            "set artInfo to \"count:\" & artCount",
+            "if artCount > 0 then",
+            "try",
+            "set tmpPath to \"/tmp/np_art_\" & (random number from 10000 to 99999) & \".jpg\"",
+            "set artData to data of artwork 1 of tr",
+            "set outFile to open for access POSIX file tmpPath with write permission",
+            "set eof of outFile to 0",
+            "write artData to outFile",
+            "close access outFile",
+            "set artB64 to do shell script \"base64 -i '\" & tmpPath & \"' | tr -d '\\\\n'\"",
+            "set fileSize to do shell script \"wc -c < '\" & tmpPath & \"'\"",
+            "set artInfo to artInfo & \",bytes:\" & fileSize",
+            "do shell script \"rm -f '\" & tmpPath & \"'\"",
+            "on error errMsg",
+            "set artInfo to artInfo & \",err:\" & errMsg",
+            "try",
+            "close access POSIX file tmpPath",
+            "end try",
+            "try",
+            "do shell script \"rm -f '\" & tmpPath & \"'\"",
+            "end try",
+            "end try",
+            "end if",
+            "on error mainErr",
+            "set artInfo to \"error:\" & mainErr",
+            "end try",
+            "return t & \"||\" & ar & \"||\" & al & \"||\" & (pos as text) & \"||\" & (dur as text) & \"||\" & artB64 & \"||\" & artInfo",
             "else if player state is paused then",
             "return \"PAUSED\"",
             "else",
@@ -63,6 +108,10 @@ final class NowPlayingViewModel: ObservableObject {
 
         do {
             let output = try await runner.runWithOsascript(lines: lines)
+            if showDebugLog {
+                debugLog = "Raw output length: \(output.count) chars"
+            }
+            
             // Parse output
             if output == "NOT_RUNNING" {
                 self.info = nil
@@ -81,13 +130,84 @@ final class NowPlayingViewModel: ObservableObject {
             }
 
             let parts = output.components(separatedBy: "||")
-            if parts.count >= 5 {
+            if showDebugLog {
+                debugLog += "\nParts count: \(parts.count)"
+            }
+            
+            if parts.count >= 6 {
                 let title = parts[0]
                 let artist = parts[1]
                 let album = parts[2]
                 let pos = TimeInterval(parts[3]) ?? 0
                 let dur = TimeInterval(parts[4]) ?? 0
+                
+                // Artwork info (part 6 if available)
+                let artInfo = parts.count >= 7 ? parts[6] : "no-info"
+                if showDebugLog {
+                    debugLog += "\nArtwork info: \(artInfo)"
+                }
+                
+                #if os(macOS)
+                var artImage: NSImage? = nil
+                let artB64 = parts[5].trimmingCharacters(in: .whitespacesAndNewlines)
+                if showDebugLog {
+                    debugLog += "\nBase64 length: \(artB64.count)"
+                }
+                
+                if !artB64.isEmpty {
+                    if let artData = Data(base64Encoded: artB64, options: .ignoreUnknownCharacters) {
+                        if showDebugLog {
+                            debugLog += "\nDecoded data size: \(artData.count) bytes"
+                        }
+                        if let image = NSImage(data: artData) {
+                            artImage = image
+                            if showDebugLog {
+                                debugLog += "\nNSImage created: \(image.size)"
+                            }
+                        } else {
+                            if showDebugLog {
+                                debugLog += "\nFailed to create NSImage"
+                            }
+                        }
+                    } else {
+                        if showDebugLog {
+                            debugLog += "\nFailed to decode base64"
+                        }
+                    }
+                } else {
+                    if showDebugLog {
+                        debugLog += "\nNo artwork data in response"
+                        debugLog += "\nTrying iTunes API..."
+                    }
+                    // Fallback: Try to fetch from iTunes API
+                    if let apiImage = await MediaRemoteHelper.shared.fetchArtworkFromAPI(
+                        artist: artist,
+                        album: album,
+                        track: title
+                    ) {
+                        artImage = apiImage
+                        if showDebugLog {
+                            debugLog += "\nFetched from iTunes API: \(apiImage.size)"
+                        }
+                    } else if let albumImage = await MediaRemoteHelper.shared.fetchAlbumArtwork(
+                        artist: artist,
+                        album: album
+                    ) {
+                        artImage = albumImage
+                        if showDebugLog {
+                            debugLog += "\nFetched album art from iTunes API: \(albumImage.size)"
+                        }
+                    } else {
+                        if showDebugLog {
+                            debugLog += "\niTunes API fetch failed"
+                        }
+                    }
+                }
+                
+                self.info = NowPlayingInfo(title: title, artist: artist, album: album, position: pos, duration: dur, artwork: artImage)
+                #else
                 self.info = NowPlayingInfo(title: title, artist: artist, album: album, position: pos, duration: dur)
+                #endif
                 self.statusMessage = "Playing"
             } else {
                 self.info = nil
@@ -120,6 +240,7 @@ final class NowPlayingViewModel: ObservableObject {
 }
 
 // MARK: - View
+@MainActor
 struct NowPlayingTestView: View {
     @StateObject private var vm = NowPlayingViewModel()
 
@@ -130,16 +251,103 @@ struct NowPlayingTestView: View {
 
             Group {
                 if let info = vm.info {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Title: \(info.title)")
-                        Text("Artist: \(info.artist)")
-                        Text("Album: \(info.album)")
-                        Text("Position: \(info.formattedPosition) / \(info.formattedDuration)")
-                            .foregroundStyle(.secondary)
+                    #if os(macOS)
+                    if let img = info.artwork {
+                        VStack(alignment: .leading, spacing: 12) {
+                            // 앨범 아트 중앙 정렬로 크게 표시
+                            Image(nsImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: 200, maxHeight: 200)
+                                .cornerRadius(8)
+                                .shadow(radius: 4)
+                                .frame(maxWidth: .infinity)
+                            
+                            // 트랙 정보
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(info.title)
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .lineLimit(2)
+                                
+                                Text(info.artist)
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                
+                                Text(info.album)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                
+                                HStack {
+                                    Text(info.formattedPosition)
+                                    Spacer()
+                                    Text(info.formattedDuration)
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 4)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        // 앨범 아트 없을 때
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 12) {
+                                // 기본 플레이스홀더 아이콘
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 80, height: 80)
+                                    .background(Color.secondary.opacity(0.1))
+                                    .cornerRadius(8)
+                                
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(info.title)
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .lineLimit(2)
+                                    
+                                    Text(info.artist)
+                                        .font(.body)
+                                        .foregroundStyle(.secondary)
+                                    
+                                    Text(info.album)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            
+                            HStack {
+                                Text(info.formattedPosition)
+                                Spacer()
+                                Text(info.formattedDuration)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 4)
+                        }
                     }
+                    #else
+                    // Non-macOS won't show artwork here
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(info.title)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text(info.artist)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                        Text(info.album)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("Position: \(info.formattedPosition) / \(info.formattedDuration)")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    #endif
                 } else {
                     Text(vm.statusMessage.isEmpty ? "—" : vm.statusMessage)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 100, alignment: .center)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -149,6 +357,12 @@ struct NowPlayingTestView: View {
                 Button(vm.isRunning ? "Auto Refresh Off" : "Auto Refresh On") {
                     vm.isRunning ? vm.stopAutoRefresh() : vm.startAutoRefresh()
                 }
+                
+                Spacer()
+                
+                Toggle("Debug", isOn: $vm.showDebugLog)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
             }
 
             if let err = vm.errorMessage, !err.isEmpty {
@@ -157,6 +371,21 @@ struct NowPlayingTestView: View {
                     .foregroundStyle(.red)
                     .lineLimit(5)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            if vm.showDebugLog && !vm.debugLog.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Debug Log:")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Text(vm.debugLog)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .padding(8)
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(6)
             }
         }
         .padding()
@@ -188,7 +417,7 @@ struct NowPlayingTestView: View {
 
 #Preview {
     NowPlayingTestView()
-        .frame(width: 360)
+        .frame(width: 400, height: 500)
 }
 
 #endif

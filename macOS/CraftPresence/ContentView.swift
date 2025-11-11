@@ -17,17 +17,21 @@ struct ContentView: View {
     private enum DetailSelection: Equatable {
         case overview
         case programs
+        case builtin
         case about
         case item(Item)
         case discordTest
+        case nowPlayingTest
         case none
 
         static func == (lhs: DetailSelection, rhs: DetailSelection) -> Bool {
             switch (lhs, rhs) {
             case (.overview, .overview): return true
             case (.programs, .programs): return true
+            case (.builtin, .builtin): return true
             case (.about, .about): return true
             case (.discordTest, .discordTest): return true
+            case (.nowPlayingTest, .nowPlayingTest): return true
             case (.none, .none): return true
             case let (.item(li), .item(ri)): return li.id == ri.id
             default: return false
@@ -105,8 +109,10 @@ struct ContentView: View {
                 switch selection {
                 case .overview: return "overview"
                 case .programs: return "programs"
+                case .builtin: return "builtin"
                 case .about: return "about"
                 case .discordTest: return "discordTest"
+                case .nowPlayingTest: return "nowPlayingTest"
                 case .item(let item): return "item-\(item.id)"
                 case .none: return nil
                 }
@@ -114,8 +120,10 @@ struct ContentView: View {
                 guard let key = newValue else { return }
                 if key == "overview" { selection = .overview }
                 else if key == "programs" { selection = .programs }
+                else if key == "builtin" { selection = .builtin }
                 else if key == "about" { selection = .about }
                 else if key == "discordTest" { selection = .discordTest }
+                else if key == "nowPlayingTest" { selection = .nowPlayingTest }
                 else if key.hasPrefix("item-") {
                     if let idString = key.split(separator: "-").last,
                        let match = items.first(where: { "\($0.id)" == idString }) {
@@ -132,6 +140,10 @@ struct ContentView: View {
                         if selection != .programs { selectionStack.append(selection) }
                         selection = .programs
                     }
+                    SidebarRow(title: "Built-in", systemImage: "bolt.fill", isSelected: selection == .builtin, tint: .pink) {
+                        if selection != .builtin { selectionStack.append(selection) }
+                        selection = .builtin
+                    }
                     SidebarRow(title: "About", systemImage: "info.circle", isSelected: selection == .about, tint: .pink) {
                         if selection != .about { selectionStack.append(selection) }
                         selection = .about
@@ -142,6 +154,10 @@ struct ContentView: View {
                     SidebarRow(title: "DiscordTest", systemImage: "gamecontroller", isSelected: selection == .discordTest, tint: .pink) {
                         if selection != .discordTest { selectionStack.append(selection) }
                         selection = .discordTest
+                    }
+                    SidebarRow(title: "NowPlayingTest", systemImage: "music.note", isSelected: selection == .nowPlayingTest, tint: .pink) {
+                        if selection != .nowPlayingTest { selectionStack.append(selection) }
+                        selection = .nowPlayingTest
                     }
                     ForEach(items) { item in
                         SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {item
@@ -163,524 +179,58 @@ struct ContentView: View {
                 // MARK: Detail - Overview
                 switch selection {
                 case .overview:
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("OverView", systemImage: "rectangle.and.text.magnifyingglass")
-                            .font(.title2).bold()
-                        Label {
-                            HStack(spacing: 0) {
-                                Text("현재 포그라운드 창: ")
-                                Text(activeAppName ?? "알 수 없음").foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "macwindow") }
-                        Label {
-                            HStack(spacing: 0) {
-                                Text("창 타이틀: ")
-                                Text(activeWindowTitle ?? "알 수 없음").foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "text.quote") }
-                        Label {
-                            HStack(spacing: 0) {
-                                Text("Bundle ID: ")
-                                Text(activeBundleID ?? "알 수 없음").foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "barcode.viewfinder") }
-                        Label {
-                            let isTracked = (activeBundleID != nil) && programIDs.contains(activeBundleID!)
-                            if isTracked {
-                                Text("Programs에 등록됨")
-                                    .foregroundStyle(.green)
-                            } else {
-                                Text("Programs에 미등록")
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "checkmark.seal") }
-                        // Placeholder for Discord Rich Presence summary
-                        Label {
-                            HStack(spacing: 0) {
-                                Text("Discord Rich Presence: ")
-                                Text("연결되지 않음").foregroundStyle(.secondary)
-                            }
-                        } icon: { Image(systemName: "gamecontroller") }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    //.padding(.vertical, 4)
+                    OverviewView(
+                        activeAppName: activeAppName,
+                        activeWindowTitle: activeWindowTitle,
+                        activeBundleID: activeBundleID,
+                        programIDs: programIDs
+                    )
                 // MARK: Detail - Programs
                 case .programs:
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("Programs", systemImage: "list.bullet.rectangle")
-                            .font(.title2).bold()
-                        Text("어떤 프로그램을 Rich Presence로 표시할지 선택하세요.")
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 8) {
-                            Button {
-                                #if os(macOS)
-                                // Present an open panel to pick an application (.app)
-                                let panel = NSOpenPanel()
-                                panel.title = "Select an Application"
-                                panel.message = "응용프로그램(.app)을 선택하세요."
-                                panel.canChooseFiles = true
-                                panel.canChooseDirectories = false
-                                panel.allowsMultipleSelection = false
-                                panel.allowedContentTypes = [.application]
-                                panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
-                                if panel.runModal() == .OK, let url = panel.url {
-                                    // Try to read bundle identifier from the selected app bundle
-                                    if let bundle = Bundle(url: url), let bundleID = bundle.bundleIdentifier {
-                                        Task {
-                                            do {
-                                                let updated = try await ConfigUtility.shared.addBundleID(bundleID)
-                                                programIDs = updated.bundleIDs
-                                            } catch {
-                                                print("Failed to save bundleID: \(error)")
-                                            }
-                                        }
-                                    } else {
-                                        print("선택한 항목에서 bundleID를 읽을 수 없습니다: \(String(describing: panel.url))")
-                                    }
-                                }
-                                #else
-                                // iOS and other platforms typically cannot pick installed apps
-                                print("Add Program is only supported on macOS in this build.")
-                                #endif
-                            } label: {
-                                Label("Add Program", systemImage: "plus.circle.fill")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(false)
-                        }
-
-                        Group {
-                            if isLoadingPrograms {
-                                ProgressView("불러오는 중...")
-                            } else if programIDs.isEmpty {
-                                ContentUnavailableView("등록된 프로그램이 없습니다", systemImage: "list.bullet", description: Text("Add Program 버튼을 눌러 응용프로그램(.app)을 선택하세요."))
-                            } else {
-                                List {
-                                    ForEach(programIDs, id: \.self) { id in
-                                        HStack {
-                                            Image(systemName: "app.badge")
-                                                .imageScale(.medium)
-                                            Text(id)
-                                                .font(.body)
-                                            Spacer()
-                                            HStack(spacing: 8) {
-                                                Button(role: .destructive) {
-                                                    Task {
-                                                        do {
-                                                            let updated = try await ConfigUtility.shared.removeBundleID(id)
-                                                            programIDs = updated.bundleIDs
-                                                        } catch {
-                                                            print("Failed to remove bundleID: \(error)")
-                                                        }
-                                                    }
-                                                } label: {
-                                                    Image(systemName: "trash")
-                                                }
-                                                .buttonStyle(.borderless)
-
-                                                Button {
-                                                    selectedProgramIDForSettings = id
-                                                    showingProgramSettings = true
-                                                } label: {
-                                                    Image(systemName: "gearshape")
-                                                }
-                                                .buttonStyle(.borderless)
-                                                .help("설정")
-                                            }
-                                        }
-                                    }
-                                }
-    #if os(iOS)
-                                .listStyle(.insetGrouped)
-    #else
-                                .listStyle(.inset)
-    #endif
-                            }
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    // MARK: Programs - Settings Sheet
-                    .sheet(isPresented: $showingProgramSettings) {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 16) {
-                                HStack {
-                                    Button("취소") {
-                                        showingProgramSettings = false
-                                    }
-                                    Spacer()
-                                    Button("저장") {
-                                        // TODO: Persist settings for selectedProgramIDForSettings
-                                        // Hook for save logic via ConfigUtility per bundle ID
-                                        showingProgramSettings = false
-                                    }
-                                    .keyboardShortcut(.defaultAction)
-                                }
-                                .padding(.bottom, 4)
-
-                                Divider()
-
-                                Form {
-                                    Section {
-                                        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
-                                            GridRow(alignment: .firstTextBaseline) {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("활동 유형")
-                                                        .font(.headline)
-                                                    Picker("활동 유형", selection: $activityType) {
-                                                        ForEach(ActivityType.allCases) { t in
-                                                            Text(t.localizedLabel).tag(t)
-                                                        }
-                                                    }
-                                                    .pickerStyle(.segmented)
-                                                }
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                            }
-                                            GridRow(alignment: .firstTextBaseline) {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("세부 내용")
-                                                        .font(.headline)
-                                                    TextField("예: 게임 이름 또는 작업 설명", text: $detailText)
-                                                }
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                            }
-                                            GridRow(alignment: .firstTextBaseline) {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("상태 메시지")
-                                                        .font(.headline)
-                                                    TextField("예: 현재 단계, 챕터 등", text: $stateText)
-                                                }
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                            }
-                                        }
-                                    }
-
-                                    Divider()
-
-                                    Section {
-                                        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
-                                            GridRow {
-                                                Toggle("큰 이미지에 앱 아이콘 사용", isOn: $useAppIconForLargeImage)
-                                                    .help("활성화 시 큰 이미지는 앱 아이콘으로 표시됩니다.")
-                                            }
-                                            if !useAppIconForLargeImage {
-                                                // Large Image Picker & Preview
-                                                GridRow {
-                                                    VStack(alignment: .leading, spacing: 8) {
-                                                        Text("큰 이미지 선택")
-                                                            .font(.headline)
-                                                        #if os(macOS)
-                                                        HStack(spacing: 8) {
-                                                            Button {
-                                                                let panel = NSOpenPanel()
-                                                                panel.title = "이미지 선택"
-                                                                panel.message = "큰 이미지로 사용할 파일을 선택하세요."
-                                                                panel.canChooseFiles = true
-                                                                panel.canChooseDirectories = false
-                                                                panel.allowsMultipleSelection = false
-                                                                panel.allowedContentTypes = [.image]
-                                                                if panel.runModal() == .OK, let url = panel.url, let nsImage = NSImage(contentsOf: url) {
-                                                                    selectedLargeNSImage = nsImage
-                                                                    selectedLargeImage = Image(nsImage: nsImage)
-                                                                }
-                                                            } label: {
-                                                                Label("이미지 선택", systemImage: "photo.on.rectangle")
-                                                            }
-                                                            .buttonStyle(.bordered)
-
-                                                            if let img = selectedLargeImage {
-                                                                img
-                                                                    .resizable()
-                                                                    .scaledToFit()
-                                                                    .frame(width: 72, height: 72)
-                                                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                                                    .overlay(
-                                                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                                                    )
-                                                                    .accessibilityLabel("큰 이미지 미리보기")
-                                                            } else {
-                                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                    .fill(Color.secondary.opacity(0.08))
-                                                                    .frame(width: 72, height: 72)
-                                                                    .overlay(
-                                                                        Image(systemName: "photo")
-                                                                            .imageScale(.large)
-                                                                            .foregroundStyle(.secondary)
-                                                                    )
-                                                                    .accessibilityLabel("큰 이미지가 선택되지 않음")
-                                                            }
-                                                        }
-                                                        #else
-                                                        HStack(spacing: 8) {
-                                                            Button {
-                                                                isPickingLargeImage = true
-                                                            } label: {
-                                                                Label("이미지 선택", systemImage: "photo.on.rectangle")
-                                                            }
-                                                            .buttonStyle(.bordered)
-
-                                                            if let img = selectedLargeImage {
-                                                                img
-                                                                    .resizable()
-                                                                    .scaledToFit()
-                                                                    .frame(width: 72, height: 72)
-                                                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                                                    .overlay(
-                                                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                                                    )
-                                                                    .accessibilityLabel("큰 이미지 미리보기")
-                                                            } else {
-                                                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                    .fill(Color.secondary.opacity(0.08))
-                                                                    .frame(width: 72, height: 72)
-                                                                    .overlay(
-                                                                        Image(systemName: "photo")
-                                                                            .imageScale(.large)
-                                                                            .foregroundStyle(.secondary)
-                                                                    )
-                                                                    .accessibilityLabel("큰 이미지가 선택되지 않음")
-                                                            }
-                                                        }
-                                                        #endif
-                                                    }
-                                                }
-                                            }
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("큰 이미지 키")
-                                                        .font(.headline)
-                                                    TextField("Discord 개발자 포털에 등록된 키", text: $largeImageKey)
-                                                }
-                                            }
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("큰 이미지 텍스트")
-                                                        .font(.headline)
-                                                    TextField("큰 이미지에 표시될 텍스트", text: $largeImageText)
-                                                }
-                                            }
-                                            // Small Image Picker & Preview
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 8) {
-                                                    Text("작은 이미지 선택")
-                                                        .font(.headline)
-                                                    #if os(macOS)
-                                                    HStack(spacing: 8) {
-                                                        Button {
-                                                            let panel = NSOpenPanel()
-                                                            panel.title = "이미지 선택"
-                                                            panel.message = "작은 이미지로 사용할 파일을 선택하세요."
-                                                            panel.canChooseFiles = true
-                                                            panel.canChooseDirectories = false
-                                                            panel.allowsMultipleSelection = false
-                                                            panel.allowedContentTypes = [.image]
-                                                            if panel.runModal() == .OK, let url = panel.url, let nsImage = NSImage(contentsOf: url) {
-                                                                selectedSmallNSImage = nsImage
-                                                                selectedSmallImage = Image(nsImage: nsImage)
-                                                            }
-                                                        } label: {
-                                                            Label("이미지 선택", systemImage: "photo.on.rectangle")
-                                                        }
-                                                        .buttonStyle(.bordered)
-
-                                                        if let img = selectedSmallImage {
-                                                            img
-                                                                .resizable()
-                                                                .scaledToFit()
-                                                                .frame(width: 48, height: 48)
-                                                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                                                .overlay(
-                                                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                                                )
-                                                                .accessibilityLabel("작은 이미지 미리보기")
-                                                        } else {
-                                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                .fill(Color.secondary.opacity(0.08))
-                                                                .frame(width: 48, height: 48)
-                                                                .overlay(
-                                                                    Image(systemName: "photo")
-                                                                        .imageScale(.medium)
-                                                                        .foregroundStyle(.secondary)
-                                                                )
-                                                                .accessibilityLabel("작은 이미지가 선택되지 않음")
-                                                        }
-                                                    }
-                                                    #else
-                                                    HStack(spacing: 8) {
-                                                        Button {
-                                                            isPickingSmallImage = true
-                                                        } label: {
-                                                            Label("이미지 선택", systemImage: "photo.on.rectangle")
-                                                        }
-                                                        .buttonStyle(.bordered)
-
-                                                        if let img = selectedSmallImage {
-                                                            img
-                                                                .resizable()
-                                                                .scaledToFit()
-                                                                .frame(width: 48, height: 48)
-                                                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                                                .overlay(
-                                                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                                                                )
-                                                                .accessibilityLabel("작은 이미지 미리보기")
-                                                        } else {
-                                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                                .fill(Color.secondary.opacity(0.08))
-                                                                .frame(width: 48, height: 48)
-                                                                .overlay(
-                                                                    Image(systemName: "photo")
-                                                                        .imageScale(.medium)
-                                                                        .foregroundStyle(.secondary)
-                                                                )
-                                                                .accessibilityLabel("작은 이미지가 선택되지 않음")
-                                                        }
-                                                    }
-                                                    #endif
-                                                }
-                                            }
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("작은 이미지 키")
-                                                        .font(.headline)
-                                                    TextField("Discord 개발자 포털에 등록된 키", text: $smallImageKey)
-                                                }
-                                            }
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("작은 이미지 텍스트")
-                                                        .font(.headline)
-                                                    TextField("작은 이미지에 표시될 텍스트", text: $smallImageText)
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    Divider()
-
-                                    Section {
-                                        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("현재 인원")
-                                                        .font(.headline)
-                                                    HStack {
-                                                        Stepper(value: $partyCurrent, in: 0...max(0, partyMax)) { EmptyView() }
-                                                        Text("\(partyCurrent)")
-                                                            .foregroundStyle(.secondary)
-                                                    }
-                                                }
-                                            }
-                                            GridRow {
-                                                VStack(alignment: .leading, spacing: 6) {
-                                                    Text("최대 인원")
-                                                        .font(.headline)
-                                                    HStack {
-                                                        Stepper(value: $partyMax, in: max(1, partyCurrent)...99) { EmptyView() }
-                                                        Text("\(partyMax)")
-                                                            .foregroundStyle(.secondary)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 28)
-                        #if os(iOS)
-                        .sheet(isPresented: $isPickingLargeImage) {
-                            ImagePicker { uiImage in
-                                selectedLargeImage = Image(uiImage: uiImage)
-                            }
-                        }
-                        .sheet(isPresented: $isPickingSmallImage) {
-                            ImagePicker { uiImage in
-                                selectedSmallImage = Image(uiImage: uiImage)
-                            }
-                        }
-                        #endif
-                        .padding(.vertical, 20)
-                        .frame(minWidth: 720, idealWidth: 820)
-                        .frame(maxHeight: 720)
-                        .onAppear {
-                            // TODO: Load existing settings for selectedProgramIDForSettings
-                            // Reset or populate fields here as needed
-                        }
-                    }
+                    ProgramsView(
+                        programIDs: $programIDs,
+                        isLoadingPrograms: $isLoadingPrograms,
+                        showingProgramSettings: $showingProgramSettings,
+                        selectedProgramIDForSettings: $selectedProgramIDForSettings,
+                        activityType: $activityType,
+                        detailText: $detailText,
+                        stateText: $stateText,
+                        useAppIconForLargeImage: $useAppIconForLargeImage,
+                        largeImageKey: $largeImageKey,
+                        largeImageText: $largeImageText,
+                        smallImageKey: $smallImageKey,
+                        smallImageText: $smallImageText,
+                        selectedLargeNSImage: $selectedLargeNSImage,
+                        selectedSmallNSImage: $selectedSmallNSImage,
+                        selectedLargeImage: $selectedLargeImage,
+                        selectedSmallImage: $selectedSmallImage,
+                        partyCurrent: $partyCurrent,
+                        partyMax: $partyMax
+                    )
                     .task {
-                        // Load saved bundle IDs when entering Programs
                         do {
                             let current = await ConfigUtility.shared.currentSettings()
                             programIDs = current.bundleIDs
                         }
                         isLoadingPrograms = false
                     }
-                    //.padding(.vertical, 4)
-
+                // MARK: Detail - Built-in
+                case .builtin:
+                    BuiltinView()
                 // MARK: Detail - About
                 case .about:
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("About", systemImage: "info.circle")
-                            .font(.title2).bold()
-
-                        Group {
-                            InfoRow(label: "App Name", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Unknown")
-                            InfoRow(label: "Version", value: {
-                                let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-                                let b = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String
-                                switch (v, b) { case let (v?, b?): return "\(v) (\(b))"; case let (v?, nil): return v; case let (nil, b?): return b; default: return "Unknown" }
-                            }())
-                            InfoRow(label: "Bundle ID", value: Bundle.main.bundleIdentifier ?? "Unknown")
-                            InfoRow(label: "Executable Path", value: Bundle.main.executableURL?.path(percentEncoded: false) ?? "-")
-    #if os(macOS)
-                            InfoRow(label: "Accessibility Permission", value: AXIsProcessTrusted() ? "Granted" : "Not Granted")
-    #endif
-                        }
-
-                        Divider().padding(.vertical, 4)
-
-                        Group {
-                            Label {
-                                HStack(spacing: 0) {
-                                    Text("현재 포그라운드 창: ")
-                                    Text(activeAppName ?? "알 수 없음").foregroundStyle(.secondary)
-                                }
-                            } icon: { Image(systemName: "macwindow") }
-                            Label {
-                                HStack(spacing: 0) {
-                                    Text("창 타이틀: ")
-                                    Text(activeWindowTitle ?? "알 수 없음").foregroundStyle(.secondary)
-                                }
-                            } icon: { Image(systemName: "text.quote") }
-                            Label {
-                                HStack(spacing: 0) {
-                                    Text("Bundle ID: ")
-                                    Text(activeBundleID ?? "알 수 없음").foregroundStyle(.secondary)
-                                }
-                            } icon: { Image(systemName: "barcode.viewfinder") }
-                        }
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-
+                    AboutView(
+                        activeAppName: activeAppName,
+                        activeWindowTitle: activeWindowTitle,
+                        activeBundleID: activeBundleID
+                    )
                 // MARK: Detail - DiscordTest
                 case .discordTest:
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("Discord Test", systemImage: "gamecontroller")
-                            .font(.title2).bold()
-                        DiscordTestView()
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
+                    DiscordTestView()
+
+                // MARK: Detail - NowPlayingTest
+                case .nowPlayingTest:
+                    NowPlayingTestView()
 
                 // MARK: Detail - Item
                 case .item(let item):
@@ -859,22 +409,6 @@ struct ContentView: View {
 }
 
 // MARK: - Reusable Views
-
-private struct InfoRow: View {
-    let label: String
-    let value: String
-    var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label)
-                .font(.headline)
-            Spacer(minLength: 12)
-            Text(value)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-}
 
 private struct SidebarRow: View {
     let title: String
