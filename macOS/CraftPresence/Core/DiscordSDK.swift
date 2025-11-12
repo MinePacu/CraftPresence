@@ -45,6 +45,7 @@ final class DiscordSDKManager: ObservableObject {
     private let queue = DispatchQueue(label: "discord.sdk.manager", qos: .userInitiated)
     private var wrapper: DiscordppWrapper?
     private var callbackTimer: DispatchSourceTimer?
+    private var processActivity: NSObjectProtocol?
 
     private init() {}
 }
@@ -408,6 +409,10 @@ private extension DiscordSDKManager {
             guard let self else { return }
             self.callbackTimer?.cancel()
             self.callbackTimer = nil
+            if let activity = self.processActivity {
+                ProcessInfo.processInfo.endActivity(activity)
+                self.processActivity = nil
+            }
             guard self.wrapper != nil else { return }
             let timer = DispatchSource.makeTimerSource(queue: self.queue)
             timer.schedule(deadline: .now(), repeating: .milliseconds(16), leeway: .milliseconds(8))
@@ -417,6 +422,10 @@ private extension DiscordSDKManager {
             }
             timer.resume()
             self.callbackTimer = timer
+            if self.processActivity == nil {
+                let options: ProcessInfo.ActivityOptions = [.background, .idleSystemSleepDisabled]
+                self.processActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "Discord SDK callback pump")
+            }
         }
     }
 
@@ -425,6 +434,10 @@ private extension DiscordSDKManager {
             guard let self else { return }
             self.callbackTimer?.cancel()
             self.callbackTimer = nil
+            if let activity = self.processActivity {
+                ProcessInfo.processInfo.endActivity(activity)
+                self.processActivity = nil
+            }
         }
     }
 }

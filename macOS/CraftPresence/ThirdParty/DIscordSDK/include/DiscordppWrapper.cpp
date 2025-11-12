@@ -8,6 +8,14 @@
 #include <iostream>
 #include <optional>
 #include <os/log.h>
+// Logging control: define DISCORDPP_WRAPPER_DISABLE_LOGS to strip logs at compile time
+#ifndef DISCORDPP_WRAPPER_DISABLE_LOGS
+#define DPW_LOG_INFO(fmt, ...)  os_log_info(OS_LOG_DEFAULT, fmt, ##__VA_ARGS__)
+#define DPW_LOG_ERROR(fmt, ...) os_log_error(OS_LOG_DEFAULT, fmt, ##__VA_ARGS__)
+#else
+#define DPW_LOG_INFO(fmt, ...)
+#define DPW_LOG_ERROR(fmt, ...)
+#endif
 
 DiscordppWrapper::DiscordppWrapper(const std::string& appId) : applicationId(appId) {
     try {
@@ -17,22 +25,22 @@ DiscordppWrapper::DiscordppWrapper(const std::string& appId) : applicationId(app
             if (!appId.empty()) {
                 try {
                     numericApplicationId = std::stoull(appId);
-                    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Parsed APPLICATION_ID: %llu from string: %s", numericApplicationId, appId.c_str());
+                    DPW_LOG_INFO("[DiscordppWrapper] Parsed APPLICATION_ID: %llu from string: %s", numericApplicationId, appId.c_str());
                 } catch (...) {
                     numericApplicationId = 0;
-                    os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] Failed to parse APPLICATION_ID from string: %s", appId.c_str());
+                    DPW_LOG_ERROR("[DiscordppWrapper] Failed to parse APPLICATION_ID from string: %s", appId.c_str());
                 }
             }
             if (numericApplicationId != 0) {
                 client->SetApplicationId(numericApplicationId);
-                os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] SetApplicationId called with: %llu", numericApplicationId);
+                DPW_LOG_INFO("[DiscordppWrapper] SetApplicationId called with: %llu", numericApplicationId);
             } else {
-                os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] numericApplicationId is 0, not calling SetApplicationId");
+                DPW_LOG_ERROR("[DiscordppWrapper] numericApplicationId is 0, not calling SetApplicationId");
             }
         }
     } catch (const std::exception& e) {
         // 에러 처리
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] Exception during initialization: %s", e.what());
+        DPW_LOG_ERROR("[DiscordppWrapper] Exception during initialization: %s", e.what());
         client.reset();
     }
 }
@@ -77,43 +85,43 @@ void DiscordppWrapper::authorize(void* context, AuthorizeCallback callback) {
         args.SetScopes(discordpp::Client::GetDefaultPresenceScopes());
         if (!applicationId.empty()) {
             args.SetClientId(std::stoull(applicationId));
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() - SetClientId: %s", applicationId.c_str());
+            DPW_LOG_INFO("[DiscordppWrapper] authorize() - SetClientId: %s", applicationId.c_str());
         }
         
         // PKCE verifier를 생성하고 즉시 저장
         currentCodeVerifier = client->CreateAuthorizationCodeVerifier();
         if (currentCodeVerifier) {
             currentCodeVerifierValue = currentCodeVerifier->Verifier();
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() - PKCE Verifier created (length: %zu)", currentCodeVerifierValue.length());
+            DPW_LOG_INFO("[DiscordppWrapper] authorize() - PKCE Verifier created (length: %zu)", currentCodeVerifierValue.length());
             if (currentCodeVerifier->Challenge()) {
                 args.SetCodeChallenge(currentCodeVerifier->Challenge());
-                os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() - PKCE Challenge set");
+                DPW_LOG_INFO("[DiscordppWrapper] authorize() - PKCE Challenge set");
             } else {
-                os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() - PKCE Challenge is NULL!");
+                DPW_LOG_ERROR("[DiscordppWrapper] authorize() - PKCE Challenge is NULL!");
             }
         } else {
             currentCodeVerifierValue = "";
-            os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() - Failed to create PKCE verifier!");
+            DPW_LOG_ERROR("[DiscordppWrapper] authorize() - Failed to create PKCE verifier!");
         }
         
         // Lambda에서 사용할 verifier를 명시적으로 캡처
         std::string capturedVerifier = currentCodeVerifierValue;
-        os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() - About to call Authorize. Captured verifier: %s", capturedVerifier.c_str());
+        DPW_LOG_INFO("[DiscordppWrapper] authorize() - About to call Authorize. Captured verifier: %s", capturedVerifier.c_str());
         
         client->Authorize(std::move(args), [this, context, callback, capturedVerifier](discordpp::ClientResult result, std::string code, std::string redirectUri) {
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Authorize callback - Result: %d, Code: %s", result.Successful(), code.c_str());
+            DPW_LOG_INFO("[DiscordppWrapper] Authorize callback - Result: %d, Code: %s", result.Successful(), code.c_str());
             if (!result.Successful()) {
                 const std::string message = messageFromResult(result);
-                os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] Authorize failed: %s", message.c_str());
+                DPW_LOG_ERROR("[DiscordppWrapper] Authorize failed: %s", message.c_str());
                 callback(context, false, message.c_str());
                 return;
             }
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Authorize callback - Verifier before exchange: %s", capturedVerifier.c_str());
+            DPW_LOG_INFO("[DiscordppWrapper] Authorize callback - Verifier before exchange: %s", capturedVerifier.c_str());
             // 캡처한 verifier를 직접 전달
             exchangeCodeForToken(code, redirectUri, capturedVerifier, context, callback);
         });
     } catch (const std::exception& e) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] authorize() exception: %s", e.what());
+        DPW_LOG_ERROR("[DiscordppWrapper] authorize() exception: %s", e.what());
         callback(context, false, e.what());
     }
 }
@@ -123,33 +131,33 @@ void DiscordppWrapper::exchangeCodeForToken(const std::string& code,
                                            const std::string& codeVerifier,
                                            void* context,
                                            AuthorizeCallback callback) {
-    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - START");
+    DPW_LOG_INFO("[DiscordppWrapper] exchangeCodeForToken() - START");
     if (!client) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - Client is NULL!");
+        DPW_LOG_ERROR("[DiscordppWrapper] exchangeCodeForToken() - Client is NULL!");
         callback(context, false, "Client not initialized");
         return;
     }
     
-    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - Client exists: %p", client.get());
+    DPW_LOG_INFO("[DiscordppWrapper] exchangeCodeForToken() - Client exists: %p", client.get());
     
     const uint64_t clientId = resolvedApplicationId();
-    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - clientId: %llu", clientId);
+    DPW_LOG_INFO("[DiscordppWrapper] exchangeCodeForToken() - clientId: %llu", clientId);
     if (clientId == 0) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - Invalid APPLICATION_ID (0)");
+        DPW_LOG_ERROR("[DiscordppWrapper] exchangeCodeForToken() - Invalid APPLICATION_ID (0)");
         callback(context, false, "Invalid APPLICATION_ID");
         return;
     }
     
-    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - codeVerifier: '%s' (length: %zu)", 
+    DPW_LOG_INFO("[DiscordppWrapper] exchangeCodeForToken() - codeVerifier: '%s' (length: %zu)", 
                 codeVerifier.c_str(), codeVerifier.length());
     
     if (codeVerifier.empty()) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - PKCE verifier is EMPTY!");
+        DPW_LOG_ERROR("[DiscordppWrapper] exchangeCodeForToken() - PKCE verifier is EMPTY!");
         callback(context, false, "Missing PKCE verifier");
         return;
     }
     
-    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] exchangeCodeForToken() - About to call GetToken...");
+    DPW_LOG_INFO("[DiscordppWrapper] exchangeCodeForToken() - About to call GetToken...");
     
     try {
         client->GetToken(clientId,
@@ -162,19 +170,19 @@ void DiscordppWrapper::exchangeCodeForToken(const std::string& code,
                                                    discordpp::AuthorizationTokenType tokenType,
                                                    int32_t expiresIn,
                                                    std::string scopes) {
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] GetToken callback - Success: %d", result.Successful());
+            DPW_LOG_INFO("[DiscordppWrapper] GetToken callback - Success: %d", result.Successful());
             if (!result.Successful()) {
                 const std::string message = messageFromResult(result);
-                os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] GetToken failed: %s", message.c_str());
+                DPW_LOG_ERROR("[DiscordppWrapper] GetToken failed: %s", message.c_str());
                 callback(context, false, message.c_str());
                 return;
             }
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] GetToken success - Applying access token");
+            DPW_LOG_INFO("[DiscordppWrapper] GetToken success - Applying access token");
             lastRefreshToken = refreshToken;
             applyAccessToken(tokenType, accessToken, context, callback);
         });
     } catch (const std::exception& e) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] GetToken exception: %s", e.what());
+        DPW_LOG_ERROR("[DiscordppWrapper] GetToken exception: %s", e.what());
         callback(context, false, e.what());
     }
 }
@@ -188,23 +196,23 @@ void DiscordppWrapper::applyAccessToken(discordpp::AuthorizationTokenType tokenT
         return;
     }
     
-    os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] applyAccessToken - Updating token...");
+    DPW_LOG_INFO("[DiscordppWrapper] applyAccessToken - Updating token...");
     
     client->UpdateToken(tokenType, accessToken, [this, context, callback](discordpp::ClientResult result) {
         if (!result.Successful()) {
             const std::string message = messageFromResult(result);
-            os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] UpdateToken failed: %s", message.c_str());
+            DPW_LOG_ERROR("[DiscordppWrapper] UpdateToken failed: %s", message.c_str());
             callback(context, false, message.c_str());
             return;
         }
         
-        os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Token updated successfully, connecting...");
+        DPW_LOG_INFO("[DiscordppWrapper] Token updated successfully, connecting...");
         
         try {
             client->Connect();
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Connect() called successfully");
+            DPW_LOG_INFO("[DiscordppWrapper] Connect() called successfully");
         } catch (const std::exception& e) {
-            os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] Connect() exception: %s", e.what());
+            DPW_LOG_ERROR("[DiscordppWrapper] Connect() exception: %s", e.what());
             callback(context, false, e.what());
             return;
         }
@@ -213,7 +221,7 @@ void DiscordppWrapper::applyAccessToken(discordpp::AuthorizationTokenType tokenT
         currentCodeVerifier.reset();
         currentCodeVerifierValue.clear();
         
-        os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Authorization complete, calling success callback");
+        DPW_LOG_INFO("[DiscordppWrapper] Authorization complete, calling success callback");
         callback(context, true, nullptr);
     });
 }
@@ -252,7 +260,7 @@ void DiscordppWrapper::logout(void* context, LogoutCallback callback) {
 
 void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
     if (!client) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] getCurrentUser - Client not initialized");
+        DPW_LOG_ERROR("[DiscordppWrapper] getCurrentUser - Client not initialized");
         callback(context, false, nullptr, nullptr, "Client not initialized");
         return;
     }
@@ -260,10 +268,10 @@ void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
     try {
         // 인증 상태 확인
         bool isAuth = client->IsAuthenticated();
-        os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] getCurrentUser - IsAuthenticated: %d", isAuth);
+        DPW_LOG_INFO("[DiscordppWrapper] getCurrentUser - IsAuthenticated: %d", isAuth);
         
         if (!isAuth) {
-            os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] getCurrentUser - Not authenticated yet");
+            DPW_LOG_ERROR("[DiscordppWrapper] getCurrentUser - Not authenticated yet");
             callback(context, false, nullptr, nullptr, "Not authenticated");
             return;
         }
@@ -277,15 +285,15 @@ void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
             auto rawId = user.Id();
             std::string rawUsername = user.Username();
             
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Raw User ID (numeric): %lld", (long long)rawId);
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Raw Username: %s", rawUsername.c_str());
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Username length: %zu", rawUsername.length());
+            DPW_LOG_INFO("[DiscordppWrapper] Raw User ID (numeric): %lld", (long long)rawId);
+            DPW_LOG_INFO("[DiscordppWrapper] Raw Username: %s", rawUsername.c_str());
+            DPW_LOG_INFO("[DiscordppWrapper] Username length: %zu", rawUsername.length());
             
             // 수명이 보장되는 std::string 객체 생성
             std::string userIdStr = std::to_string(rawId);
             std::string usernameStr = rawUsername;
             
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Sending User ID: %s, Username: %s", 
+            DPW_LOG_INFO("[DiscordppWrapper] Sending User ID: %s, Username: %s", 
                         userIdStr.c_str(), usernameStr.c_str());
             
             // 콜백 호출 - Swift가 즉시 복사한다고 가정
@@ -294,11 +302,11 @@ void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
             // 여기서 userIdStr과 usernameStr이 소멸되지만, 
             // Swift의 String(cString:)이 이미 복사를 완료했어야 함
         } else {
-            os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] User not available (GetCurrentUserV2 returned nullopt)");
+            DPW_LOG_ERROR("[DiscordppWrapper] User not available (GetCurrentUserV2 returned nullopt)");
             callback(context, false, nullptr, nullptr, "User not available");
         }
     } catch (const std::exception& e) {
-        os_log_error(OS_LOG_DEFAULT, "[DiscordppWrapper] getCurrentUser exception: %s", e.what());
+        DPW_LOG_ERROR("[DiscordppWrapper] getCurrentUser exception: %s", e.what());
         callback(context, false, nullptr, nullptr, e.what());
     }
 }
@@ -332,7 +340,7 @@ void DiscordppWrapper::updateActivity(const std::string& name,
         // 앱 이름 설정 (Rich Presence 타이틀)
         if (!name.empty()) {
             activity.SetName(name);
-            os_log_info(OS_LOG_DEFAULT, "[DiscordppWrapper] Setting activity name: %s", name.c_str());
+            DPW_LOG_INFO("[DiscordppWrapper] Setting activity name: %s", name.c_str());
         }
         
         // 상태 및 세부사항 설정
@@ -403,3 +411,4 @@ void DiscordppWrapper::runCallbacks() {
         // Ignore callback pump errors for now; Discord SDK typically reports via other APIs.
     }
 }
+

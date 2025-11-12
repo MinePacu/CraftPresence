@@ -3,6 +3,7 @@ import SwiftUI
 import Combine
 
 #if os(macOS)
+import AppKit
 
 // MARK: - Apple Music Presence Manager
 @MainActor
@@ -24,6 +25,8 @@ class AppleMusicPresenceManager: ObservableObject {
     @Published var currentAlbum: String = ""
     @Published var isPlaying: Bool = false
     @Published var discordStatus: String = "Not Connected"
+    @Published var albumArtwork: NSImage? = nil
+    @Published var albumArtworkURL: String? = nil
     
     private var monitorTimer: Timer?
     private var updateTimer: Timer?
@@ -34,6 +37,10 @@ class AppleMusicPresenceManager: ObservableObject {
     
     private var currentPosition: TimeInterval = 0
     private var totalDuration: TimeInterval = 0
+    
+    // Cache for artwork URLs to avoid repeated API calls
+    private var artworkURLCache: [String: String] = [:]  // "artist|album|track" -> URL
+    private var lastArtworkFetchTrack: String = ""
     
     private init() {}
     
@@ -83,6 +90,8 @@ class AppleMusicPresenceManager: ObservableObject {
         currentAlbum = ""
         isPlaying = false
         discordStatus = "Not Connected"
+        albumArtwork = nil
+        albumArtworkURL = nil
     }
     
     // MARK: - Discord Configuration
@@ -117,7 +126,42 @@ class AppleMusicPresenceManager: ObservableObject {
             "set al to album of current track",
             "set pos to player position",
             "set dur to duration of current track",
-            "return t & \"||\" & ar & \"||\" & al & \"||\" & (pos as text) & \"||\" & (dur as text)",
+            "-- Get artwork - simplified approach",
+            "set artB64 to \"\"",
+            "set artInfo to \"none\"",
+            "try",
+            "set tr to current track",
+            "set artCount to 0",
+            "try",
+            "set artCount to count of artworks of tr",
+            "end try",
+            "set artInfo to \"count:\" & artCount",
+            "if artCount > 0 then",
+            "try",
+            "set tmpPath to \"/tmp/np_art_\" & (random number from 10000 to 99999) & \".jpg\"",
+            "set artData to data of artwork 1 of tr",
+            "set outFile to open for access POSIX file tmpPath with write permission",
+            "set eof of outFile to 0",
+            "write artData to outFile",
+            "close access outFile",
+            "set artB64 to do shell script \"base64 -i '\" & tmpPath & \"' | tr -d '\\\\n'\"",
+            "set fileSize to do shell script \"wc -c < '\" & tmpPath & \"'\"",
+            "set artInfo to artInfo & \",bytes:\" & fileSize",
+            "do shell script \"rm -f '\" & tmpPath & \"'\"",
+            "on error errMsg",
+            "set artInfo to artInfo & \",err:\" & errMsg",
+            "try",
+            "close access POSIX file tmpPath",
+            "end try",
+            "try",
+            "do shell script \"rm -f '\" & tmpPath & \"'\"",
+            "end try",
+            "end try",
+            "end if",
+            "on error mainErr",
+            "set artInfo to \"error:\" & mainErr",
+            "end try",
+            "return t & \"||\" & ar & \"||\" & al & \"||\" & (pos as text) & \"||\" & (dur as text) & \"||\" & artB64 & \"||\" & artInfo",
             "else",
             "return \"NOT_PLAYING\"",
             "end if",
@@ -131,6 +175,7 @@ class AppleMusicPresenceManager: ObservableObject {
                 // 재생 중이 아님
                 if isPlaying {
                     isPlaying = false
+                    albumArtwork = nil
                     Task { try? await DiscordSDKManager.shared.clearActivity() }
                 }
                 return
@@ -153,6 +198,67 @@ class AppleMusicPresenceManager: ObservableObject {
             currentPosition = position
             totalDuration = duration
             isPlaying = true
+            
+            // 앨범 아트 처리
+            if parts.count >= 6 {
+                let artB64 = parts[5].trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                
+                if !artB64.isEmpty {
+                    if let artData = Data(base64Encoded: artB64, options: .ignoreUnknownCharacters) {
+                        if let image = NSImage(data: artData) {
+                            albumArtwork = image
+                        }
+                    }
+                }
+                
+                // Check cache first to avoid repeated API calls
+                let cacheKey = "\(artist)|\(album)|\(track)"
+                
+                if let cachedURL = artworkURLCache[cacheKey] {
+                    // Use cached URL
+                    albumArtworkURL = cachedURL
+                    print("📦 Using cached artwork URL")
+                } else if trackChanged || lastArtworkFetchTrack != track {
+                    // Only fetch artwork URL if track changed to reduce API calls
+                    if let artworkURL = await MediaRemoteHelper.shared.fetchArtworkURL(
+                        artist: artist,
+                        album: album,
+                        track: track
+                    ) {
+                        albumArtworkURL = artworkURL
+                        artworkURLCache[cacheKey] = artworkURL
+                        lastArtworkFetchTrack = track
+                    } else if let albumURL = await MediaRemoteHelper.shared.fetchAlbumArtworkURL(
+                        artist: artist,
+                        album: album
+                    ) {
+                        albumArtworkURL = albumURL
+                        artworkURLCache[cacheKey] = albumURL
+                        lastArtworkFetchTrack = track
+                    } else {
+                        albumArtworkURL = nil
+                    }
+                }
+                
+                // If we don't have local artwork, try to fetch it for display
+                if albumArtwork == nil && trackChanged {
+                    if let apiImage = await MediaRemoteHelper.shared.fetchArtworkFromAPI(
+                        artist: artist,
+                        album: album,
+                        track: track
+                    ) {
+                        albumArtwork = apiImage
+                    } else if let albumImage = await MediaRemoteHelper.shared.fetchAlbumArtwork(
+                        artist: artist,
+                        album: album
+                    ) {
+                        albumArtwork = albumImage
+                    }
+                }
+            } else {
+                albumArtwork = nil
+                albumArtworkURL = nil
+            }
             
             // 트랙이 바뀌었으면 즉시 Discord 업데이트
             if trackChanged {
@@ -194,8 +300,8 @@ class AppleMusicPresenceManager: ObservableObject {
                 name: "Apple Music",
                 state: currentArtist.isEmpty ? "Unknown Artist" : currentArtist,
                 details: currentTrack.isEmpty ? "Unknown Track" : currentTrack,
-                largeImageKey: nil,
-                smallImageKey: nil,
+                largeImageKey: albumArtworkURL ?? "",  // 앨범 아트 URL 사용
+                smallImageKey: "",
                 start: startDate,
                 end: endDate,
                 activityType: .listening
@@ -204,6 +310,9 @@ class AppleMusicPresenceManager: ObservableObject {
             lastUpdateTime = Date()
             discordStatus = "Active"
             print("✅ Discord presence updated: \(currentTrack) - \(currentArtist)")
+            if let artURL = albumArtworkURL {
+                print("   Album artwork: \(artURL)")
+            }
         } catch {
             discordStatus = "Update Failed"
             print("❌ Failed to update Discord presence: \(error)")

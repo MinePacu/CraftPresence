@@ -377,6 +377,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_CFLAGS = "";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				"SWIFT_INCLUDE_PATHS[arch=*]" = /Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/ThirdParty/DIscordSDK/modules;
@@ -434,6 +435,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OTHER_CFLAGS = "";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
@@ -468,6 +470,8 @@
 					"$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/lib",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_CFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
+				OTHER_CPLUSPLUSFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ldiscord_partner_sdk",
@@ -519,6 +523,8 @@
 					"$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/lib",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_CFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
+				OTHER_CPLUSPLUSFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ldiscord_partner_sdk",
