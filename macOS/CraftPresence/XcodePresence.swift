@@ -31,6 +31,8 @@ class XcodePresenceManager: ObservableObject {
     private let minimumUpdateInterval: TimeInterval = 15.0
     private var isDiscordConfigured: Bool = false
     
+    private var isFetchingXcodeInfo: Bool = false
+    
     private init() {}
     
     // MARK: - Monitoring Control
@@ -100,17 +102,25 @@ class XcodePresenceManager: ObservableObject {
     
     // MARK: - Fetch Xcode Info
     private func fetchXcodeInfo() async {
+        guard !isFetchingXcodeInfo else {
+            print("⏳ Skipping fetchXcodeInfo; previous call still running")
+            return
+        }
+        isFetchingXcodeInfo = true
+        defer { isFetchingXcodeInfo = false }
+        
         // Method 1: AppleScript로 기본 정보 가져오기
         let basicInfo = await fetchBasicInfo()
         
         // Method 2: lsof로 현재 열린 파일 확인
         if basicInfo.file == "No file" {
             if let file = await fetchFileFromLsof() {
+                let shouldUpdate = (basicInfo.project != currentProject || file != currentFile)
                 currentProject = basicInfo.project
                 currentFile = file
                 isActive = true
                 
-                if basicInfo.project != currentProject || file != currentFile {
+                if shouldUpdate {
                     await updateDiscordPresence()
                 }
                 return

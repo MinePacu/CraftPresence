@@ -5,6 +5,98 @@ import Combine
 #if os(macOS)
 import AppKit
 
+// MARK: - Simple LRU Cache for String -> String
+@MainActor
+final class LRUCache<Key: Hashable, Value> {
+    private final class Node {
+        let key: Key
+        var value: Value
+        var prev: Node?
+        var next: Node?
+        init(key: Key, value: Value) {
+            self.key = key
+            self.value = value
+        }
+    }
+
+    private var dict: [Key: Node] = [:]
+    private var head: Node? // most-recent
+    private var tail: Node? // least-recent
+    private(set) var count: Int = 0
+    private let capacity: Int
+
+    init(capacity: Int) {
+        self.capacity = max(1, capacity)
+    }
+
+    func get(_ key: Key) -> Value? {
+        guard let node = dict[key] else { return nil }
+        moveToHead(node)
+        return node.value
+    }
+
+    func set(_ key: Key, value: Value) {
+        if let node = dict[key] {
+            node.value = value
+            moveToHead(node)
+        } else {
+            let node = Node(key: key, value: value)
+            dict[key] = node
+            addToHead(node)
+            count += 1
+            if count > capacity {
+                removeTail()
+            }
+        }
+    }
+
+    func remove(_ key: Key) {
+        guard let node = dict[key] else { return }
+        removeNode(node)
+        dict[key] = nil
+        count -= 1
+    }
+
+    func removeAll() {
+        dict.removeAll()
+        head = nil
+        tail = nil
+        count = 0
+    }
+
+    private func addToHead(_ node: Node) {
+        node.prev = nil
+        node.next = head
+        head?.prev = node
+        head = node
+        if tail == nil {
+            tail = node
+        }
+    }
+
+    private func moveToHead(_ node: Node) {
+        guard head !== node else { return }
+        removeNode(node)
+        addToHead(node)
+    }
+
+    private func removeNode(_ node: Node) {
+        let p = node.prev
+        let n = node.next
+        if let p { p.next = n } else { head = n }
+        if let n { n.prev = p } else { tail = p }
+        node.prev = nil
+        node.next = nil
+    }
+
+    private func removeTail() {
+        guard let t = tail else { return }
+        removeNode(t)
+        dict[t.key] = nil
+        count -= 1
+    }
+}
+
 // MARK: - Apple Music Presence Manager
 @MainActor
 class AppleMusicPresenceManager: ObservableObject {
@@ -38,38 +130,49 @@ class AppleMusicPresenceManager: ObservableObject {
     private var currentPosition: TimeInterval = 0
     private var totalDuration: TimeInterval = 0
     
-    // Cache for artwork URLs to avoid repeated API calls
-    private var artworkURLCache: [String: String] = [:]  // "artist|album|track" -> URL
-    private var lastArtworkFetchTrack: String = ""
+    // LRU Cache for artwork URLs to avoid unbounded growth
+    // Key format: "artist|album|track"
+    private let artworkURLCache = LRUCache<String, String>(capacity: 200)
+    private var lastArtworkFetchKey: String = ""
     
-    private init() {}
+    // NSImage memory cache (auto-eviction by system pressure)
+    // Cost ~= width * height * 4 bytes (RGBA 8bpc)
+    private let imageCache = NSCache<NSString, NSImage>()
+    private let imageCacheTotalCostLimitBytes: Int = 50 * 1024 * 1024 // ~50MB
+    private let imageCacheCountLimit: Int = 300
+    
+    private init() {
+        imageCache.totalCostLimit = imageCacheTotalCostLimitBytes
+        imageCache.countLimit = imageCacheCountLimit
+    }
     
     // MARK: - Monitoring Control
     func startMonitoring() {
         guard monitorTimer == nil else { return }
         
-        // Discord SDK 설정 확인 및 초기화
         Task {
             await ensureDiscordConfigured()
             
-            // 즉시 한 번 실행
+            // Immediate run
             await fetchNowPlaying()
             
-            // 2초마다 Music.app 상태 확인
+            // Poll Music.app every 2 sec
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.monitorTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                let monitorTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
                     guard let self else { return }
                     Task { await self.fetchNowPlaying() }
                 }
-                RunLoop.main.add(self.monitorTimer!, forMode: .common)
+                self.monitorTimer = monitorTimer
+                RunLoop.main.add(monitorTimer, forMode: .common)
                 
-                // Discord 업데이트는 15초마다
-                self.updateTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+                // Discord update every 15 sec
+                let updateTimer = Timer(timeInterval: 15.0, repeats: true) { [weak self] _ in
                     guard let self else { return }
                     Task { await self.updateDiscordIfNeeded() }
                 }
-                RunLoop.main.add(self.updateTimer!, forMode: .common)
+                self.updateTimer = updateTimer
+                RunLoop.main.add(updateTimer, forMode: .common)
             }
         }
     }
@@ -80,18 +183,41 @@ class AppleMusicPresenceManager: ObservableObject {
         updateTimer?.invalidate()
         updateTimer = nil
         
-        // Discord presence 제거
+        // Clear Discord presence
         Task {
             try? await DiscordSDKManager.shared.clearActivity()
         }
+        resetLocalNowPlayingState()
+        discordStatus = "Not Connected"
         
+        // Clear caches to free memory
+        artworkURLCache.removeAll()
+        imageCache.removeAllObjects()
+        lastArtworkFetchKey = ""
+    }
+    
+    private func normalizedCacheKey(artist: String, album: String, track: String) -> String {
+        let normalizedArtist = normalizeComponent(artist)
+        let normalizedAlbum = normalizeComponent(album)
+        let normalizedTrack = normalizeComponent(track)
+        return "\(normalizedArtist)|\(normalizedAlbum)|\(normalizedTrack)"
+    }
+    
+    private func normalizeComponent(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.precomposedStringWithCanonicalMapping
+        return normalized.lowercased()
+    }
+    
+    private func resetLocalNowPlayingState() {
         currentTrack = ""
         currentArtist = ""
         currentAlbum = ""
-        isPlaying = false
-        discordStatus = "Not Connected"
         albumArtwork = nil
         albumArtworkURL = nil
+        currentPosition = 0
+        totalDuration = 0
+        isPlaying = false
     }
     
     // MARK: - Discord Configuration
@@ -127,7 +253,7 @@ class AppleMusicPresenceManager: ObservableObject {
             "set pos to player position",
             "set dur to duration of current track",
             "-- Get artwork - simplified approach",
-            "set artB64 to \"\"",
+            "set artPath to \"\"",
             "set artInfo to \"none\"",
             "try",
             "set tr to current track",
@@ -144,10 +270,9 @@ class AppleMusicPresenceManager: ObservableObject {
             "set eof of outFile to 0",
             "write artData to outFile",
             "close access outFile",
-            "set artB64 to do shell script \"base64 -i '\" & tmpPath & \"' | tr -d '\\\\n'\"",
+            "set artPath to tmpPath",
             "set fileSize to do shell script \"wc -c < '\" & tmpPath & \"'\"",
             "set artInfo to artInfo & \",bytes:\" & fileSize",
-            "do shell script \"rm -f '\" & tmpPath & \"'\"",
             "on error errMsg",
             "set artInfo to artInfo & \",err:\" & errMsg",
             "try",
@@ -161,7 +286,7 @@ class AppleMusicPresenceManager: ObservableObject {
             "on error mainErr",
             "set artInfo to \"error:\" & mainErr",
             "end try",
-            "return t & \"||\" & ar & \"||\" & al & \"||\" & (pos as text) & \"||\" & (dur as text) & \"||\" & artB64 & \"||\" & artInfo",
+            "return t & \"||\" & ar & \"||\" & al & \"||\" & (pos as text) & \"||\" & (dur as text) & \"||\" & artPath & \"||\" & artInfo",
             "else",
             "return \"NOT_PLAYING\"",
             "end if",
@@ -172,12 +297,11 @@ class AppleMusicPresenceManager: ObservableObject {
             let output = try await runner.runWithOsascript(lines: lines)
             
             if output == "NOT_RUNNING" || output == "NOT_PLAYING" {
-                // 재생 중이 아님
                 if isPlaying {
-                    isPlaying = false
-                    albumArtwork = nil
                     Task { try? await DiscordSDKManager.shared.clearActivity() }
                 }
+                resetLocalNowPlayingState()
+                discordStatus = (output == "NOT_RUNNING") ? "Not Connected" : "Idle"
                 return
             }
             
@@ -190,8 +314,9 @@ class AppleMusicPresenceManager: ObservableObject {
             let position = TimeInterval(parts[3]) ?? 0
             let duration = TimeInterval(parts[4]) ?? 0
             
-            // 상태 업데이트
-            let trackChanged = (track != currentTrack || artist != currentArtist)
+            let cacheKey = normalizedCacheKey(artist: artist, album: album, track: track)
+            
+            let trackChanged = (track != currentTrack || artist != currentArtist || album != currentAlbum)
             currentTrack = track
             currentArtist = artist
             currentAlbum = album
@@ -199,48 +324,57 @@ class AppleMusicPresenceManager: ObservableObject {
             totalDuration = duration
             isPlaying = true
             
-            // 앨범 아트 처리
+            // 1) Try image from memory cache first
+            if let cachedImage = imageCache.object(forKey: cacheKey as NSString) {
+                albumArtwork = cachedImage
+            }
+            
+            // 2) Artwork handling from AppleScript (temp file path)
             if parts.count >= 6 {
-                let artB64 = parts[5].trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+                let artPath = parts[5].trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
                 
-                if !artB64.isEmpty {
-                    if let artData = Data(base64Encoded: artB64, options: .ignoreUnknownCharacters) {
+                if !artPath.isEmpty {
+                    let artURL = URL(fileURLWithPath: artPath)
+                    do {
+                        defer {
+                            try? FileManager.default.removeItem(at: artURL)
+                        }
+                        let artData = try Data(contentsOf: artURL)
                         if let image = NSImage(data: artData) {
                             albumArtwork = image
+                            cacheImage(image, forKey: cacheKey)
                         }
+                    } catch {
+                        print("Failed to read temporary artwork file: \(error)")
+                        try? FileManager.default.removeItem(at: artURL)
                     }
                 }
                 
-                // Check cache first to avoid repeated API calls
-                let cacheKey = "\(artist)|\(album)|\(track)"
-                
-                if let cachedURL = artworkURLCache[cacheKey] {
-                    // Use cached URL
+                // URL cache for Discord
+                if let cachedURL = artworkURLCache.get(cacheKey) {
                     albumArtworkURL = cachedURL
-                    print("📦 Using cached artwork URL")
-                } else if trackChanged || lastArtworkFetchTrack != track {
-                    // Only fetch artwork URL if track changed to reduce API calls
+                } else if trackChanged || lastArtworkFetchKey != cacheKey {
                     if let artworkURL = await MediaRemoteHelper.shared.fetchArtworkURL(
                         artist: artist,
                         album: album,
                         track: track
                     ) {
                         albumArtworkURL = artworkURL
-                        artworkURLCache[cacheKey] = artworkURL
-                        lastArtworkFetchTrack = track
+                        artworkURLCache.set(cacheKey, value: artworkURL)
+                        lastArtworkFetchKey = cacheKey
                     } else if let albumURL = await MediaRemoteHelper.shared.fetchAlbumArtworkURL(
                         artist: artist,
                         album: album
                     ) {
                         albumArtworkURL = albumURL
-                        artworkURLCache[cacheKey] = albumURL
-                        lastArtworkFetchTrack = track
+                        artworkURLCache.set(cacheKey, value: albumURL)
+                        lastArtworkFetchKey = cacheKey
                     } else {
                         albumArtworkURL = nil
                     }
                 }
                 
-                // If we don't have local artwork, try to fetch it for display
+                // 3) If we still don't have an image, try network APIs
                 if albumArtwork == nil && trackChanged {
                     if let apiImage = await MediaRemoteHelper.shared.fetchArtworkFromAPI(
                         artist: artist,
@@ -248,19 +382,20 @@ class AppleMusicPresenceManager: ObservableObject {
                         track: track
                     ) {
                         albumArtwork = apiImage
+                        cacheImage(apiImage, forKey: cacheKey)
                     } else if let albumImage = await MediaRemoteHelper.shared.fetchAlbumArtwork(
                         artist: artist,
                         album: album
                     ) {
                         albumArtwork = albumImage
+                        cacheImage(albumImage, forKey: cacheKey)
                     }
                 }
             } else {
-                albumArtwork = nil
+                albumArtwork = albumArtwork ?? imageCache.object(forKey: cacheKey as NSString)
                 albumArtworkURL = nil
             }
             
-            // 트랙이 바뀌었으면 즉시 Discord 업데이트
             if trackChanged {
                 await updateDiscordPresence()
             }
@@ -270,11 +405,36 @@ class AppleMusicPresenceManager: ObservableObject {
         }
     }
     
+    // MARK: - Image Cache Helpers
+    private func cacheImage(_ image: NSImage, forKey key: String) {
+        let cost = approximateByteSize(of: image)
+        imageCache.setObject(image, forKey: key as NSString, cost: cost)
+    }
+    
+    private func approximateByteSize(of image: NSImage) -> Int {
+        // Rough estimate: pixels × 4 bytes (RGBA 8bpc). Use the largest rep to avoid undercounting on Retina.
+        if let rep = image.representations.max(by: { ($0.pixelsWide * $0.pixelsHigh) < ($1.pixelsWide * $1.pixelsHigh) }) {
+            let width = max(1, rep.pixelsWide)
+            let height = max(1, rep.pixelsHigh)
+            return max(1, width * height * 4)
+        }
+        
+        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            let width = max(1, cgImage.width)
+            let height = max(1, cgImage.height)
+            return max(1, width * height * 4)
+        }
+        
+        let size = image.size
+        let width = max(1, Int(size.width))
+        let height = max(1, Int(size.height))
+        return max(1, width * height * 4)
+    }
+    
     // MARK: - Discord Update
     private func updateDiscordIfNeeded() async {
         guard isPlaying else { return }
         
-        // Rate limiting 체크
         if let last = lastUpdateTime,
            Date().timeIntervalSince(last) < minimumUpdateInterval {
             return
@@ -290,7 +450,6 @@ class AppleMusicPresenceManager: ObservableObject {
             return
         }
         
-        // 타임스탬프 계산 (Date 객체로 변환)
         let now = Date()
         let startDate = now.addingTimeInterval(-currentPosition)
         let endDate = now.addingTimeInterval(totalDuration - currentPosition)
@@ -300,7 +459,7 @@ class AppleMusicPresenceManager: ObservableObject {
                 name: "Apple Music",
                 state: currentArtist.isEmpty ? "Unknown Artist" : currentArtist,
                 details: currentTrack.isEmpty ? "Unknown Track" : currentTrack,
-                largeImageKey: albumArtworkURL ?? "",  // 앨범 아트 URL 사용
+                largeImageKey: albumArtworkURL ?? "",
                 smallImageKey: "",
                 start: startDate,
                 end: endDate,
