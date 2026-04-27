@@ -30,6 +30,8 @@ class XcodePresenceManager: ObservableObject {
     private var lastUpdateTime: Date?
     private let minimumUpdateInterval: TimeInterval = 15.0
     private var isDiscordConfigured: Bool = false
+    private var currentSessionIdentifier: String?
+    private var currentSessionStartDate: Date?
     
     private var isFetchingXcodeInfo: Bool = false
     
@@ -79,6 +81,8 @@ class XcodePresenceManager: ObservableObject {
         currentProject = ""
         currentFile = ""
         isActive = false
+        currentSessionIdentifier = nil
+        currentSessionStartDate = nil
         discordStatus = "Not Connected"
     }
     
@@ -119,6 +123,7 @@ class XcodePresenceManager: ObservableObject {
                 currentProject = basicInfo.project
                 currentFile = file
                 isActive = true
+                updateSession(project: basicInfo.project, file: file, isActive: true)
                 
                 if shouldUpdate {
                     await updateDiscordPresence()
@@ -132,6 +137,7 @@ class XcodePresenceManager: ObservableObject {
         currentProject = basicInfo.project
         currentFile = basicInfo.file
         isActive = basicInfo.isActive
+        updateSession(project: basicInfo.project, file: basicInfo.file, isActive: basicInfo.isActive)
         
         if projectChanged && isActive {
             await updateDiscordPresence()
@@ -274,7 +280,6 @@ class XcodePresenceManager: ObservableObject {
         let command = "lsof -c Xcode | grep -E '\\.(swift|m|mm|h|cpp|c)$' | awk '{print $NF}' | head -1"
         
         do {
-            let lines = [command]
             let output = try await runner.runWithOsascript(lines: [
                 "do shell script \"\(command)\""
             ])
@@ -314,8 +319,10 @@ class XcodePresenceManager: ObservableObject {
             return
         }
         
-        // 시작 시간 (현재 세션 시작)
-        let startDate = Date()
+        let startDate = currentSessionStartDate ?? Date()
+        if currentSessionStartDate == nil {
+            currentSessionStartDate = startDate
+        }
         
         do {
             try await DiscordSDKManager.shared.updateActivity(
@@ -336,6 +343,26 @@ class XcodePresenceManager: ObservableObject {
             discordStatus = "Update Failed"
             print("❌ Failed to update Discord presence: \(error)")
         }
+    }
+
+    private func updateSession(project: String, file: String, isActive: Bool) {
+        guard isActive else {
+            currentSessionIdentifier = nil
+            currentSessionStartDate = nil
+            return
+        }
+
+        let sessionIdentifier = sessionIdentifier(project: project, file: file)
+        guard currentSessionIdentifier != sessionIdentifier else { return }
+
+        currentSessionIdentifier = sessionIdentifier
+        currentSessionStartDate = Date()
+    }
+
+    private func sessionIdentifier(project: String, file: String) -> String {
+        let normalizedProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedFile = file.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(normalizedProject)|\(normalizedFile)"
     }
 }
 

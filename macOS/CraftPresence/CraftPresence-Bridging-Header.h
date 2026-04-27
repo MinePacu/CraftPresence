@@ -2,13 +2,12 @@
 //  CraftPresence-Bridging-Header.h
 //  CraftPresence
 //
-//  Created by 노현수 on 11/2/25.
+//  Compatibility forwarding header for older Xcode build settings.
 //
 
-#ifndef CraftPresence_Bridging_Header_h
-#define CraftPresence_Bridging_Header_h
+#ifndef CraftPresence_Bridging_Header_Compatibility_h
+#define CraftPresence_Bridging_Header_Compatibility_h
 
-// C++ Discord SDK 헤더 포함
-#include "DiscordppWrapper.hpp"
+#include "App/CraftPresence-Bridging-Header.h"
 
-#endif /* CraftPresence_Bridging_Header_h */
+#endif /* CraftPresence_Bridging_Header_Compatibility_h */

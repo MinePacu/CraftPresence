@@ -89,6 +89,10 @@ struct ContentView: View {
     @State private var isPickingSmallImage: Bool = false
     #endif
 
+    // Settings presentation
+    @State private var showingSettings: Bool = false
+    @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
+
     enum ActivityType: String, CaseIterable, Identifiable {
         case playing = "Playing"
         case streaming = "Streaming"
@@ -241,7 +245,6 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("")
-            //.padding(.leading, 12)
     #if os(macOS)
             .toolbarBackground(.hidden, for: .windowToolbar)
     #endif
@@ -250,6 +253,7 @@ struct ContentView: View {
     #endif
     #if os(macOS)
             .toolbar {
+                // 뒤로 버튼
                 if !selectionStack.isEmpty {
                     ToolbarItem(placement: .navigation) {
                         Button {
@@ -261,6 +265,21 @@ struct ContentView: View {
                         }
                     }
                 }
+                // 설정 버튼
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("설정", systemImage: "gearshape")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingView()
+                    .onAppear {
+                        // 설정 화면을 열 때 현재 값 적용을 한 번 더 보장
+                        applyMenuBarMode(menuBarOnlyEnabled)
+                    }
             }
     #endif
         }
@@ -270,15 +289,10 @@ struct ContentView: View {
     #if os(macOS)
             // Log current Accessibility permission state
             let initialTrusted = AXIsProcessTrusted()
-            // logging disabled
-
-            // If not trusted, prompt System Settings and poll until trusted or timeout
             if !initialTrusted {
                 let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
                 AXIsProcessTrustedWithOptions(options)
-
                 Task.detached(priority: .utility) {
-                    // Poll up to 10 seconds (0.5s x 20)
                     for _ in 0..<20 {
                         if Task.isCancelled { break }
                         try? await Task.sleep(nanoseconds: 500_000_000)
@@ -291,8 +305,6 @@ struct ContentView: View {
                 for await update in ProgramDetector.shared.updatesStream() {
                     if Task.isCancelled { break }
     #if os(macOS)
-                    // Debounce and safely re-fetch title via AX to avoid stale/invalid elements
-                    // Use update.pid if available, fallback to nil which tries to get focused app
                     let stabilizedTitle = await fetchFocusedWindowTitleWithRetries(pid: nil, retries: 4, delayNanoseconds: 150_000_000) ?? update.windowTitle
                     await MainActor.run {
                         self.activeAppName = update.appName
@@ -315,11 +327,14 @@ struct ContentView: View {
                 }
             }
         }
+        .onAppear {
+            // 앱이 보일 때 저장된 설정을 즉시 반영
+            applyMenuBarMode(menuBarOnlyEnabled)
+        }
     }
 
     // MARK: - Actions
 
-    // Add sample Item to SwiftData (unused in UI)
     private func addItem() {
         withAnimation {
             let newItem = Item(timestamp: Date())
@@ -327,14 +342,8 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - macOS AX Helpers
 #if os(macOS)
     /// Attempts to fetch the focused window title using AX API with small delay and limited retries.
-    /// - Parameters:
-    ///   - pid: Optional process ID to target. If nil, attempts to infer via frontmost app.
-    ///   - retries: Number of attempts.
-    ///   - delayNanoseconds: Delay between attempts.
-    /// - Returns: The window title string if available.
     private func fetchFocusedWindowTitleWithRetries(pid: pid_t? = nil,
                                                     retries: Int = 4,
                                                     delayNanoseconds: UInt64 = 150_000_000) async -> String? {
@@ -351,16 +360,13 @@ struct ContentView: View {
 
     /// Single-shot attempt to obtain the focused window title via AX.
     private func fetchFocusedWindowTitleOnce(pid: pid_t? = nil) -> String? {
-        // Early-out if not trusted to avoid noisy AX errors
         guard AXIsProcessTrusted() else {
             return nil
         }
-        // Resolve application AX element
         let appAX: AXUIElement?
         if let pid = pid {
             appAX = AXUIElementCreateApplication(pid)
         } else {
-            // Try system-wide focused app
             let systemWide = AXUIElementCreateSystemWide()
             var focusedApp: AnyObject?
             let appErr = AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &focusedApp)
@@ -374,7 +380,6 @@ struct ContentView: View {
             return nil
         }
 
-        // Get focused window
         var windowObj: AnyObject?
         let winErr = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &windowObj)
         if winErr != .success {
@@ -384,7 +389,6 @@ struct ContentView: View {
             return nil
         }
 
-        // Get title
         var titleObj: AnyObject?
         let titleErr = AXUIElementCopyAttributeValue(windowEl, kAXTitleAttribute as CFString, &titleObj)
         if titleErr != .success {
@@ -405,6 +409,17 @@ struct ContentView: View {
                 modelContext.delete(items[index])
             }
         }
+    }
+
+    // MARK: - Helpers
+    private func applyMenuBarMode(_ enabled: Bool) {
+        #if os(macOS)
+        if enabled {
+            LSUIElementController.shared.enableMenuBarOnly()
+        } else {
+            LSUIElementController.shared.disableMenuBarOnly()
+        }
+        #endif
     }
 }
 
@@ -484,4 +499,3 @@ private struct ImagePicker: UIViewControllerRepresentable {
     ContentView()
         .modelContainer(for: Item.self, inMemory: true)
 }
-

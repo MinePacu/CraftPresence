@@ -53,7 +53,7 @@
 				ThirdParty/DIscordSDK/lib/libdiscord_partner_sdk.dylib = (Required, );
 			};
 			membershipExceptions = (
-				Info.plist,
+				App/Info.plist,
 			);
 			target = 4711FFDE2EB4E4D000A09A00 /* CraftPresence */;
 		};
@@ -380,7 +380,7 @@
 				OTHER_CFLAGS = "";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
-				"SWIFT_INCLUDE_PATHS[arch=*]" = /Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/ThirdParty/DIscordSDK/modules;
+				"SWIFT_INCLUDE_PATHS[arch=*]" = "$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/modules";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -458,7 +458,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/include",
 				);
-				INFOPLIST_FILE = CraftPresence/Info.plist;
+				INFOPLIST_FILE = CraftPresence/App/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -485,8 +485,8 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				"SWIFT_INCLUDE_PATHS[arch=*]" = "/Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/ThirdParty/DIscordSDK/include /Users/nohyeonsu/Desktop/projects/CraftPresence/CraftPresence/ThirdParty/DIscordSDK/modules";
-				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/CraftPresence/CraftPresence-Bridging-Header.h";
+				"SWIFT_INCLUDE_PATHS[arch=*]" = "$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/include $(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/modules";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/CraftPresence/App/CraftPresence-Bridging-Header.h";
 				SWIFT_OBJC_INTEROP_MODE = objcxx;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -512,7 +512,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/CraftPresence/ThirdParty/DIscordSDK/include",
 				);
-				INFOPLIST_FILE = CraftPresence/Info.plist;
+				INFOPLIST_FILE = CraftPresence/App/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -539,7 +539,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/CraftPresence/CraftPresence-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/CraftPresence/App/CraftPresence-Bridging-Header.h";
 				SWIFT_OBJC_INTEROP_MODE = objcxx;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
