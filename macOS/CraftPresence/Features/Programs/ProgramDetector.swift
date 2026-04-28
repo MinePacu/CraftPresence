@@ -21,9 +21,7 @@ public final class ProgramDetector: NSObject {
 
     public weak var delegate: ProgramDetectorDelegate?
 
-    // AsyncStream continuations (support multiple listeners)
-    private var continuations = [UUID: AsyncStream<ProgramUpdate>.Continuation]()
-    private let continuationsLock = NSLock()
+    private let continuationStore = ProgramContinuationStore()
 
     private var workspaceObserver: Any?
     private var axObserver: AXObserver?
@@ -105,16 +103,15 @@ public final class ProgramDetector: NSObject {
                                             windowTitle: self.activeWindowTitle)
                 continuation.yield(initial)
             }
-            // store continuation
-            continuationsLock.lock()
-            continuations[id] = continuation
-            continuationsLock.unlock()
+            Task {
+                await self.continuationStore.insert(continuation, for: id)
+            }
 
             continuation.onTermination = { [weak self] _ in
                 guard let self else { return }
-                self.continuationsLock.lock()
-                self.continuations.removeValue(forKey: id)
-                self.continuationsLock.unlock()
+                Task {
+                    await self.continuationStore.removeValue(for: id)
+                }
             }
         }
     }
@@ -323,9 +320,7 @@ public final class ProgramDetector: NSObject {
             let update = ProgramUpdate(appName: self.activeAppName,
                                        bundleID: self.activeBundleIdentifier,
                                        windowTitle: self.activeWindowTitle)
-            self.continuationsLock.lock()
-            let values = self.continuations.values
-            self.continuationsLock.unlock()
+            let values = await self.continuationStore.values()
             for c in values {
                 c.yield(update)
             }
@@ -364,3 +359,18 @@ public enum AccessibilityPermission {
     }
 }
 
+private actor ProgramContinuationStore {
+    private var continuations = [UUID: AsyncStream<ProgramUpdate>.Continuation]()
+
+    func insert(_ continuation: AsyncStream<ProgramUpdate>.Continuation, for id: UUID) {
+        continuations[id] = continuation
+    }
+
+    func removeValue(for id: UUID) {
+        continuations.removeValue(forKey: id)
+    }
+
+    func values() -> [AsyncStream<ProgramUpdate>.Continuation] {
+        Array(continuations.values)
+    }
+}

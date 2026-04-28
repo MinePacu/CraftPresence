@@ -6,7 +6,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     // 사용자 추가 프로그램의 bundleID 목록
     public var bundleIDs: [String] = []
     
-    init() { }
+    nonisolated init() { }
 
     // 향후 다른 설정을 쉽게 추가하기 위한 예시 (주석 처리)
     // public var enableRichPresence: Bool = true
@@ -51,8 +51,7 @@ public actor ConfigUtility {
             self.settings = decoded
         } else {
             self.settings = AppSettings()
-            // 최초 저장으로 파일/폴더 생성
-            try? persist()
+            try? ConfigUtility.persist(settings: self.settings, to: self.fileURL, with: self.encoder)
         }
     }
 
@@ -99,12 +98,16 @@ public actor ConfigUtility {
     // MARK: - Persistence
 
     private func persist() throws {
-        let data = try encoder.encode(settings)
-        try ensureParentDirectoryExists(for: fileURL)
-        try data.write(to: fileURL, options: [.atomic])
+        try ConfigUtility.persist(settings: settings, to: fileURL, with: encoder)
     }
 
-    private func ensureParentDirectoryExists(for url: URL) throws {
+    private static func persist(settings: AppSettings, to url: URL, with encoder: JSONEncoder) throws {
+        let data = try encoder.encode(settings)
+        try ensureParentDirectoryExists(for: url)
+        try data.write(to: url, options: [.atomic])
+    }
+
+    private static func ensureParentDirectoryExists(for url: URL) throws {
         let dir = url.deletingLastPathComponent()
         var isDir: ObjCBool = false
         if !FileManager.default.fileExists(atPath: dir.path, isDirectory: &isDir) {
@@ -119,4 +122,3 @@ public actor ConfigUtility {
                    .appendingPathComponent("settings.json")
     }
 }
-

@@ -284,46 +284,52 @@ private struct ProgramsSettingsSheet: View {
     }
 }
 
-#Preview {
-    @State var programIDs: [String] = ["com.apple.Music"]
-    @State var isLoadingPrograms = false
-    @State var showing = false
-    @State var sel: String? = nil
-    @State var activity: ContentView.ActivityType = .playing
-    @State var detail = ""
-    @State var state = ""
-    @State var useIcon = true
-    @State var largeKey = ""
-    @State var largeText = ""
-    @State var smallKey = ""
-    @State var smallText = ""
-    @State var partyCur = 1
-    @State var partyMx = 1
-    @State var largeImg: Image? = nil
-    @State var smallImg: Image? = nil
+private struct ProgramsViewPreviewContainer: View {
+    @State private var programIDs: [String] = ["com.apple.Music"]
+    @State private var isLoadingPrograms = false
+    @State private var showing = false
+    @State private var selectedProgramID: String? = nil
+    @State private var activity: ContentView.ActivityType = .playing
+    @State private var detail = ""
+    @State private var state = ""
+    @State private var useIcon = true
+    @State private var largeKey = ""
+    @State private var largeText = ""
+    @State private var smallKey = ""
+    @State private var smallText = ""
+    @State private var partyCurrent = 1
+    @State private var partyMax = 1
+    @State private var largeImage: Image? = nil
+    @State private var smallImage: Image? = nil
     #if os(macOS)
-    @State var largeNSImg: NSImage? = nil
-    @State var smallNSImg: NSImage? = nil
+    @State private var largeNSImage: NSImage? = nil
+    @State private var smallNSImage: NSImage? = nil
     #endif
 
-    ProgramsView(
-        programIDs: $programIDs,
-        isLoadingPrograms: $isLoadingPrograms,
-        showingProgramSettings: $showing,
-        selectedProgramIDForSettings: $sel,
-        activityType: $activity,
-        detailText: $detail,
-        stateText: $state,
-        useAppIconForLargeImage: $useIcon,
-        largeImageKey: $largeKey,
-        largeImageText: $largeText,
-        smallImageKey: $smallKey,
-        smallImageText: $smallText,
-        selectedLargeNSImage: $largeNSImg,
-        selectedSmallNSImage: $smallNSImg,
-        selectedLargeImage: $largeImg,
-        selectedSmallImage: $smallImg,
-        partyCurrent: $partyCur,
-        partyMax: $partyMx
-    )
+    var body: some View {
+        ProgramsView(
+            programIDs: $programIDs,
+            isLoadingPrograms: $isLoadingPrograms,
+            showingProgramSettings: $showing,
+            selectedProgramIDForSettings: $selectedProgramID,
+            activityType: $activity,
+            detailText: $detail,
+            stateText: $state,
+            useAppIconForLargeImage: $useIcon,
+            largeImageKey: $largeKey,
+            largeImageText: $largeText,
+            smallImageKey: $smallKey,
+            smallImageText: $smallText,
+            selectedLargeNSImage: $largeNSImage,
+            selectedSmallNSImage: $smallNSImage,
+            selectedLargeImage: $largeImage,
+            selectedSmallImage: $smallImage,
+            partyCurrent: $partyCurrent,
+            partyMax: $partyMax
+        )
+    }
+}
+
+#Preview {
+    ProgramsViewPreviewContainer()
 }

@@ -473,11 +473,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_CFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
 				OTHER_CPLUSPLUSFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ldiscord_partner_sdk",
-					"-lc++",
-				);
+				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.minepacu.CraftPresence;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -527,11 +523,7 @@
 				MARKETING_VERSION = 1.0;
 				OTHER_CFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
 				OTHER_CPLUSPLUSFLAGS = "-DDISCORDPP_WRAPPER_DISABLE_LOGS";
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ldiscord_partner_sdk",
-					"-lc++",
-				);
+				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.minepacu.CraftPresence;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

@@ -164,7 +164,7 @@ struct ContentView: View {
                         selection = .nowPlayingTest
                     }
                     ForEach(items) { item in
-                        SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {item
+                        SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {
                             if case .item(let selected) = selection { return selected.id == item.id }
                             return false
                         }(), tint: .gray) {
@@ -301,7 +301,7 @@ struct ContentView: View {
                 }
             }
     #endif
-            Task.detached(priority: .utility) {
+            Task(priority: .utility) {
                 for await update in ProgramDetector.shared.updatesStream() {
                     if Task.isCancelled { break }
     #if os(macOS)

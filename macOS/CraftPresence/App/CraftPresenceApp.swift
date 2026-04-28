@@ -55,11 +55,6 @@ struct CraftPresenceApp: App {
             .onAppear {
                 configureDiscordSDK()
                 hideTitleBarOnCatalyst()
-                
-                let execPath = Bundle.main.executableURL?.path ?? "(unknown)"
-                let cwd = FileManager.default.currentDirectoryPath
-                // logging disabled
-                // logging disabled
             }
         }
         .modelContainer(sharedModelContainer)
@@ -97,4 +92,3 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 #endif
-

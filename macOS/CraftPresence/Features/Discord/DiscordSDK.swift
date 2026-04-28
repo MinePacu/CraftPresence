@@ -5,13 +5,9 @@
 import Foundation
 import Combine
 
-/// Archive Discord application settings
-/// - If there is an environmental variable 'APPLICATION_ID', use it first. If not, use the hard-coded default value
+/// Resolves Discord application settings from app configuration.
 enum DiscordAppConfig {
-    /// Hard-coding defaults: Replace with the actual Application ID if necessary.
-    private static let fallbackId = "YOUR_APPLICATION_ID"
-
-    static var applicationId: String {
+    static var applicationId: String? {
         // 1) Try Info.plist first
         if let plistValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String, !plistValue.isEmpty {
             return plistValue
@@ -20,8 +16,21 @@ enum DiscordAppConfig {
         if let env = ProcessInfo.processInfo.environment["APPLICATION_ID"], !env.isEmpty {
             return env
         }
-        // 3) Fallback constant
-        return fallbackId
+        return nil
+    }
+
+    static func validationError(for applicationId: String?) -> DiscordSDKError? {
+        let normalizedId = applicationId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalizedId.isEmpty else {
+            return .invalidApplicationID("APPLICATION_ID is missing.")
+        }
+        guard normalizedId != "YOUR_APPLICATION_ID" else {
+            return .invalidApplicationID("APPLICATION_ID still uses the placeholder value.")
+        }
+        guard CharacterSet.decimalDigits.isSuperset(of: CharacterSet(charactersIn: normalizedId)) else {
+            return .invalidApplicationID("APPLICATION_ID must contain only numeric characters.")
+        }
+        return nil
     }
 }
 
@@ -37,6 +46,15 @@ final class DiscordSDKManager: ObservableObject {
         case unknown
     }
 
+    private enum LifecycleState: Sendable {
+        case idle
+        case configured
+        case authorizing
+        case awaitingConnection
+        case authorized
+        case failed
+    }
+
     // MARK: - Published State (UI 자동 업데이트용)
     @Published private(set) var authorizationStatus: AuthorizationStatus = .unknown
     @Published private(set) var currentUser: DiscordUser? = nil
@@ -46,6 +64,11 @@ final class DiscordSDKManager: ObservableObject {
     private var wrapper: DiscordppWrapper?
     private var callbackTimer: DispatchSourceTimer?
     private var processActivity: NSObjectProtocol?
+    private var configuredApplicationId: String?
+    private var sessionID: UInt64 = 0
+    private var lifecycleState: LifecycleState = .idle
+    private var pendingAuthorizationCompletions: [((Result<DiscordUser, DiscordSDKError>) -> Void)?] = []
+    private var lastConfigurationError: DiscordSDKError?
 
     private init() {}
 }
@@ -56,18 +79,63 @@ extension DiscordSDKManager {
     /// - Parameters:
     ///   - applicationId: Application ID of Discord Developer Portal
     ///   - autoAuthorize: Whether to attempt automatic authentication at the start of the app
-    func configure(applicationId: String = DiscordAppConfig.applicationId, autoAuthorize: Bool = true) {
-        stopCallbackPump()
+    func configure(applicationId: String? = DiscordAppConfig.applicationId, autoAuthorize: Bool = true) {
+        if let validationError = DiscordAppConfig.validationError(for: applicationId) {
+            queue.sync {
+                self.sessionID &+= 1
+                self.stopCallbackPumpLocked()
+                self.wrapper = nil
+                self.configuredApplicationId = nil
+                self.lifecycleState = .failed
+                self.pendingAuthorizationCompletions.removeAll()
+                self.lastConfigurationError = validationError
+            }
+            DispatchQueue.main.async {
+                self.authorizationStatus = .unauthorized
+                self.currentUser = nil
+            }
+            return
+        }
+
+        let normalizedApplicationId = applicationId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var shouldResetUI = false
+        var shouldStartCallbackPump = false
+        var shouldAuthorize = false
+
         queue.sync {
-            self.wrapper = DiscordppWrapper(std.string(applicationId))
+            let isSameConfiguration = self.configuredApplicationId == normalizedApplicationId && self.wrapper != nil
+            if isSameConfiguration {
+                shouldStartCallbackPump = self.callbackTimer == nil
+                shouldAuthorize = autoAuthorize && !self.isAuthorizationInFlightLocked && !(self.wrapper?.isAuthorized() ?? false)
+                return
+            }
+
+            self.sessionID &+= 1
+            self.stopCallbackPumpLocked()
+            self.wrapper = DiscordppWrapper(std.string(normalizedApplicationId))
+            self.configuredApplicationId = normalizedApplicationId
+            self.lifecycleState = .configured
+            self.pendingAuthorizationCompletions.removeAll()
+            self.lastConfigurationError = nil
+            shouldResetUI = true
+            shouldStartCallbackPump = true
+            shouldAuthorize = autoAuthorize
         }
-        // UI 상태 초기화
-        DispatchQueue.main.async {
-            self.authorizationStatus = .unknown
-            self.currentUser = nil
+
+        if shouldResetUI {
+            DispatchQueue.main.async {
+                self.authorizationStatus = .unknown
+                self.currentUser = nil
+            }
         }
-        startCallbackPump()
-        if autoAuthorize { authorizeIfNeeded() }
+
+        if shouldStartCallbackPump {
+            startCallbackPump()
+        }
+
+        if shouldAuthorize {
+            authorizeIfNeeded()
+        }
     }
 
     /// Check the authentication status and try to authenticate if necessary.
@@ -78,44 +146,70 @@ extension DiscordSDKManager {
                 return
             }
             
-            // wrapper를 복사하지 않고 직접 사용
             guard self.wrapper != nil else {
-                completion?(.failure(.notConfigured))
+                completion?(.failure(self.configurationFailureLocked))
                 return
             }
-            
-            if self.wrapper!.isAuthorized() {
+
+            let sessionID = self.sessionID
+
+            if self.wrapper?.isAuthorized() == true {
+                self.lifecycleState = .authorized
                 DispatchQueue.main.async {
                     self.authorizationStatus = .authorized
                 }
-                self.fetchCurrentUser(completion: completion)
+                self.fetchCurrentUser(sessionID: sessionID, completion: completion)
                 return
             }
-            
+
+            self.pendingAuthorizationCompletions.append(completion)
+
+            if self.isAuthorizationInFlightLocked {
+                return
+            }
+
+            self.lifecycleState = .authorizing
+
             // Swift 클로저를 보관할 컨텍스트 생성
-            let context = Unmanaged.passRetained(completion as AnyObject).toOpaque()
+            let context = Unmanaged.passRetained(AuthorizationContext(sessionID: sessionID)).toOpaque()
             
             // C 스타일 콜백 함수
             let callback: AuthorizeCallback = { context, success, errorPtr in
-                let completion = Unmanaged<AnyObject>.fromOpaque(context!).takeRetainedValue() as? (Result<DiscordUser, DiscordSDKError>) -> Void
-                
-                // C++ 포인터가 유효할 때 즉시 복사
+                let authorizationContext = Unmanaged<AuthorizationContext>.fromOpaque(context!).takeRetainedValue()
                 let errorMessage = errorPtr.map { String(cString: $0) }
-                
+
                 if success {
-                    print("[DiscordSDKManager] Authorization callback - SUCCESS")
-                    DispatchQueue.main.async {
-                        DiscordSDKManager.shared.authorizationStatus = .authorized
+                    DiscordSDKManager.shared.queue.async {
+                        guard DiscordSDKManager.shared.sessionID == authorizationContext.sessionID else {
+                            return
+                        }
+                        print("[DiscordSDKManager] Authorization callback - SUCCESS")
+                        DiscordSDKManager.shared.lifecycleState = .awaitingConnection
+                        DispatchQueue.main.async {
+                            DiscordSDKManager.shared.authorizationStatus = .authorized
+                        }
+
+                        let completions = DiscordSDKManager.shared.pendingAuthorizationCompletions
+                        DiscordSDKManager.shared.pendingAuthorizationCompletions.removeAll()
+                        DiscordSDKManager.shared.waitForConnectionAndFetchUser(
+                            sessionID: authorizationContext.sessionID,
+                            completions: completions
+                        )
                     }
-                    
-                    // Connect() 직후 SDK 연결 상태를 폴링하여 사용자 정보 로드
-                    DiscordSDKManager.shared.waitForConnectionAndFetchUser(completion: completion)
                 } else {
-                    DispatchQueue.main.async {
-                        DiscordSDKManager.shared.authorizationStatus = .unauthorized
+                    DiscordSDKManager.shared.queue.async {
+                        guard DiscordSDKManager.shared.sessionID == authorizationContext.sessionID else {
+                            return
+                        }
+                        DiscordSDKManager.shared.lifecycleState = .failed
+                        let completions = DiscordSDKManager.shared.pendingAuthorizationCompletions
+                        DiscordSDKManager.shared.pendingAuthorizationCompletions.removeAll()
                         let message = errorMessage ?? "Unknown error"
-                        print("[DiscordSDKManager] Authorization callback - FAILED: \(message)")
-                        completion?(.failure(.sdk(message)))
+                        DispatchQueue.main.async {
+                            DiscordSDKManager.shared.authorizationStatus = .unauthorized
+                            print("[DiscordSDKManager] Authorization callback - FAILED: \(message)")
+                            completions.forEach { $0?(.failure(.sdk(message))) }
+                        }
                     }
                 }
             }
@@ -129,7 +223,7 @@ extension DiscordSDKManager {
     func logout(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, self.wrapper != nil else {
-                completion?(.failure(.notConfigured))
+                completion?(.failure(self?.configurationFailureLocked ?? .notConfigured))
                 return
             }
             
@@ -160,15 +254,33 @@ extension DiscordSDKManager {
     /// Get Current User Info
     func fetchCurrentUser(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
-            guard let self, self.wrapper != nil else {
+            guard let self else {
                 completion?(.failure(.notConfigured))
                 return
             }
-            
-            let context = Unmanaged.passRetained(completion as AnyObject).toOpaque()
+            self.fetchCurrentUser(sessionID: self.sessionID, completion: completion)
+        }
+    }
+
+    private func fetchCurrentUser(
+        sessionID expectedSessionID: UInt64,
+        completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil
+    ) {
+        queue.async { [weak self] in
+            guard let self, self.wrapper != nil else {
+                completion?(.failure(self?.configurationFailureLocked ?? .notConfigured))
+                return
+            }
+
+            guard self.sessionID == expectedSessionID else {
+                completion?(.failure(.sdk("Discord session changed during user fetch.")))
+                return
+            }
+
+            let context = Unmanaged.passRetained(UserRequestContext(sessionID: expectedSessionID, completion: completion)).toOpaque()
             
             let callback: UserCallback = { context, success, idPtr, usernamePtr, errorPtr in
-                let completion = Unmanaged<AnyObject>.fromOpaque(context!).takeRetainedValue() as? (Result<DiscordUser, DiscordSDKError>) -> Void
+                let requestContext = Unmanaged<UserRequestContext>.fromOpaque(context!).takeRetainedValue()
                 
                 // ⚠️ 중요: C++ 포인터가 유효할 때 즉시 Swift String으로 복사
                 let id: String
@@ -191,23 +303,29 @@ extension DiscordSDKManager {
                 }
                 
                 // 복사된 문자열을 메인 큐로 전달
-                DispatchQueue.main.async {
-                    if success {
-                        let user = DiscordUser(
-                            id: id,
-                            username: username,
-                            discriminator: nil
-                        )
-                        
-                        // @Published 프로퍼티 업데이트
-                        DiscordSDKManager.shared.currentUser = user
-                        DiscordSDKManager.shared.authorizationStatus = .authorized
-                        
-                        completion?(.success(user))
-                    } else {
-                        DiscordSDKManager.shared.authorizationStatus = .unauthorized
-                        DiscordSDKManager.shared.currentUser = nil
-                        completion?(.failure(.sdk(errorMessage ?? "Unknown error")))
+                DiscordSDKManager.shared.queue.async {
+                    guard DiscordSDKManager.shared.sessionID == requestContext.sessionID else {
+                        requestContext.completion?(.failure(.sdk("Discord session changed during user fetch.")))
+                        return
+                    }
+
+                    DispatchQueue.main.async {
+                        if success {
+                            let user = DiscordUser(
+                                id: id,
+                                username: username,
+                                discriminator: nil
+                            )
+                            DiscordSDKManager.shared.currentUser = user
+                            DiscordSDKManager.shared.authorizationStatus = .authorized
+                            DiscordSDKManager.shared.lifecycleState = .authorized
+                            requestContext.completion?(.success(user))
+                        } else {
+                            DiscordSDKManager.shared.authorizationStatus = .unauthorized
+                            DiscordSDKManager.shared.currentUser = nil
+                            DiscordSDKManager.shared.lifecycleState = .failed
+                            requestContext.completion?(.failure(.sdk(errorMessage ?? "Unknown error")))
+                        }
                     }
                 }
             }
@@ -219,19 +337,30 @@ extension DiscordSDKManager {
     /// SDK 연결 상태를 폴링하여 연결 완료 후 사용자 정보 가져오기
     /// Connect() 직후 SDK가 완전히 초기화될 때까지 대기
     private func waitForConnectionAndFetchUser(
+        sessionID expectedSessionID: UInt64,
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.1,
-        completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)?
+        completions: [((Result<DiscordUser, DiscordSDKError>) -> Void)?]
     ) {
         let startTime = Date()
         
         func checkConnection() {
             queue.async { [weak self] in
                 guard let self else {
-                    completion?(.failure(.notConfigured))
+                    completions.forEach { $0?(.failure(.notConfigured)) }
                     return
                 }
-                
+
+                guard self.sessionID == expectedSessionID else {
+                    completions.forEach { $0?(.failure(.sdk("Discord session changed while waiting for connection."))) }
+                    return
+                }
+
+                guard self.isConnectionAwaitActiveLocked else {
+                    completions.forEach { $0?(.failure(.sdk("Discord authorization flow was interrupted."))) }
+                    return
+                }
+
                 // 연결 상태 확인
                 let connected = self.wrapper?.isConnected() ?? false
                 
@@ -239,17 +368,22 @@ extension DiscordSDKManager {
                     // 연결 완료 - 사용자 정보 가져오기
                     let elapsed = Date().timeIntervalSince(startTime)
                     print("[DiscordSDKManager] SDK connected after \(String(format: "%.2f", elapsed))s, fetching user...")
-                    self.fetchCurrentUser(completion: completion)
+                    let combinedCompletion: (Result<DiscordUser, DiscordSDKError>) -> Void = { result in
+                        completions.forEach { $0?(result) }
+                    }
+                    self.fetchCurrentUser(sessionID: expectedSessionID, completion: combinedCompletion)
                 } else {
                     // 타임아웃 확인
                     let elapsed = Date().timeIntervalSince(startTime)
                     if elapsed >= timeout {
                         print("[DiscordSDKManager] Connection timeout after \(String(format: "%.2f", elapsed))s")
+                        self.lifecycleState = .failed
                         DispatchQueue.main.async {
                             self.authorizationStatus = .unauthorized
                             self.currentUser = nil
                         }
-                        completion?(.failure(.sdk("Connection timeout: SDK did not connect within \(timeout)s")))
+                        let error: Result<DiscordUser, DiscordSDKError> = .failure(.sdk("Connection timeout: SDK did not connect within \(timeout)s"))
+                        completions.forEach { $0?(error) }
                     } else {
                         // 다시 폴링
                         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + pollInterval) {
@@ -280,43 +414,60 @@ extension DiscordSDKManager {
     ) {
         queue.async { [weak self] in
             guard let self, self.wrapper != nil else {
-                completion?(.failure(.notConfigured))
+                completion?(.failure(self?.configurationFailureLocked ?? .notConfigured))
                 return
             }
-            
-            let startTimestamp = start?.timeIntervalSince1970 ?? 0
-            let endTimestamp = end?.timeIntervalSince1970 ?? 0
-            
-            let context = Unmanaged.passRetained(completion as AnyObject).toOpaque()
-            
-            let callback: ActivityCallback = { context, success, errorPtr in
-                let completion = Unmanaged<AnyObject>.fromOpaque(context!).takeRetainedValue() as? (Result<Void, DiscordSDKError>) -> Void
-                
-                // C++ 포인터가 유효할 때 즉시 복사
-                let errorMessage = errorPtr.map { String(cString: $0) }
-                
-                DispatchQueue.main.async {
-                    if success {
-                        completion?(.success(()))
-                    } else {
-                        let message = errorMessage ?? "Unknown error"
-                        completion?(.failure(.sdk(message)))
+
+            let sessionID = self.sessionID
+            if self.isReadyForActivityUpdateLocked {
+                self.performActivityUpdate(
+                    sessionID: sessionID,
+                    name: name,
+                    state: state,
+                    details: details,
+                    largeImageKey: largeImageKey,
+                    smallImageKey: smallImageKey,
+                    start: start,
+                    end: end,
+                    activityType: activityType,
+                    completion: completion
+                )
+                return
+            }
+
+            self.ensureReadyForActivityUpdate(sessionID: sessionID) { [weak self] result in
+                guard let self else {
+                    completion?(.failure(.notConfigured))
+                    return
+                }
+                switch result {
+                case .success:
+                    self.queue.async {
+                        guard self.sessionID == sessionID else {
+                            completion?(.failure(.sdk("Discord session changed before activity update.")))
+                            return
+                        }
+                        guard self.isReadyForActivityUpdateLocked else {
+                            completion?(.failure(.unauthorized))
+                            return
+                        }
+                        self.performActivityUpdate(
+                            sessionID: sessionID,
+                            name: name,
+                            state: state,
+                            details: details,
+                            largeImageKey: largeImageKey,
+                            smallImageKey: smallImageKey,
+                            start: start,
+                            end: end,
+                            activityType: activityType,
+                            completion: completion
+                        )
                     }
+                case .failure(let error):
+                    completion?(.failure(error))
                 }
             }
-            
-            self.wrapper?.updateActivity(
-                std.string(name ?? ""),
-                std.string(state ?? ""),
-                std.string(details ?? ""),
-                std.string(largeImageKey ?? ""),
-                std.string(smallImageKey ?? ""),
-                Int64(startTimestamp),
-                Int64(endTimestamp),
-                Int32(activityType.rawValue),
-                context,
-                callback
-            )
         }
     }
 
@@ -324,24 +475,31 @@ extension DiscordSDKManager {
     func clearActivity(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, self.wrapper != nil else {
-                completion?(.failure(.notConfigured))
+                completion?(.failure(self?.configurationFailureLocked ?? .notConfigured))
                 return
             }
-            
-            let context = Unmanaged.passRetained(completion as AnyObject).toOpaque()
+
+            let sessionID = self.sessionID
+            let context = Unmanaged.passRetained(ActivityRequestContext(sessionID: sessionID, completion: completion)).toOpaque()
             
             let callback: ActivityCallback = { context, success, errorPtr in
-                let completion = Unmanaged<AnyObject>.fromOpaque(context!).takeRetainedValue() as? (Result<Void, DiscordSDKError>) -> Void
+                let requestContext = Unmanaged<ActivityRequestContext>.fromOpaque(context!).takeRetainedValue()
                 
                 // C++ 포인터가 유효할 때 즉시 복사
                 let errorMessage = errorPtr.map { String(cString: $0) }
                 
-                DispatchQueue.main.async {
-                    if success {
-                        completion?(.success(()))
-                    } else {
-                        let message = errorMessage ?? "Unknown error"
-                        completion?(.failure(.sdk(message)))
+                DiscordSDKManager.shared.queue.async {
+                    guard DiscordSDKManager.shared.sessionID == requestContext.sessionID else {
+                        requestContext.completion?(.failure(.sdk("Discord session changed during activity clear.")))
+                        return
+                    }
+                    DispatchQueue.main.async {
+                        if success {
+                            requestContext.completion?(.success(()))
+                        } else {
+                            let message = errorMessage ?? "Unknown error"
+                            requestContext.completion?(.failure(.sdk(message)))
+                        }
                     }
                 }
             }
@@ -404,15 +562,152 @@ extension DiscordSDKManager {
 
 // MARK: - Internal Helpers
 private extension DiscordSDKManager {
+    var configurationFailureLocked: DiscordSDKError {
+        lastConfigurationError ?? .notConfigured
+    }
+
+    var isReadyForActivityUpdateLocked: Bool {
+        isAuthorizedStateLocked && wrapper?.isAuthorized() == true && wrapper?.isConnected() == true
+    }
+
+    var isAuthorizationInFlightLocked: Bool {
+        switch lifecycleState {
+        case .authorizing, .awaitingConnection:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isConnectionAwaitActiveLocked: Bool {
+        switch lifecycleState {
+        case .awaitingConnection, .authorized:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isAuthorizedStateLocked: Bool {
+        switch lifecycleState {
+        case .authorized:
+            return true
+        default:
+            return false
+        }
+    }
+
+    func ensureReadyForActivityUpdate(
+        sessionID expectedSessionID: UInt64,
+        completion: @escaping (Result<Void, DiscordSDKError>) -> Void
+    ) {
+        queue.async { [weak self] in
+            guard let self else {
+                completion(.failure(.notConfigured))
+                return
+            }
+
+            guard self.sessionID == expectedSessionID else {
+                completion(.failure(.sdk("Discord session changed before authorization.")))
+                return
+            }
+
+            guard self.wrapper != nil else {
+                completion(.failure(.notConfigured))
+                return
+            }
+
+            if self.isReadyForActivityUpdateLocked {
+                self.lifecycleState = .authorized
+                DispatchQueue.main.async {
+                    self.authorizationStatus = .authorized
+                }
+                completion(.success(()))
+                return
+            }
+
+            self.authorizeIfNeeded { [weak self] result in
+                guard let self else {
+                    completion(.failure(.notConfigured))
+                    return
+                }
+                switch result {
+                case .success:
+                    self.queue.async {
+                        guard self.sessionID == expectedSessionID else {
+                            completion(.failure(.sdk("Discord session changed before activity update.")))
+                            return
+                        }
+                        guard self.isReadyForActivityUpdateLocked else {
+                            completion(.failure(.unauthorized))
+                            return
+                        }
+                        self.lifecycleState = .authorized
+                        completion(.success(()))
+                    }
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
+    func performActivityUpdate(
+        sessionID: UInt64,
+        name: String?,
+        state: String?,
+        details: String?,
+        largeImageKey: String?,
+        smallImageKey: String?,
+        start: Date?,
+        end: Date?,
+        activityType: DiscordActivity.ActivityType,
+        completion: ((Result<Void, DiscordSDKError>) -> Void)?
+    ) {
+        let startTimestamp = start?.timeIntervalSince1970 ?? 0
+        let endTimestamp = end?.timeIntervalSince1970 ?? 0
+
+        let context = Unmanaged.passRetained(ActivityRequestContext(sessionID: sessionID, completion: completion)).toOpaque()
+
+        let callback: ActivityCallback = { context, success, errorPtr in
+            let requestContext = Unmanaged<ActivityRequestContext>.fromOpaque(context!).takeRetainedValue()
+
+            let errorMessage = errorPtr.map { String(cString: $0) }
+
+            DiscordSDKManager.shared.queue.async {
+                guard DiscordSDKManager.shared.sessionID == requestContext.sessionID else {
+                    requestContext.completion?(.failure(.sdk("Discord session changed during activity update.")))
+                    return
+                }
+                DispatchQueue.main.async {
+                    if success {
+                        requestContext.completion?(.success(()))
+                    } else {
+                        let message = errorMessage ?? "Unknown error"
+                        requestContext.completion?(.failure(.sdk(message)))
+                    }
+                }
+            }
+        }
+
+        wrapper?.updateActivity(
+            std.string(name ?? ""),
+            std.string(state ?? ""),
+            std.string(details ?? ""),
+            std.string(largeImageKey ?? ""),
+            std.string(smallImageKey ?? ""),
+            Int64(startTimestamp),
+            Int64(endTimestamp),
+            Int32(activityType.rawValue),
+            context,
+            callback
+        )
+    }
+
     func startCallbackPump() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.callbackTimer?.cancel()
-            self.callbackTimer = nil
-            if let activity = self.processActivity {
-                ProcessInfo.processInfo.endActivity(activity)
-                self.processActivity = nil
-            }
+            self.stopCallbackPumpLocked()
             guard self.wrapper != nil else { return }
             let timer = DispatchSource.makeTimerSource(queue: self.queue)
             timer.schedule(deadline: .now(), repeating: .milliseconds(16), leeway: .milliseconds(8))
@@ -432,13 +727,51 @@ private extension DiscordSDKManager {
     func stopCallbackPump() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.callbackTimer?.cancel()
-            self.callbackTimer = nil
-            if let activity = self.processActivity {
-                ProcessInfo.processInfo.endActivity(activity)
-                self.processActivity = nil
-            }
+            self.stopCallbackPumpLocked()
         }
+    }
+
+    func stopCallbackPumpLocked() {
+        callbackTimer?.cancel()
+        callbackTimer = nil
+        if let activity = processActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            processActivity = nil
+        }
+    }
+}
+
+private final class AuthorizationContext {
+    let sessionID: UInt64
+
+    init(sessionID: UInt64) {
+        self.sessionID = sessionID
+    }
+}
+
+private final class UserRequestContext {
+    let sessionID: UInt64
+    let completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)?
+
+    init(
+        sessionID: UInt64,
+        completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)?
+    ) {
+        self.sessionID = sessionID
+        self.completion = completion
+    }
+}
+
+private final class ActivityRequestContext {
+    let sessionID: UInt64
+    let completion: ((Result<Void, DiscordSDKError>) -> Void)?
+
+    init(
+        sessionID: UInt64,
+        completion: ((Result<Void, DiscordSDKError>) -> Void)?
+    ) {
+        self.sessionID = sessionID
+        self.completion = completion
     }
 }
 
@@ -497,12 +830,14 @@ public struct DiscordActivity: Sendable, Equatable {
 
 public enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
     case notConfigured
+    case invalidApplicationID(String)
     case unauthorized
     case sdk(String)
 
     public var errorDescription: String? {
         switch self {
         case .notConfigured: return "Discord SDK가 구성되지 않았습니다. configure(applicationId:)를 먼저 호출하세요."
+        case .invalidApplicationID(let message): return "Discord APPLICATION_ID 설정이 잘못되었습니다. \(message)"
         case .unauthorized: return "Discord 인증이 필요합니다."
         case .sdk(let message): return message
         }

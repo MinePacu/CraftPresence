@@ -178,7 +178,7 @@ struct DiscordTestView: View {
         let envValue = ProcessInfo.processInfo.environment["APPLICATION_ID"]
         // print("[DiscordTestView] ENV APPLICATION_ID = \(envValue ?? "nil")")
 
-        // 3) Resolved by DiscordAppConfig (plist > env > fallback)
+        // 3) Resolved by DiscordAppConfig (plist > env)
         let resolved = DiscordAppConfig.applicationId
         // print("[DiscordTestView] Resolved APPLICATION_ID (DiscordAppConfig) = \(resolved)")
 
@@ -186,8 +186,10 @@ struct DiscordTestView: View {
             applicationID = id
         } else if let envId = envValue, !envId.isEmpty {
             applicationID = envId
-        } else {
+        } else if let resolved, !resolved.isEmpty {
             applicationID = resolved
+        } else {
+            applicationID = ""
         }
     }
     
@@ -195,9 +197,12 @@ struct DiscordTestView: View {
         configMessage = ""
         actionMessage = ""
         isLoading = true
-        // configure는 throws하지 않으므로 try 불필요
         sdkManager.configure(applicationId: applicationID, autoAuthorize: false)
-        configMessage = "Successfully configured with APPLICATION_ID."
+        if let error = DiscordAppConfig.validationError(for: applicationID) {
+            configMessage = error.localizedDescription
+        } else {
+            configMessage = "Successfully configured with APPLICATION_ID."
+        }
         isLoading = false
     }
     
