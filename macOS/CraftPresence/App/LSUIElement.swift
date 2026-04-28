@@ -48,23 +48,7 @@ final class LSUIElementController {
             }
 
             // 3) 메뉴 구성
-            let menu = NSMenu()
-
-            let openItem = NSMenuItem(title: "열기…", action: #selector(showMainWindow), keyEquivalent: "")
-            openItem.target = self
-            menu.addItem(openItem)
-
-            let prefsItem = NSMenuItem(title: "환경설정…", action: #selector(openPreferences), keyEquivalent: ",")
-            prefsItem.target = self
-            menu.addItem(prefsItem)
-
-            menu.addItem(NSMenuItem.separator())
-
-            let quitItem = NSMenuItem(title: "종료", action: #selector(quitApp), keyEquivalent: "q")
-            quitItem.target = self
-            menu.addItem(quitItem)
-
-            item.menu = menu
+            item.menu = makeMenu()
         }
     }
 
@@ -81,6 +65,11 @@ final class LSUIElementController {
         // Dock 복귀
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func refreshLocalizedMenu() {
+        guard let item = statusItem else { return }
+        item.menu = makeMenu()
     }
 
     // MARK: - Menu Actions
@@ -105,6 +94,30 @@ final class LSUIElementController {
 
     @objc private func quitApp() {
         NSApp.terminate(nil)
+    }
+
+    private func makeMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        let openItem = NSMenuItem(title: t("menu.open"), action: #selector(showMainWindow), keyEquivalent: "")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        let prefsItem = NSMenuItem(title: t("menu.preferences"), action: #selector(openPreferences), keyEquivalent: ",")
+        prefsItem.target = self
+        menu.addItem(prefsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: t("menu.quit"), action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        return menu
+    }
+
+    private func t(_ key: String) -> String {
+        LocalizationManager.shared.string(key)
     }
 }
 #endif

@@ -4,54 +4,37 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
+/// Management screen for selecting which applications should publish Discord Rich Presence.
 struct ProgramsView: View {
     @Binding var programIDs: [String]
     @Binding var isLoadingPrograms: Bool
     @Binding var showingProgramSettings: Bool
     @Binding var selectedProgramIDForSettings: String?
-
-    // Settings fields
-    @Binding var activityType: ContentView.ActivityType
-    @Binding var detailText: String
-    @Binding var stateText: String
-    @Binding var useAppIconForLargeImage: Bool
-    @Binding var largeImageKey: String
-    @Binding var largeImageText: String
-    @Binding var smallImageKey: String
-    @Binding var smallImageText: String
+    @EnvironmentObject private var localizationManager: LocalizationManager
 
     #if os(macOS)
-    @Binding var selectedLargeNSImage: NSImage?
-    @Binding var selectedSmallNSImage: NSImage?
+    @State private var appMetadataCache: [String: ProgramDisplayInfo] = [:]
     #endif
-
-    #if os(iOS)
-    @Binding var isPickingLargeImage: Bool
-    @Binding var isPickingSmallImage: Bool
-    @Binding var selectedLargeImage: Image?
-    @Binding var selectedSmallImage: Image?
-    #else
-    @Binding var selectedLargeImage: Image?
-    @Binding var selectedSmallImage: Image?
-    #endif
-
-    @Binding var partyCurrent: Int
-    @Binding var partyMax: Int
+    @State private var programSettingsCache: [String: ProgramPresenceSettings] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Programs", systemImage: "list.bullet.rectangle")
+            Label(t("programs.title"), systemImage: "list.bullet.rectangle")
                 .font(.title2).bold()
-            Text("어떤 프로그램을 Rich Presence로 표시할지 선택하세요.")
+                .accessibilityIdentifier("programs.title")
+            Text(t("programs.subtitle"))
                 .foregroundStyle(.secondary)
+            Text(t("programs.description"))
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
 
             // Add buttons
             HStack(spacing: 8) {
                 Button {
                     #if os(macOS)
                     let panel = NSOpenPanel()
-                    panel.title = "Select an Application"
-                    panel.message = "응용프로그램(.app)을 선택하세요."
+                    panel.title = t("programs.select_application")
+                    panel.message = t("programs.select_application_message")
                     panel.canChooseFiles = true
                     panel.canChooseDirectories = false
                     panel.allowsMultipleSelection = false
@@ -75,9 +58,10 @@ struct ProgramsView: View {
                     print("Add Program is only supported on macOS in this build.")
                     #endif
                 } label: {
-                    Label("Add Program", systemImage: "plus.circle.fill")
+                    Label(t("programs.add_program"), systemImage: "plus.circle.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("programs.add")
 
                 Button {
                     Task {
@@ -89,48 +73,45 @@ struct ProgramsView: View {
                         }
                     }
                 } label: {
-                    Label("Add Apple Music", systemImage: "music.note")
+                    Label(t("programs.add_apple_music"), systemImage: "music.note")
                 }
                 .buttonStyle(.bordered)
                 .disabled(programIDs.contains("com.apple.Music"))
-                .help("macOS Music 앱(com.apple.Music)을 기본값으로 추가합니다.")
+                .help(t("programs.add_apple_music_help"))
+                .accessibilityIdentifier("programs.addAppleMusic")
             }
 
             Group {
                 if isLoadingPrograms {
-                    ProgressView("불러오는 중...")
+                    ProgressView(t("common.loading"))
                 } else if programIDs.isEmpty {
-                    ContentUnavailableView("등록된 프로그램이 없습니다", systemImage: "list.bullet", description: Text("Add Program 버튼을 눌러 응용프로그램(.app)을 선택하세요."))
+                    ContentUnavailableView(t("programs.empty_title"), systemImage: "list.bullet", description: Text(t("programs.empty_description")))
                 } else {
                     List {
                         ForEach(programIDs, id: \.self) { id in
-                            HStack {
-                                Image(systemName: "app.badge").imageScale(.medium)
-                                Text(id).font(.body)
-                                Spacer()
-                                HStack(spacing: 8) {
-                                    Button(role: .destructive) {
-                                        Task {
-                                            do {
-                                                let updated = try await ConfigUtility.shared.removeBundleID(id)
-                                                programIDs = updated.bundleIDs
-                                            } catch {
-                                                print("Failed to remove bundleID: \(error)")
-                                            }
+                            ProgramRow(
+                                info: displayInfo(for: id),
+                                onRemove: {
+                                    Task {
+                                        do {
+                                            let updated = try await ConfigUtility.shared.removeBundleID(id)
+                                            programIDs = updated.bundleIDs
+                                        } catch {
+                                            print("Failed to remove bundleID: \(error)")
                                         }
-                                    } label: { Image(systemName: "trash") }
-                                    .buttonStyle(.borderless)
-
-                                    Button {
-                                        selectedProgramIDForSettings = id
-                                        showingProgramSettings = true
-                                    } label: { Image(systemName: "gearshape") }
-                                    .buttonStyle(.borderless)
-                                    .help("설정")
+                                    }
+                                },
+                                onSettings: {
+                                    selectedProgramIDForSettings = id
+                                    showingProgramSettings = true
                                 }
-                            }
+                            )
+                            .accessibilityIdentifier("programs.row.\(id)")
+                            .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10))
+                            .listRowSeparator(.hidden)
                         }
                     }
+                    .scrollContentBackground(.hidden)
                     .listStyle(.inset)
                 }
             }
@@ -138,58 +119,300 @@ struct ProgramsView: View {
             Spacer()
         }
         .padding(.horizontal, 12)
+        .onAppear {
+            refreshMetadataCache()
+            Task { await refreshProgramSettingsCache() }
+        }
+        .onChange(of: programIDs) { _, _ in
+            refreshMetadataCache()
+            Task { await refreshProgramSettingsCache() }
+        }
         .sheet(isPresented: $showingProgramSettings) {
             ProgramsSettingsSheet(
-                activityType: $activityType,
-                detailText: $detailText,
-                stateText: $stateText,
-                useAppIconForLargeImage: $useAppIconForLargeImage,
-                largeImageKey: $largeImageKey,
-                largeImageText: $largeImageText,
-                smallImageKey: $smallImageKey,
-                smallImageText: $smallImageText,
-                selectedLargeImage: $selectedLargeImage,
-                selectedSmallImage: $selectedSmallImage,
-                partyCurrent: $partyCurrent,
-                partyMax: $partyMax
+                programDisplayName: selectedProgramIDForSettings.flatMap { displayInfo(for: $0).displayName } ?? t("programs.default_program_name"),
+                programBundleID: selectedProgramIDForSettings,
+                initialSettings: selectedProgramIDForSettings.flatMap { programSettingsCache[$0] } ?? ProgramPresenceSettings(),
+                onSave: { updatedSettings in
+                    guard let bundleID = selectedProgramIDForSettings else { return }
+                    Task {
+                        do {
+                            let saved = try await ConfigUtility.shared.setProgramSettings(updatedSettings, for: bundleID)
+                            await MainActor.run {
+                                programSettingsCache[bundleID] = saved
+                            }
+                        } catch {
+                            print("Failed to save program settings: \(error)")
+                        }
+                    }
+                }
             )
         }
     }
+
+    /// Returns cached display metadata for a bundle identifier, falling back to a lightweight placeholder.
+    private func displayInfo(for bundleID: String) -> ProgramDisplayInfo {
+        #if os(macOS)
+        return appMetadataCache[bundleID] ?? .fallback(bundleID: bundleID)
+        #else
+        return .fallback(bundleID: bundleID)
+        #endif
+    }
+
+    /// Rebuilds the resolved application metadata cache for the current tracked bundle identifiers.
+    private func refreshMetadataCache() {
+        #if os(macOS)
+        var nextCache: [String: ProgramDisplayInfo] = [:]
+        for bundleID in programIDs {
+            nextCache[bundleID] = ProgramDisplayInfo.resolve(bundleID: bundleID)
+        }
+        appMetadataCache = nextCache
+        #endif
+    }
+
+    /// Loads persisted per-program presence settings into local view state.
+    private func refreshProgramSettingsCache() async {
+        let settings = await ConfigUtility.shared.allProgramSettings()
+        await MainActor.run {
+            programSettingsCache = settings
+        }
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
 }
 
+/// Card-style row that shows app metadata and exposes settings and removal actions.
+private struct ProgramRow: View {
+    let info: ProgramDisplayInfo
+    let onRemove: () -> Void
+    let onSettings: () -> Void
+    @EnvironmentObject private var localizationManager: LocalizationManager
+
+    var body: some View {
+        HStack(spacing: 14) {
+            programIcon
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(info.displayName)
+                        .font(.headline)
+                    if info.isResolved {
+                        Text(t("programs.resolved"))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.12), in: Capsule())
+                            .foregroundStyle(.green)
+                    } else {
+                        Text(t("programs.no_metadata"))
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.12), in: Capsule())
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                Text(info.bundleID)
+                    .font(.subheadline.monospaced())
+                    .foregroundStyle(.secondary)
+
+                if let appPath = info.appPath {
+                    Text(appPath)
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(t("programs.app_path_missing"))
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Spacer(minLength: 20)
+
+            HStack(spacing: 8) {
+                Button(t("common.settings"), action: onSettings)
+                    .buttonStyle(.bordered)
+                Button(t("common.delete"), role: .destructive, action: onRemove)
+                    .buttonStyle(.bordered)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.secondary.opacity(0.08))
+        )
+    }
+
+    @ViewBuilder
+    private var programIcon: some View {
+        #if os(macOS)
+        if let icon = info.icon {
+            Image(nsImage: icon)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        } else {
+            fallbackIcon
+        }
+        #else
+        fallbackIcon
+        #endif
+    }
+
+    private var fallbackIcon: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color.secondary.opacity(0.12))
+            .frame(width: 44, height: 44)
+            .overlay(
+                Image(systemName: "app.badge")
+                    .imageScale(.medium)
+                    .foregroundStyle(.secondary)
+            )
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+/// Resolved display metadata for a tracked application, including icon and file-system location when available.
+private struct ProgramDisplayInfo {
+    let bundleID: String
+    let displayName: String
+    let appPath: String?
+    #if os(macOS)
+    let icon: NSImage?
+    #endif
+    let isResolved: Bool
+
+    #if os(macOS)
+    static func fallback(bundleID: String) -> ProgramDisplayInfo {
+        ProgramDisplayInfo(
+            bundleID: bundleID,
+            displayName: bundleID.components(separatedBy: ".").last ?? bundleID,
+            appPath: nil,
+            icon: nil,
+            isResolved: false
+        )
+    }
+
+    static func resolve(bundleID: String) -> ProgramDisplayInfo {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            return fallback(bundleID: bundleID)
+        }
+
+        let bundle = Bundle(url: appURL)
+        let displayName =
+            (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
+            ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nonEmpty
+            ?? appURL.deletingPathExtension().lastPathComponent
+
+        let icon = NSWorkspace.shared.icon(forFile: appURL.path)
+        icon.size = NSSize(width: 64, height: 64)
+
+        return ProgramDisplayInfo(
+            bundleID: bundleID,
+            displayName: displayName,
+            appPath: appURL.path,
+            icon: icon,
+            isResolved: true
+        )
+    }
+    #else
+    static func fallback(bundleID: String) -> ProgramDisplayInfo {
+        ProgramDisplayInfo(
+            bundleID: bundleID,
+            displayName: bundleID.components(separatedBy: ".").last ?? bundleID,
+            appPath: nil,
+            isResolved: false
+        )
+    }
+    #endif
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+/// Sheet for editing Discord activity templates and asset settings for a single tracked application.
 private struct ProgramsSettingsSheet: View {
-    @Binding var activityType: ContentView.ActivityType
-    @Binding var detailText: String
-    @Binding var stateText: String
-    @Binding var useAppIconForLargeImage: Bool
-    @Binding var largeImageKey: String
-    @Binding var largeImageText: String
-    @Binding var smallImageKey: String
-    @Binding var smallImageText: String
-    @Binding var selectedLargeImage: Image?
-    @Binding var selectedSmallImage: Image?
-    @Binding var partyCurrent: Int
-    @Binding var partyMax: Int
+    @Environment(\.dismiss) private var dismiss
+
+    let programDisplayName: String
+    let programBundleID: String?
+    let initialSettings: ProgramPresenceSettings
+    let onSave: (ProgramPresenceSettings) -> Void
+    @EnvironmentObject private var localizationManager: LocalizationManager
+
+    @State private var draftSettings: ProgramPresenceSettings
+    init(
+        programDisplayName: String,
+        programBundleID: String?,
+        initialSettings: ProgramPresenceSettings,
+        onSave: @escaping (ProgramPresenceSettings) -> Void
+    ) {
+        self.programDisplayName = programDisplayName
+        self.programBundleID = programBundleID
+        self.initialSettings = initialSettings
+        self.onSave = onSave
+        _draftSettings = State(initialValue: initialSettings)
+    }
+
+    private var hasChanges: Bool {
+        draftSettings != initialSettings
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Button("취소") { /* handled by parent via binding */ }
+                    Button(t("common.cancel")) { dismiss() }
                     Spacer()
-                    Button("저장") { /* TODO: persist per-bundle settings */ }
+                    Button(t("common.save")) {
+                        onSave(draftSettings)
+                        dismiss()
+                    }
+                    .disabled(!hasChanges)
                         .keyboardShortcut(.defaultAction)
                 }
                 .padding(.bottom, 4)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(programDisplayName)
+                        .font(.title3.weight(.semibold))
+                    if let programBundleID {
+                        Text(programBundleID)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(t("programs.sheet.save_notice"))
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                    Text(t("programs.sheet.supported_templates"))
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                }
+
                 Divider()
                 Form {
                     Section {
                         Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
                             GridRow(alignment: .firstTextBaseline) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("활동 유형").font(.headline)
-                                    Picker("활동 유형", selection: $activityType) {
-                                        ForEach(ContentView.ActivityType.allCases) { t in
+                                    Text(t("programs.sheet.activity_type")).font(.headline)
+                                    Picker(t("programs.sheet.activity_type"), selection: $draftSettings.activityType) {
+                                        ForEach(ProgramPresenceSettings.ActivityType.allCases) { t in
                                             Text(t.localizedLabel).tag(t)
                                         }
                                     }
@@ -199,15 +422,15 @@ private struct ProgramsSettingsSheet: View {
                             }
                             GridRow(alignment: .firstTextBaseline) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("세부 내용").font(.headline)
-                                    TextField("예: 게임 이름 또는 작업 설명", text: $detailText)
+                                    Text(t("programs.sheet.details")).font(.headline)
+                                    TextField(t("programs.sheet.details_placeholder"), text: $draftSettings.detailText)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             GridRow(alignment: .firstTextBaseline) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("상태 메시지").font(.headline)
-                                    TextField("예: 현재 단계, 챕터 등", text: $stateText)
+                                    Text(t("programs.sheet.state_message")).font(.headline)
+                                    TextField(t("programs.sheet.state_placeholder"), text: $draftSettings.stateText)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -216,22 +439,22 @@ private struct ProgramsSettingsSheet: View {
                     Divider()
                     Section {
                         Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
-                            GridRow { Toggle("큰 이미지에 앱 아이콘 사용", isOn: $useAppIconForLargeImage) }
+                            GridRow { Toggle(t("programs.sheet.use_app_icon_large_image"), isOn: $draftSettings.useAppIconForLargeImage) }
                             GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("큰 이미지 키").font(.headline)
-                                    TextField("Discord 개발자 포털에 등록된 키", text: $largeImageKey)
+                                    Text(t("programs.sheet.large_image_key")).font(.headline)
+                                    TextField(t("programs.sheet.discord_asset_key_placeholder"), text: $draftSettings.largeImageKey)
                                 }
                             }
                             GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("큰 이미지 텍스트").font(.headline)
-                                    TextField("큰 이미지에 표시될 텍스트", text: $largeImageText)
+                                    Text(t("programs.sheet.large_image_text")).font(.headline)
+                                    TextField(t("programs.sheet.large_image_text_placeholder"), text: $draftSettings.largeImageText)
                                 }
                             }
                             GridRow {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("작은 이미지 선택").font(.headline)
+                                    Text(t("programs.sheet.small_image_picker")).font(.headline)
                                     RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08))
                                         .frame(width: 48, height: 48)
                                         .overlay(Image(systemName: "photo").imageScale(.medium).foregroundStyle(.secondary))
@@ -239,14 +462,14 @@ private struct ProgramsSettingsSheet: View {
                             }
                             GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("작은 이미지 키").font(.headline)
-                                    TextField("Discord 개발자 포털에 등록된 키", text: $smallImageKey)
+                                    Text(t("programs.sheet.small_image_key")).font(.headline)
+                                    TextField(t("programs.sheet.discord_asset_key_placeholder"), text: $draftSettings.smallImageKey)
                                 }
                             }
                             GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("작은 이미지 텍스트").font(.headline)
-                                    TextField("작은 이미지에 표시될 텍스트", text: $smallImageText)
+                                    Text(t("programs.sheet.small_image_text")).font(.headline)
+                                    TextField(t("programs.sheet.small_image_text_placeholder"), text: $draftSettings.smallImageText)
                                 }
                             }
                         }
@@ -256,19 +479,19 @@ private struct ProgramsSettingsSheet: View {
                         Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 10) {
                             GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("현재 인원").font(.headline)
+                                    Text(t("programs.sheet.party_current")).font(.headline)
                                     HStack {
-                                        Stepper(value: $partyCurrent, in: 0...max(0, partyMax)) { EmptyView() }
-                                        Text("\(partyCurrent)").foregroundStyle(.secondary)
+                                        Stepper(value: $draftSettings.partyCurrent, in: 0...max(0, draftSettings.partyMax)) { EmptyView() }
+                                        Text("\(draftSettings.partyCurrent)").foregroundStyle(.secondary)
                                     }
                                 }
                             }
                             GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("최대 인원").font(.headline)
+                                    Text(t("programs.sheet.party_max")).font(.headline)
                                     HStack {
-                                        Stepper(value: $partyMax, in: max(1, partyCurrent)...99) { EmptyView() }
-                                        Text("\(partyMax)").foregroundStyle(.secondary)
+                                        Stepper(value: $draftSettings.partyMax, in: max(1, draftSettings.partyCurrent)...99) { EmptyView() }
+                                        Text("\(draftSettings.partyMax)").foregroundStyle(.secondary)
                                     }
                                 }
                             }
@@ -282,6 +505,10 @@ private struct ProgramsSettingsSheet: View {
             .frame(maxHeight: 720)
         }
     }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
 }
 
 private struct ProgramsViewPreviewContainer: View {
@@ -289,43 +516,13 @@ private struct ProgramsViewPreviewContainer: View {
     @State private var isLoadingPrograms = false
     @State private var showing = false
     @State private var selectedProgramID: String? = nil
-    @State private var activity: ContentView.ActivityType = .playing
-    @State private var detail = ""
-    @State private var state = ""
-    @State private var useIcon = true
-    @State private var largeKey = ""
-    @State private var largeText = ""
-    @State private var smallKey = ""
-    @State private var smallText = ""
-    @State private var partyCurrent = 1
-    @State private var partyMax = 1
-    @State private var largeImage: Image? = nil
-    @State private var smallImage: Image? = nil
-    #if os(macOS)
-    @State private var largeNSImage: NSImage? = nil
-    @State private var smallNSImage: NSImage? = nil
-    #endif
 
     var body: some View {
         ProgramsView(
             programIDs: $programIDs,
             isLoadingPrograms: $isLoadingPrograms,
             showingProgramSettings: $showing,
-            selectedProgramIDForSettings: $selectedProgramID,
-            activityType: $activity,
-            detailText: $detail,
-            stateText: $state,
-            useAppIconForLargeImage: $useIcon,
-            largeImageKey: $largeKey,
-            largeImageText: $largeText,
-            smallImageKey: $smallKey,
-            smallImageText: $smallText,
-            selectedLargeNSImage: $largeNSImage,
-            selectedSmallNSImage: $smallNSImage,
-            selectedLargeImage: $largeImage,
-            selectedSmallImage: $smallImage,
-            partyCurrent: $partyCurrent,
-            partyMax: $partyMax
+            selectedProgramIDForSettings: $selectedProgramID
         )
     }
 }

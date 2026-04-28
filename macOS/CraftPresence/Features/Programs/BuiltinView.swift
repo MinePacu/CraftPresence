@@ -13,13 +13,14 @@ struct BuiltinView: View {
     @State private var isVSCodeEnabled: Bool = false
     @State private var showAppleMusicDetail: Bool = false
     @State private var showXcodeDetail: Bool = false
+    @EnvironmentObject private var localizationManager: LocalizationManager
 
     var body: some View {
         NavigationStack {
             List {
                 // Title Row to match other views' appearance when toolbar title is hidden
                 Section {
-                    Text("Built-in")
+                    Text(t("builtin.title"))
                         .font(.largeTitle.bold())
                         .padding(.vertical, 4)
                 }
@@ -29,12 +30,12 @@ struct BuiltinView: View {
                         title: "Apple Music",
                         subtitle: appleMusicManager.isPlaying 
                             ? "\(appleMusicManager.currentTrack) - \(appleMusicManager.currentArtist)"
-                            : "현재 재생 중인 곡 정보를 사용합니다.",
+                            : t("builtin.apple_music.subtitle"),
                         systemImage: "music.note",
                         isEnabled: $appleMusicManager.isEnabled,
                         statusText: appleMusicManager.isEnabled 
-                            ? (appleMusicManager.isPlaying ? "재생 중" : "대기 중")
-                            : "비활성화됨"
+                            ? (appleMusicManager.isPlaying ? t("builtin.status.playing") : t("builtin.status.idle"))
+                            : t("builtin.status.disabled")
                     ) {
                         showAppleMusicDetail = true
                     }
@@ -43,22 +44,22 @@ struct BuiltinView: View {
                         title: "Xcode",
                         subtitle: xcodeManager.isActive
                             ? "\(xcodeManager.currentProject) - \(xcodeManager.currentFile)"
-                            : "현재 작업 중인 프로젝트 정보를 사용합니다.",
+                            : t("builtin.xcode.subtitle"),
                         systemImage: "hammer",
                         isEnabled: $xcodeManager.isEnabled,
                         statusText: xcodeManager.isEnabled
-                            ? (xcodeManager.isActive ? "작업 중" : "대기 중")
-                            : "비활성화됨"
+                            ? (xcodeManager.isActive ? t("builtin.status.working") : t("builtin.status.idle"))
+                            : t("builtin.status.disabled")
                     ) {
                         showXcodeDetail = true
                     }
                     
                     BuiltinProgramRow(
                         title: "Visual Studio Code",
-                        subtitle: "현재 작업 중인 프로젝트 정보를 사용합니다.",
+                        subtitle: t("builtin.vscode.subtitle"),
                         systemImage: "curlybraces",
                         isEnabled: $isVSCodeEnabled,
-                        statusText: isVSCodeEnabled ? "활성화됨" : "비활성화됨"
+                        statusText: isVSCodeEnabled ? t("builtin.status.enabled") : t("builtin.status.disabled")
                     ) {
                         // TODO: 상세 설정 화면으로 이동하거나 시트를 표시
                     }
@@ -73,6 +74,10 @@ struct BuiltinView: View {
                 XcodeDetailView()
             }
         }
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
     }
 }
 

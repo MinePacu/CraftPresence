@@ -11,9 +11,11 @@ import ApplicationServices
 
 // MARK: - ContentView
 
+/// Root container view that coordinates navigation, foreground app tracking, and Rich Presence updates.
 struct ContentView: View {
     // MARK: Types & Identifiers
 
+    /// Navigation targets presented in the split view detail column.
     private enum DetailSelection: Equatable {
         case overview
         case programs
@@ -54,55 +56,13 @@ struct ContentView: View {
     @State private var activeAppName: String? = nil
     @State private var activeBundleID: String? = nil
     @State private var activeWindowTitle: String? = nil
-
-    // MARK: Settings Model
-
-    // Program Settings UI State
-    @State private var activityType: ActivityType = .playing
-    @State private var detailText: String = ""
-    @State private var stateText: String = ""
-
-    @State private var useAppIconForLargeImage: Bool = true
-    @State private var largeImageKey: String = ""
-    @State private var largeImageText: String = ""
-
-    @State private var smallImageKey: String = ""
-    @State private var smallImageText: String = ""
-
-    // Party size settings
-    @State private var partyCurrent: Int = 1
-    @State private var partyMax: Int = 1
-
-    // Image picking & previews
-    @State private var selectedLargeImage: Image? = nil
-    @State private var selectedSmallImage: Image? = nil
-
-    // macOS-only: store NSImage for better fidelity when needed
-    #if os(macOS)
-    @State private var selectedLargeNSImage: NSImage? = nil
-    @State private var selectedSmallNSImage: NSImage? = nil
-    #endif
-
-    // iOS-only: PhotosPicker state
-    #if os(iOS)
-    @State private var isPickingLargeImage: Bool = false
-    @State private var isPickingSmallImage: Bool = false
-    #endif
+    @State private var lastProgramPresenceSignature: String? = nil
+    @State private var lastProgramPresenceBundleID: String? = nil
 
     // Settings presentation
     @State private var showingSettings: Bool = false
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
-
-    enum ActivityType: String, CaseIterable, Identifiable {
-        case playing = "Playing"
-        case streaming = "Streaming"
-        case listening = "Listening"
-        case watching = "Watching"
-        case competing = "Competing"
-
-        var id: String { rawValue }
-        var localizedLabel: String { rawValue }
-    }
+    @EnvironmentObject private var localizationManager: LocalizationManager
 
     // MARK: Body
 
@@ -135,31 +95,31 @@ struct ContentView: View {
                     }
                 }
             })) {
-                Section("Menu") {
-                    SidebarRow(title: "OverView", systemImage: "rectangle.and.text.magnifyingglass", isSelected: selection == .overview, tint: .pink) {
+                Section(t("sidebar.section.menu")) {
+                    SidebarRow(title: t("sidebar.overview"), systemImage: "rectangle.and.text.magnifyingglass", isSelected: selection == .overview, tint: .pink, accessibilityIdentifier: "sidebar.overview") {
                         if selection != .overview { selectionStack.append(selection) }
                         selection = .overview
                     }
-                    SidebarRow(title: "Programs", systemImage: "list.bullet.rectangle", isSelected: selection == .programs, tint: .pink) {
+                    SidebarRow(title: t("sidebar.programs"), systemImage: "list.bullet.rectangle", isSelected: selection == .programs, tint: .pink, accessibilityIdentifier: "sidebar.programs") {
                         if selection != .programs { selectionStack.append(selection) }
                         selection = .programs
                     }
-                    SidebarRow(title: "Built-in", systemImage: "bolt.fill", isSelected: selection == .builtin, tint: .pink) {
+                    SidebarRow(title: t("sidebar.builtin"), systemImage: "bolt.fill", isSelected: selection == .builtin, tint: .pink, accessibilityIdentifier: "sidebar.builtin") {
                         if selection != .builtin { selectionStack.append(selection) }
                         selection = .builtin
                     }
-                    SidebarRow(title: "About", systemImage: "info.circle", isSelected: selection == .about, tint: .pink) {
+                    SidebarRow(title: t("sidebar.about"), systemImage: "info.circle", isSelected: selection == .about, tint: .pink, accessibilityIdentifier: "sidebar.about") {
                         if selection != .about { selectionStack.append(selection) }
                         selection = .about
                     }
                 }
 
-                Section("Test") {
-                    SidebarRow(title: "DiscordTest", systemImage: "gamecontroller", isSelected: selection == .discordTest, tint: .pink) {
+                Section(t("sidebar.section.test")) {
+                    SidebarRow(title: t("sidebar.discord_test"), systemImage: "gamecontroller", isSelected: selection == .discordTest, tint: .pink, accessibilityIdentifier: "sidebar.discordTest") {
                         if selection != .discordTest { selectionStack.append(selection) }
                         selection = .discordTest
                     }
-                    SidebarRow(title: "NowPlayingTest", systemImage: "music.note", isSelected: selection == .nowPlayingTest, tint: .pink) {
+                    SidebarRow(title: t("sidebar.now_playing_test"), systemImage: "music.note", isSelected: selection == .nowPlayingTest, tint: .pink, accessibilityIdentifier: "sidebar.nowPlayingTest") {
                         if selection != .nowPlayingTest { selectionStack.append(selection) }
                         selection = .nowPlayingTest
                     }
@@ -167,7 +127,7 @@ struct ContentView: View {
                         SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {
                             if case .item(let selected) = selection { return selected.id == item.id }
                             return false
-                        }(), tint: .gray) {
+                        }(), tint: .gray, accessibilityIdentifier: "sidebar.item.\(item.id)") {
                             selectionStack.append(selection)
                             selection = .item(item)
                         }
@@ -195,21 +155,7 @@ struct ContentView: View {
                         programIDs: $programIDs,
                         isLoadingPrograms: $isLoadingPrograms,
                         showingProgramSettings: $showingProgramSettings,
-                        selectedProgramIDForSettings: $selectedProgramIDForSettings,
-                        activityType: $activityType,
-                        detailText: $detailText,
-                        stateText: $stateText,
-                        useAppIconForLargeImage: $useAppIconForLargeImage,
-                        largeImageKey: $largeImageKey,
-                        largeImageText: $largeImageText,
-                        smallImageKey: $smallImageKey,
-                        smallImageText: $smallImageText,
-                        selectedLargeNSImage: $selectedLargeNSImage,
-                        selectedSmallNSImage: $selectedSmallNSImage,
-                        selectedLargeImage: $selectedLargeImage,
-                        selectedSmallImage: $selectedSmallImage,
-                        partyCurrent: $partyCurrent,
-                        partyMax: $partyMax
+                        selectedProgramIDForSettings: $selectedProgramIDForSettings
                     )
                     .task {
                         do {
@@ -238,7 +184,7 @@ struct ContentView: View {
 
                 // MARK: Detail - Item
                 case .item(let item):
-                    Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+                    Text(t("content.item_at") + " " + item.timestamp.formatted(date: .numeric, time: .standard))
                 // MARK: Detail - None
                 case .none:
                     EmptyView()
@@ -261,7 +207,7 @@ struct ContentView: View {
                                 selection = last
                             }
                         } label: {
-                            Label("뒤로", systemImage: "chevron.left")
+                            Label(t("toolbar.back"), systemImage: "chevron.left")
                         }
                     }
                 }
@@ -270,8 +216,9 @@ struct ContentView: View {
                     Button {
                         showingSettings = true
                     } label: {
-                        Label("설정", systemImage: "gearshape")
+                        Label(t("toolbar.settings"), systemImage: "gearshape")
                     }
+                    .accessibilityIdentifier("toolbar.settings")
                 }
             }
             .sheet(isPresented: $showingSettings) {
@@ -284,23 +231,20 @@ struct ContentView: View {
     #endif
         }
         .task {
-            // Subscribe to ProgramDetector updates
-            ProgramDetector.shared.start()
-    #if os(macOS)
-            // Log current Accessibility permission state
-            let initialTrusted = AXIsProcessTrusted()
-            if !initialTrusted {
-                let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-                AXIsProcessTrustedWithOptions(options)
-                Task.detached(priority: .utility) {
-                    for _ in 0..<20 {
-                        if Task.isCancelled { break }
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        if AXIsProcessTrusted() { break }
+            applyAutomationStateIfNeeded()
+
+            guard !AutomationLaunchOptions.shouldDisableProgramDetector else {
+                do {
+                    let current = await ConfigUtility.shared.currentSettings()
+                    await MainActor.run {
+                        self.programIDs = current.bundleIDs
                     }
                 }
+                return
             }
-    #endif
+
+            // Subscribe to ProgramDetector updates
+            ProgramDetector.shared.start()
             Task(priority: .utility) {
                 for await update in ProgramDetector.shared.updatesStream() {
                     if Task.isCancelled { break }
@@ -311,12 +255,22 @@ struct ContentView: View {
                         self.activeBundleID = update.bundleID
                         self.activeWindowTitle = stabilizedTitle
                     }
+                    await handleProgramPresenceUpdate(
+                        appName: update.appName,
+                        bundleID: update.bundleID,
+                        windowTitle: stabilizedTitle
+                    )
     #else
                     await MainActor.run {
                         self.activeAppName = update.appName
                         self.activeBundleID = update.bundleID
                         self.activeWindowTitle = update.windowTitle
                     }
+                    await handleProgramPresenceUpdate(
+                        appName: update.appName,
+                        bundleID: update.bundleID,
+                        windowTitle: update.windowTitle
+                    )
     #endif
                 }
             }
@@ -335,6 +289,7 @@ struct ContentView: View {
 
     // MARK: - Actions
 
+    /// Inserts a timestamped sample item into the local SwiftData store.
     private func addItem() {
         withAnimation {
             let newItem = Item(timestamp: Date())
@@ -403,6 +358,7 @@ struct ContentView: View {
 
     // MARK: - Data Operations
 
+    /// Deletes stored sample items from the SwiftData context.
     private func deleteItems(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
@@ -412,6 +368,7 @@ struct ContentView: View {
     }
 
     // MARK: - Helpers
+    /// Applies the user's menu-bar-only preference on macOS.
     private func applyMenuBarMode(_ enabled: Bool) {
         #if os(macOS)
         if enabled {
@@ -421,15 +378,193 @@ struct ContentView: View {
         }
         #endif
     }
+
+    /// Hydrates screen state from launch arguments when the app is running under UI automation.
+    private func applyAutomationStateIfNeeded() {
+        guard AutomationLaunchOptions.isUITesting else { return }
+
+        if !AutomationLaunchOptions.seedBundleIDs.isEmpty {
+            self.programIDs = AutomationLaunchOptions.seedBundleIDs.sorted()
+            self.isLoadingPrograms = false
+        }
+
+        if let activeAppName = AutomationLaunchOptions.activeAppName {
+            self.activeAppName = activeAppName
+        }
+
+        if let activeBundleID = AutomationLaunchOptions.activeBundleID {
+            self.activeBundleID = activeBundleID
+        }
+
+        if let activeWindowTitle = AutomationLaunchOptions.activeWindowTitle {
+            self.activeWindowTitle = activeWindowTitle
+        }
+    }
+
+    @MainActor
+    /// Renders the configured Discord activity for the current foreground program and sends it when needed.
+    private func handleProgramPresenceUpdate(
+        appName: String?,
+        bundleID: String?,
+        windowTitle: String?
+    ) async {
+        guard let bundleID, programIDs.contains(bundleID) else {
+            if lastProgramPresenceBundleID != nil {
+                lastProgramPresenceBundleID = nil
+                lastProgramPresenceSignature = nil
+                try? await DiscordSDKManager.shared.clearActivity()
+            }
+            return
+        }
+
+        let settings = await ConfigUtility.shared.programSettings(for: bundleID)
+        let renderedDetails = renderProgramTemplate(
+            settings.detailText,
+            fallback: appName ?? bundleID,
+            appName: appName,
+            bundleID: bundleID,
+            windowTitle: windowTitle
+        )
+        let renderedState = renderProgramTemplate(
+            settings.stateText,
+            fallback: windowTitle,
+            appName: appName,
+            bundleID: bundleID,
+            windowTitle: windowTitle
+        )
+        let renderedLargeImageText = renderProgramTemplate(
+            settings.largeImageText,
+            fallback: appName,
+            appName: appName,
+            bundleID: bundleID,
+            windowTitle: windowTitle
+        )
+        let renderedSmallImageText = renderProgramTemplate(
+            settings.smallImageText,
+            fallback: windowTitle,
+            appName: appName,
+            bundleID: bundleID,
+            windowTitle: windowTitle
+        )
+        let resolvedParty = resolveProgramParty(for: settings, bundleID: bundleID)
+
+        let signature = [
+            bundleID,
+            appName ?? "",
+            windowTitle ?? "",
+            settings.activityType.rawValue,
+            renderedDetails ?? "",
+            renderedState ?? "",
+            renderedLargeImageText ?? "",
+            renderedSmallImageText ?? "",
+            settings.useAppIconForLargeImage ? "icon" : settings.largeImageKey,
+            settings.smallImageKey,
+            resolvedParty.id ?? "",
+            resolvedParty.currentSize.map(String.init) ?? "",
+            resolvedParty.maxSize.map(String.init) ?? ""
+        ].joined(separator: "|")
+
+        guard signature != lastProgramPresenceSignature else { return }
+
+        do {
+            try await DiscordSDKManager.shared.updateActivity(
+                name: appName ?? bundleID,
+                state: renderedState,
+                details: renderedDetails,
+                largeImageKey: settings.useAppIconForLargeImage ? nil : settings.largeImageKey.nilIfEmpty,
+                largeImageText: renderedLargeImageText,
+                smallImageKey: settings.smallImageKey.nilIfEmpty,
+                smallImageText: renderedSmallImageText,
+                partyID: resolvedParty.id,
+                partyCurrent: resolvedParty.currentSize,
+                partyMax: resolvedParty.maxSize,
+                start: nil,
+                end: nil,
+                activityType: settings.activityType.discordActivityType
+            )
+            lastProgramPresenceBundleID = bundleID
+            lastProgramPresenceSignature = signature
+        } catch {
+            // Leave the signature unchanged so a later state transition can retry.
+        }
+    }
+
+    /// Replaces supported placeholders in saved template strings with the latest detected program values.
+    private func renderProgramTemplate(
+        _ template: String,
+        fallback: String?,
+        appName: String?,
+        bundleID: String,
+        windowTitle: String?
+    ) -> String? {
+        let trimmed = template.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return fallback?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        }
+
+        let resolved = trimmed
+            .replacingOccurrences(of: "{appName}", with: appName ?? "")
+            .replacingOccurrences(of: "{bundleID}", with: bundleID)
+            .replacingOccurrences(of: "{windowTitle}", with: windowTitle ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return resolved.nilIfEmpty
+    }
+
+    /// Converts stored party size settings into the Discord party payload expected by the SDK wrapper.
+    private func resolveProgramParty(
+        for settings: ProgramPresenceSettings,
+        bundleID: String
+    ) -> DiscordActivity.Party {
+        guard settings.partyCurrent > 0, settings.partyMax >= settings.partyCurrent else {
+            return .init(id: nil, currentSize: nil, maxSize: nil)
+        }
+
+        return .init(
+            id: "program:\(bundleID)",
+            currentSize: settings.partyCurrent,
+            maxSize: settings.partyMax
+        )
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private extension ProgramPresenceSettings.ActivityType {
+    var discordActivityType: DiscordActivity.ActivityType {
+        switch self {
+        case .playing:
+            return .playing
+        case .streaming:
+            return .streaming
+        case .listening:
+            return .listening
+        case .watching:
+            return .watching
+        case .competing:
+            return .competing
+        }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 }
 
 // MARK: - Reusable Views
 
+/// Reusable sidebar button row used throughout the app's primary navigation list.
 private struct SidebarRow: View {
     let title: String
     let systemImage: String
     let isSelected: Bool
     var tint: Color = .accentColor
+    let accessibilityIdentifier: String
     let action: () -> Void
 
     var body: some View {
@@ -457,6 +592,7 @@ private struct SidebarRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier)
         .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
         .listRowBackground(Color.clear)
     }

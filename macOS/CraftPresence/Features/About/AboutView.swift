@@ -7,23 +7,24 @@ struct AboutView: View {
     let activeAppName: String?
     let activeWindowTitle: String?
     let activeBundleID: String?
+    @EnvironmentObject private var localizationManager: LocalizationManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("About", systemImage: "info.circle")
+            Label(t("about.title"), systemImage: "info.circle")
                 .font(.title2).bold()
 
             Group {
-                InfoRow(label: "App Name", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Unknown")
-                InfoRow(label: "Version", value: {
+                InfoRow(label: t("about.app_name"), value: Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? t("common.unknown"))
+                InfoRow(label: t("about.version"), value: {
                     let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
                     let b = Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String
-                    switch (v, b) { case let (v?, b?): return "\(v) (\(b))"; case let (v?, nil): return v; case let (nil, b?): return b; default: return "Unknown" }
+                    switch (v, b) { case let (v?, b?): return "\(v) (\(b))"; case let (v?, nil): return v; case let (nil, b?): return b; default: return t("common.unknown") }
                 }())
-                InfoRow(label: "Bundle ID", value: Bundle.main.bundleIdentifier ?? "Unknown")
-                InfoRow(label: "Executable Path", value: Bundle.main.executableURL?.path(percentEncoded: false) ?? "-")
+                InfoRow(label: t("about.bundle_id"), value: Bundle.main.bundleIdentifier ?? t("common.unknown"))
+                InfoRow(label: t("about.executable_path"), value: Bundle.main.executableURL?.path(percentEncoded: false) ?? "-")
                 #if os(macOS)
-                InfoRow(label: "Accessibility Permission", value: AXIsProcessTrusted() ? "Granted" : "Not Granted")
+                InfoRow(label: t("about.accessibility_permission"), value: AXIsProcessTrusted() ? t("common.granted") : t("common.not_granted"))
                 #endif
             }
 
@@ -32,20 +33,20 @@ struct AboutView: View {
             Group {
                 Label {
                     HStack(spacing: 0) {
-                        Text("현재 포그라운드 창: ")
-                        Text(activeAppName ?? "알 수 없음").foregroundStyle(.secondary)
+                        Text("\(t("about.foreground_app")): ")
+                        Text(activeAppName ?? t("common.unknown")).foregroundStyle(.secondary)
                     }
                 } icon: { Image(systemName: "macwindow") }
                 Label {
                     HStack(spacing: 0) {
-                        Text("창 타이틀: ")
-                        Text(activeWindowTitle ?? "알 수 없음").foregroundStyle(.secondary)
+                        Text("\(t("about.window_title")): ")
+                        Text(activeWindowTitle ?? t("common.unknown")).foregroundStyle(.secondary)
                     }
                 } icon: { Image(systemName: "text.quote") }
                 Label {
                     HStack(spacing: 0) {
-                        Text("Bundle ID: ")
-                        Text(activeBundleID ?? "알 수 없음").foregroundStyle(.secondary)
+                        Text("\(t("about.bundle_id")): ")
+                        Text(activeBundleID ?? t("common.unknown")).foregroundStyle(.secondary)
                     }
                 } icon: { Image(systemName: "barcode.viewfinder") }
             }
@@ -53,6 +54,10 @@ struct AboutView: View {
             Spacer()
         }
         .padding(.horizontal, 12)
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
     }
 }
 

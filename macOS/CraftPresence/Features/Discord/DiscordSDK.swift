@@ -34,16 +34,40 @@ enum DiscordAppConfig {
     }
 }
 
-/// Manager in charge of the Discord SDK interworking
-/// - Provides initialization, authentication, user information, and Rich Presence update capabilities
+/// Central manager that bridges the app to the Discord SDK wrapper.
+/// - Provides: SDK initialization, authorization, current user loading, and Rich Presence updates.
 final class DiscordSDKManager: ObservableObject {
     static let shared = DiscordSDKManager()
 
     /// Current Authentication Status
+    /// High-level authorization state exposed to the UI layer.
     public enum AuthorizationStatus: Sendable, Equatable {
         case authorized
         case unauthorized
         case unknown
+    }
+
+    /// User-facing SDK lifecycle state rendered on the overview dashboard.
+    public enum DashboardStatus: Sendable, Equatable {
+        case notConfigured
+        case configured
+        case authorizing
+        case connecting
+        case ready
+        case unauthorized
+        case failed
+
+        public var title: String {
+            switch self {
+            case .notConfigured: return "Not Configured"
+            case .configured: return "Configured"
+            case .authorizing: return "Authorizing"
+            case .connecting: return "Connecting"
+            case .ready: return "Ready"
+            case .unauthorized: return "Unauthorized"
+            case .failed: return "Failed"
+            }
+        }
     }
 
     private enum LifecycleState: Sendable {
@@ -58,6 +82,8 @@ final class DiscordSDKManager: ObservableObject {
     // MARK: - Published State (UI 자동 업데이트용)
     @Published private(set) var authorizationStatus: AuthorizationStatus = .unknown
     @Published private(set) var currentUser: DiscordUser? = nil
+    @Published private(set) var dashboardStatus: DashboardStatus = .notConfigured
+    @Published private(set) var lastErrorMessage: String? = nil
 
     // MARK: - Private State
     private let queue = DispatchQueue(label: "discord.sdk.manager", qos: .userInitiated)
@@ -75,7 +101,7 @@ final class DiscordSDKManager: ObservableObject {
 
 // MARK: - Public API
 extension DiscordSDKManager {
-    /// Initialize the SDK.
+    /// Initializes or reconfigures the Discord SDK wrapper for the current application identifier.
     /// - Parameters:
     ///   - applicationId: Application ID of Discord Developer Portal
     ///   - autoAuthorize: Whether to attempt automatic authentication at the start of the app
@@ -93,6 +119,8 @@ extension DiscordSDKManager {
             DispatchQueue.main.async {
                 self.authorizationStatus = .unauthorized
                 self.currentUser = nil
+                self.dashboardStatus = .failed
+                self.lastErrorMessage = validationError.localizedDescription
             }
             return
         }
@@ -126,6 +154,8 @@ extension DiscordSDKManager {
             DispatchQueue.main.async {
                 self.authorizationStatus = .unknown
                 self.currentUser = nil
+                self.dashboardStatus = .configured
+                self.lastErrorMessage = nil
             }
         }
 
@@ -138,7 +168,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// Check the authentication status and try to authenticate if necessary.
+    /// Checks the current authentication state and starts authorization only when required.
     func authorizeIfNeeded(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else {
@@ -157,6 +187,8 @@ extension DiscordSDKManager {
                 self.lifecycleState = .authorized
                 DispatchQueue.main.async {
                     self.authorizationStatus = .authorized
+                    self.dashboardStatus = .connecting
+                    self.lastErrorMessage = nil
                 }
                 self.fetchCurrentUser(sessionID: sessionID, completion: completion)
                 return
@@ -172,6 +204,12 @@ extension DiscordSDKManager {
 
             // Swift 클로저를 보관할 컨텍스트 생성
             let context = Unmanaged.passRetained(AuthorizationContext(sessionID: sessionID)).toOpaque()
+
+            DispatchQueue.main.async {
+                self.authorizationStatus = .unknown
+                self.dashboardStatus = .authorizing
+                self.lastErrorMessage = nil
+            }
             
             // C 스타일 콜백 함수
             let callback: AuthorizeCallback = { context, success, errorPtr in
@@ -187,6 +225,8 @@ extension DiscordSDKManager {
                         DiscordSDKManager.shared.lifecycleState = .awaitingConnection
                         DispatchQueue.main.async {
                             DiscordSDKManager.shared.authorizationStatus = .authorized
+                            DiscordSDKManager.shared.dashboardStatus = .connecting
+                            DiscordSDKManager.shared.lastErrorMessage = nil
                         }
 
                         let completions = DiscordSDKManager.shared.pendingAuthorizationCompletions
@@ -207,6 +247,8 @@ extension DiscordSDKManager {
                         let message = errorMessage ?? "Unknown error"
                         DispatchQueue.main.async {
                             DiscordSDKManager.shared.authorizationStatus = .unauthorized
+                            DiscordSDKManager.shared.dashboardStatus = .failed
+                            DiscordSDKManager.shared.lastErrorMessage = message
                             print("[DiscordSDKManager] Authorization callback - FAILED: \(message)")
                             completions.forEach { $0?(.failure(.sdk(message))) }
                         }
@@ -219,7 +261,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// logout the current user
+    /// Logs out the currently authorized Discord user.
     func logout(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, self.wrapper != nil else {
@@ -239,9 +281,13 @@ extension DiscordSDKManager {
                     if success {
                         DiscordSDKManager.shared.authorizationStatus = .unauthorized
                         DiscordSDKManager.shared.currentUser = nil
+                        DiscordSDKManager.shared.dashboardStatus = .unauthorized
+                        DiscordSDKManager.shared.lastErrorMessage = nil
                         completion?(.success(()))
                     } else {
                         let message = errorMessage ?? "Unknown error"
+                        DiscordSDKManager.shared.dashboardStatus = .failed
+                        DiscordSDKManager.shared.lastErrorMessage = message
                         completion?(.failure(.sdk(message)))
                     }
                 }
@@ -251,7 +297,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// Get Current User Info
+    /// Fetches the current Discord user associated with the active SDK session.
     func fetchCurrentUser(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else {
@@ -319,11 +365,15 @@ extension DiscordSDKManager {
                             DiscordSDKManager.shared.currentUser = user
                             DiscordSDKManager.shared.authorizationStatus = .authorized
                             DiscordSDKManager.shared.lifecycleState = .authorized
+                            DiscordSDKManager.shared.dashboardStatus = .ready
+                            DiscordSDKManager.shared.lastErrorMessage = nil
                             requestContext.completion?(.success(user))
                         } else {
                             DiscordSDKManager.shared.authorizationStatus = .unauthorized
                             DiscordSDKManager.shared.currentUser = nil
                             DiscordSDKManager.shared.lifecycleState = .failed
+                            DiscordSDKManager.shared.dashboardStatus = .failed
+                            DiscordSDKManager.shared.lastErrorMessage = errorMessage ?? "Unknown error"
                             requestContext.completion?(.failure(.sdk(errorMessage ?? "Unknown error")))
                         }
                     }
@@ -334,8 +384,7 @@ extension DiscordSDKManager {
         }
     }
     
-    /// SDK 연결 상태를 폴링하여 연결 완료 후 사용자 정보 가져오기
-    /// Connect() 직후 SDK가 완전히 초기화될 때까지 대기
+    /// Polls the SDK connection state until it becomes ready, then loads the current user.
     private func waitForConnectionAndFetchUser(
         sessionID expectedSessionID: UInt64,
         timeout: TimeInterval = 10.0,
@@ -381,6 +430,8 @@ extension DiscordSDKManager {
                         DispatchQueue.main.async {
                             self.authorizationStatus = .unauthorized
                             self.currentUser = nil
+                            self.dashboardStatus = .failed
+                            self.lastErrorMessage = "Connection timeout: SDK did not connect within \(timeout)s"
                         }
                         let error: Result<DiscordUser, DiscordSDKError> = .failure(.sdk("Connection timeout: SDK did not connect within \(timeout)s"))
                         completions.forEach { $0?(error) }
@@ -400,13 +451,18 @@ extension DiscordSDKManager {
         }
     }
 
-    /// Update Rich Presence
+    /// Sends a Rich Presence activity update through the Discord SDK wrapper.
     func updateActivity(
         name: String? = nil,
         state: String?,
         details: String?,
         largeImageKey: String? = nil,
+        largeImageText: String? = nil,
         smallImageKey: String? = nil,
+        smallImageText: String? = nil,
+        partyID: String? = nil,
+        partyCurrent: Int? = nil,
+        partyMax: Int? = nil,
         start: Date? = nil,
         end: Date? = nil,
         activityType: DiscordActivity.ActivityType = .playing,
@@ -426,7 +482,12 @@ extension DiscordSDKManager {
                     state: state,
                     details: details,
                     largeImageKey: largeImageKey,
+                    largeImageText: largeImageText,
                     smallImageKey: smallImageKey,
+                    smallImageText: smallImageText,
+                    partyID: partyID,
+                    partyCurrent: partyCurrent,
+                    partyMax: partyMax,
                     start: start,
                     end: end,
                     activityType: activityType,
@@ -457,7 +518,12 @@ extension DiscordSDKManager {
                             state: state,
                             details: details,
                             largeImageKey: largeImageKey,
+                            largeImageText: largeImageText,
                             smallImageKey: smallImageKey,
+                            smallImageText: smallImageText,
+                            partyID: partyID,
+                            partyCurrent: partyCurrent,
+                            partyMax: partyMax,
                             start: start,
                             end: end,
                             activityType: activityType,
@@ -471,7 +537,7 @@ extension DiscordSDKManager {
         }
     }
 
-    /// clear rich presence activity
+    /// Clears the currently published Rich Presence activity.
     func clearActivity(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self, self.wrapper != nil else {
@@ -509,20 +575,23 @@ extension DiscordSDKManager {
     }
 }
 
-// MARK: - Async/Await 편의 API
+// MARK: - Async/Await Convenience
 extension DiscordSDKManager {
+    /// Async wrapper around `authorizeIfNeeded(completion:)`.
     func authorizeIfNeeded() async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { cont in
             authorizeIfNeeded { cont.resume(with: $0.mapError { $0 }) }
         }
     }
 
+    /// Async wrapper around `logout(completion:)`.
     func logout() async throws {
         try await withCheckedThrowingContinuation { cont in
             logout { cont.resume(with: $0.mapError { $0 }) }
         }
     }
 
+    /// Async wrapper around `fetchCurrentUser(completion:)`.
     func currentUser() async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { cont in
             fetchCurrentUser { cont.resume(with: $0.mapError { $0 }) }
@@ -534,7 +603,12 @@ extension DiscordSDKManager {
         state: String?,
         details: String?,
         largeImageKey: String? = nil,
+        largeImageText: String? = nil,
         smallImageKey: String? = nil,
+        smallImageText: String? = nil,
+        partyID: String? = nil,
+        partyCurrent: Int? = nil,
+        partyMax: Int? = nil,
         start: Date? = nil,
         end: Date? = nil,
         activityType: DiscordActivity.ActivityType = .playing
@@ -545,7 +619,12 @@ extension DiscordSDKManager {
                 state: state,
                 details: details,
                 largeImageKey: largeImageKey,
+                largeImageText: largeImageText,
                 smallImageKey: smallImageKey,
+                smallImageText: smallImageText,
+                partyID: partyID,
+                partyCurrent: partyCurrent,
+                partyMax: partyMax,
                 start: start,
                 end: end,
                 activityType: activityType
@@ -658,7 +737,12 @@ private extension DiscordSDKManager {
         state: String?,
         details: String?,
         largeImageKey: String?,
+        largeImageText: String?,
         smallImageKey: String?,
+        smallImageText: String?,
+        partyID: String?,
+        partyCurrent: Int?,
+        partyMax: Int?,
         start: Date?,
         end: Date?,
         activityType: DiscordActivity.ActivityType,
@@ -695,7 +779,12 @@ private extension DiscordSDKManager {
             std.string(state ?? ""),
             std.string(details ?? ""),
             std.string(largeImageKey ?? ""),
+            std.string(largeImageText ?? ""),
             std.string(smallImageKey ?? ""),
+            std.string(smallImageText ?? ""),
+            std.string(partyID ?? ""),
+            Int32(partyCurrent ?? 0),
+            Int32(partyMax ?? 0),
             Int64(startTimestamp),
             Int64(endTimestamp),
             Int32(activityType.rawValue),
@@ -816,14 +905,25 @@ public struct DiscordActivity: Sendable, Equatable {
     }
 
     public struct Timestamps: Sendable, Equatable { public var start: Date?; public var end: Date? }
-    public struct Assets: Sendable, Equatable { public var largeImage: String?; public var smallImage: String? }
+    public struct Assets: Sendable, Equatable {
+        public var largeImage: String?
+        public var largeText: String?
+        public var smallImage: String?
+        public var smallText: String?
+    }
+    public struct Party: Sendable, Equatable {
+        public var id: String?
+        public var currentSize: Int?
+        public var maxSize: Int?
+    }
 
     public var name: String?
     public var state: String?
     public var details: String?
     public var type: ActivityType = .playing
     public var timestamps: Timestamps = .init(start: nil, end: nil)
-    public var assets: Assets = .init(largeImage: nil, smallImage: nil)
+    public var assets: Assets = .init(largeImage: nil, largeText: nil, smallImage: nil, smallText: nil)
+    public var party: Party = .init(id: nil, currentSize: nil, maxSize: nil)
 
     public init() {}
 }
@@ -919,7 +1019,12 @@ private final class DiscordClient: _DiscordClientProto {
             state: activity.state,
             details: activity.details,
             largeImageKey: activity.assets.largeImage,
+            largeImageText: activity.assets.largeText,
             smallImageKey: activity.assets.smallImage,
+            smallImageText: activity.assets.smallText,
+            partyID: activity.party.id,
+            partyCurrent: activity.party.currentSize,
+            partyMax: activity.party.maxSize,
             start: activity.timestamps.start,
             end: activity.timestamps.end,
             activityType: activity.type

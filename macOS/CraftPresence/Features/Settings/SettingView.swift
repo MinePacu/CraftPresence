@@ -7,44 +7,52 @@
 
 import SwiftUI
 
+/// Settings screen for localization, debug logging, and macOS menu bar presentation preferences.
 struct SettingView: View {
     // Persist toggles with AppStorage so they survive restarts
     @AppStorage("debugLoggingEnabled") private var debugLoggingEnabled: Bool = false
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
+    @EnvironmentObject private var localizationManager: LocalizationManager
 
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("일반")) {
+                Section(header: Text(t("settings.section.general"))) {
+                    Picker(t("settings.language"), selection: languageBinding) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(languageLabel(for: language)).tag(language)
+                        }
+                    }
+
                     Toggle(isOn: $menuBarOnlyEnabled.onChange(menuBarToggleChanged)) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("메뉴 막대(아이콘) 전용 모드")
-                            Text("Dock 아이콘을 숨기고 메뉴 막대 아이콘으로만 동작합니다.")
+                            Text(t("settings.menu_bar_only.title"))
+                            Text(t("settings.menu_bar_only.description"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .help("활성화 시 Dock과 앱 전환기에서 숨겨지고, 상태바 아이콘 메뉴로만 조작합니다.")
+                    .help(t("settings.menu_bar_only.help"))
                 }
 
                 #if DEBUG
-                Section(header: Text("디버그")) {
+                Section(header: Text(t("settings.section.debug"))) {
                     Toggle(isOn: $debugLoggingEnabled) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("디버그 로그 사용")
-                            Text("개발/테스트 중에만 사용됩니다. 릴리즈 빌드에서는 무시됩니다.")
+                            Text(t("settings.debug_logging.title"))
+                            Text(t("settings.debug_logging.description"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
 
-                Section(footer: Text("이 설정은 디버그 빌드에서만 노출됩니다. 릴리즈 빌드에서는 항상 비활성화됩니다.")) {
+                Section(footer: Text(t("settings.debug_logging.footer"))) {
                     EmptyView()
                 }
                 #endif
             }
-            .navigationTitle("설정")
+            .navigationTitle(t("settings.title"))
             .onAppear {
                 // 설정 화면 진입 시 현재 저장된 상태를 보장 적용
                 applyMenuBarMode(menuBarOnlyEnabled)
@@ -52,10 +60,12 @@ struct SettingView: View {
         }
     }
 
+    /// Responds to menu bar mode changes immediately so the app chrome matches the stored preference.
     private func menuBarToggleChanged(_ newValue: Bool) {
         applyMenuBarMode(newValue)
     }
 
+    /// Applies the current menu-bar-only mode using the shared AppKit controller on macOS.
     private func applyMenuBarMode(_ enabled: Bool) {
         #if os(macOS)
         if enabled {
@@ -64,6 +74,34 @@ struct SettingView: View {
             LSUIElementController.shared.disableMenuBarOnly()
         }
         #endif
+    }
+
+    /// Two-way binding that saves language changes asynchronously through the localization manager.
+    private var languageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { localizationManager.language },
+            set: { newLanguage in
+                Task {
+                    await localizationManager.updateLanguage(newLanguage)
+                }
+            }
+        )
+    }
+
+    /// Returns the user-facing label shown for each supported language option.
+    private func languageLabel(for language: AppLanguage) -> String {
+        switch language {
+        case .system:
+            return t("settings.language.system")
+        case .korean:
+            return t("settings.language.korean")
+        case .english:
+            return t("settings.language.english")
+        }
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
     }
 }
 

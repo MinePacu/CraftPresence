@@ -316,7 +316,12 @@ void DiscordppWrapper::updateActivity(const std::string& name,
                                     const std::string& state,
                                     const std::string& details,
                                     const std::string& largeImageKey,
+                                    const std::string& largeImageText,
                                     const std::string& smallImageKey,
+                                    const std::string& smallImageText,
+                                    const std::string& partyId,
+                                    int32_t partyCurrent,
+                                    int32_t partyMax,
                                     int64_t startTimestamp,
                                     int64_t endTimestamp,
                                     int32_t activityType,
@@ -357,10 +362,24 @@ void DiscordppWrapper::updateActivity(const std::string& name,
             if (!largeImageKey.empty()) {
                 assets.SetLargeImage(largeImageKey);
             }
+            if (!largeImageText.empty()) {
+                assets.SetLargeText(largeImageText);
+            }
             if (!smallImageKey.empty()) {
                 assets.SetSmallImage(smallImageKey);
             }
+            if (!smallImageText.empty()) {
+                assets.SetSmallText(smallImageText);
+            }
             activity.SetAssets(assets);
+        }
+
+        if (!partyId.empty() && partyCurrent > 0 && partyMax >= 0) {
+            discordpp::ActivityParty party;
+            party.SetId(partyId);
+            party.SetCurrentSize(partyCurrent);
+            party.SetMaxSize(partyMax);
+            activity.SetParty(party);
         }
         
         // 타임스탬프 설정
@@ -411,4 +430,3 @@ void DiscordppWrapper::runCallbacks() {
         // Ignore callback pump errors for now; Discord SDK typically reports via other APIs.
     }
 }
-

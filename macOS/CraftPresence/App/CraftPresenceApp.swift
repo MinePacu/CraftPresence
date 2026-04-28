@@ -10,9 +10,16 @@ import AppKit
 //import DiscordSDKManager
 
 @main
+/// Main application entry point that wires together persistence, permissions, and localization.
 struct CraftPresenceApp: App {
-    @ObservedObject private var permissionsService = PermissionsService()
+    @StateObject private var permissionsService = PermissionsService()
+    @StateObject private var localizationManager = LocalizationManager.shared
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
+    #endif
     
+    /// Shared SwiftData container used by the app scene.
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -26,6 +33,7 @@ struct CraftPresenceApp: App {
         }
     }()
 
+    /// Reads the Discord application identifier from configuration and initializes the SDK where supported.
     private func configureDiscordSDK() {
 #if os(iOS) || targetEnvironment(macCatalyst)
         let rawValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String
@@ -51,27 +59,64 @@ struct CraftPresenceApp: App {
                     PermissionsView()
                 }
             }
-            .onAppear(perform: self.permissionsService.pollAccessibilityPrivileges)
             .onAppear {
+                #if os(macOS)
+                permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: !AutomationLaunchOptions.isUITesting)
+                #else
+                permissionsService.pollAccessibilityPrivileges()
+                #endif
                 configureDiscordSDK()
                 hideTitleBarOnCatalyst()
             }
+            #if os(macOS)
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: false)
+            }
+            #endif
+            .task {
+                await seedAutomationSettingsIfNeeded()
+                await localizationManager.load()
+            }
+            .environmentObject(localizationManager)
+            .environment(\.locale, localizationManager.locale)
         }
         .modelContainer(sharedModelContainer)
     }
     
+    /// Hides the default title bar when the app runs as a Mac Catalyst build.
     func hideTitleBarOnCatalyst() {
 #if targetEnvironment(macCatalyst)
         (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.titlebar?.titleVisibility = .hidden
 #endif
     }
+
+    /// Seeds deterministic settings for UI automation runs so previews and tests can start from a known state.
+    private func seedAutomationSettingsIfNeeded() async {
+        guard AutomationLaunchOptions.isUITesting else { return }
+
+        let seededBundleIDs = AutomationLaunchOptions.seedBundleIDs
+        guard !seededBundleIDs.isEmpty else { return }
+
+        var settings = await ConfigUtility.shared.currentSettings()
+        settings.bundleIDs = seededBundleIDs.sorted()
+
+        do {
+            _ = try await ConfigUtility.shared.setSettings(settings)
+        } catch {
+            #if DEBUG
+            print("Failed to seed automation settings: \(error)")
+            #endif
+        }
+    }
 }
 
 #if os(macOS)
+/// AppKit delegate responsible for early macOS-only bootstrapping such as accessibility prompts and Discord setup.
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        hideTitleBar()
-        PermissionsService.acquireAccessibilityPrivileges()
+        guard !AutomationLaunchOptions.isUITesting else { return }
+
         let rawValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String
         let appID = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if appID.isEmpty {
@@ -82,13 +127,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             DiscordSDKManager.shared.configure(applicationId: appID,  autoAuthorize: false)
             print("[DiscordSDK] SDK configured (macOS)")
         }
-    }
-
-    func hideTitleBar() {
-        guard let window = NSApplication.shared.windows.first else { assertionFailure(); return }
-        window.standardWindowButton(.closeButton)?.isHidden = true
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
     }
 }
 #endif

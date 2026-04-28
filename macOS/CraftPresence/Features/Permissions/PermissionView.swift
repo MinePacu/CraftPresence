@@ -4,38 +4,45 @@
 
 import SwiftUI
 
+/// Onboarding screen shown until the app receives the accessibility permission required for app detection.
 struct PermissionsView: View {
+    @EnvironmentObject private var localizationManager: LocalizationManager
 
+    /// Opens the macOS Accessibility settings pane so the user can grant the required permission.
     func openSystemPreferences() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
     var body: some View {
         VStack {
-            Text("권한 필요 🔐")
+            Text(t("permissions.title"))
                 .font(.system(size: 32))
                 .padding(.bottom, 25)
 
-            Text("이 앱에는 macOS의 손쉬운 사용(접근성) 권한이 필요합니다.")
+            Text(t("permissions.message"))
                 .font(.system(size: 16))
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 15)
 
-            Text("일반적으로 macOS에서 권한 요청 창이 표시되지만, 표시되지 않았다면 아래 버튼을 눌러 설정으로 이동하세요:")
+            Text(t("permissions.instructions"))
                 .font(.system(size: 16))
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 25)
 
-            Button("시스템 설정 열기", action: openSystemPreferences)
+            Button(t("permissions.open_settings"), action: openSystemPreferences)
                 .buttonStyle(ThemedButtonStyle(fontSize: 16, width: 220))
                 .padding(.bottom, 25)
 
-            Text("권한이 허용되면 몇 초 내로 앱이 자동으로 활성화됩니다.")
+            Text(t("permissions.footer"))
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
         }
         .foregroundColor(.primary)
         .padding(.horizontal, 35)
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
     }
 }
 
@@ -45,6 +52,7 @@ struct PermissionsView_Previews: PreviewProvider {
     }
 }
 
+/// Simple branded button style used on the permissions screen.
 struct ThemedButtonStyle: ButtonStyle {
     let fontSize: CGFloat
     let width: CGFloat

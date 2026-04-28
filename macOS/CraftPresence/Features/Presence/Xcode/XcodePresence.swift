@@ -6,6 +6,7 @@ import Combine
 
 // MARK: - Xcode Presence Manager
 @MainActor
+/// Tracks the active Xcode project and file to publish an editor-focused Discord Rich Presence session.
 class XcodePresenceManager: ObservableObject {
     static let shared = XcodePresenceManager()
     
@@ -38,6 +39,7 @@ class XcodePresenceManager: ObservableObject {
     private init() {}
     
     // MARK: - Monitoring Control
+    /// Starts polling Xcode state and schedules periodic Rich Presence refreshes.
     func startMonitoring() {
         guard monitorTimer == nil else { return }
         
@@ -67,6 +69,7 @@ class XcodePresenceManager: ObservableObject {
         }
     }
     
+    /// Stops all monitoring work and clears the active Xcode Discord presence.
     func stopMonitoring() {
         monitorTimer?.invalidate()
         monitorTimer = nil
@@ -87,6 +90,7 @@ class XcodePresenceManager: ObservableObject {
     }
     
     // MARK: - Discord Configuration
+    /// Ensures the Discord SDK has been configured before any Xcode presence updates are sent.
     private func ensureDiscordConfigured() async {
         guard !isDiscordConfigured else {
             discordStatus = "Configured"
@@ -105,6 +109,7 @@ class XcodePresenceManager: ObservableObject {
     }
     
     // MARK: - Fetch Xcode Info
+    /// Collects the best available Xcode project and file information using AppleScript with a shell fallback.
     private func fetchXcodeInfo() async {
         guard !isFetchingXcodeInfo else {
             print("⏳ Skipping fetchXcodeInfo; previous call still running")
@@ -144,6 +149,7 @@ class XcodePresenceManager: ObservableObject {
         }
     }
     
+    /// Reads the active workspace and front window title from Xcode to infer the current editing context.
     private func fetchBasicInfo() async -> (project: String, file: String, isActive: Bool) {
         let lines: [String] = [
             "tell application \"System Events\"",
@@ -275,6 +281,7 @@ class XcodePresenceManager: ObservableObject {
         }
     }
     
+    /// Falls back to `lsof` when the Xcode UI does not expose an obvious current file name.
     private func fetchFileFromLsof() async -> String? {
         // lsof 명령으로 Xcode가 열고 있는 .swift, .m, .h 파일 찾기
         let command = "lsof -c Xcode | grep -E '\\.(swift|m|mm|h|cpp|c)$' | awk '{print $NF}' | head -1"
@@ -300,6 +307,7 @@ class XcodePresenceManager: ObservableObject {
     }
     
     // MARK: - Discord Update
+    /// Rate-limits Xcode presence refreshes to avoid unnecessary Discord activity churn.
     private func updateDiscordIfNeeded() async {
         guard isActive else { return }
         
@@ -312,6 +320,7 @@ class XcodePresenceManager: ObservableObject {
         await updateDiscordPresence()
     }
     
+    /// Sends the current Xcode editing session to Discord as a playing activity.
     private func updateDiscordPresence() async {
         guard isActive else { return }
         guard isDiscordConfigured else {
@@ -345,6 +354,7 @@ class XcodePresenceManager: ObservableObject {
         }
     }
 
+    /// Resets or advances the active session start time whenever the tracked project or file changes.
     private func updateSession(project: String, file: String, isActive: Bool) {
         guard isActive else {
             currentSessionIdentifier = nil

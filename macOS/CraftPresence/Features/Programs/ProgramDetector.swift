@@ -1,16 +1,19 @@
 import AppKit
 import Combine
 
+/// Snapshot describing the currently detected foreground application and focused window.
 public struct ProgramUpdate: Sendable {
     public let appName: String?
     public let bundleID: String?
     public let windowTitle: String?
 }
 
+/// Delegate for consumers that want imperative callbacks when the active app context changes.
 public protocol ProgramDetectorDelegate: AnyObject {
     func programDetector(_ detector: ProgramDetector, didUpdateActiveAppName appName: String?, bundleIdentifier: String?, windowTitle: String?)
 }
 
+/// Observes the foreground application and focused window title using AppKit and Accessibility APIs.
 public final class ProgramDetector: NSObject {
     public static let shared = ProgramDetector()
 
@@ -36,6 +39,7 @@ public final class ProgramDetector: NSObject {
     private let maxTitleRetry: Int = 5
 
     /// Optionally allow callers to adjust polling interval (in seconds). Values below 0.2 are clamped to 0.2.
+    /// Updates the fallback polling interval used when accessibility notifications are not sufficient.
     public func setPollingInterval(_ interval: TimeInterval) {
         let clamped = max(0.2, interval)
         pollingInterval = clamped
@@ -56,6 +60,7 @@ public final class ProgramDetector: NSObject {
 
     // MARK: - Public control
 
+    /// Starts observing app activation and focused-window title changes.
     public func start() {
         // logging disabled
         guard workspaceObserver == nil else { return }
@@ -82,6 +87,7 @@ public final class ProgramDetector: NSObject {
         }
     }
 
+    /// Stops all activation, accessibility, and polling observers.
     public func stop() {
         // logging disabled
         if let workspaceObserver {
@@ -93,6 +99,7 @@ public final class ProgramDetector: NSObject {
     }
     
     // MARK: - AsyncStream API
+    /// Returns an async stream that emits the latest active program snapshot whenever it changes.
     public func updatesStream() -> AsyncStream<ProgramUpdate> {
         AsyncStream { continuation in
             let id = UUID()
@@ -352,7 +359,9 @@ public final class ProgramDetector: NSObject {
 
 
 // MARK: - Accessibility permission helper
+/// Helper for checking or prompting for the Accessibility permission required by `ProgramDetector`.
 public enum AccessibilityPermission {
+    /// Checks accessibility trust and optionally asks macOS to show the permission prompt.
     public static func ensureEnabled(promptIfNeeded: Bool = true) -> Bool {
         let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: promptIfNeeded as CFBoolean]
         return AXIsProcessTrustedWithOptions(options as CFDictionary)

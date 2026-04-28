@@ -6,7 +6,6 @@
 //
 
 import Testing
-@testable import CraftPresence
 
 struct CraftPresenceTests {
 

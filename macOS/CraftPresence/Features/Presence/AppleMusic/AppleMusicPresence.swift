@@ -7,6 +7,7 @@ import AppKit
 
 // MARK: - Simple LRU Cache for String -> String
 @MainActor
+/// Fixed-capacity least-recently-used cache used to cap artwork lookup memory growth.
 final class LRUCache<Key: Hashable, Value> {
     private final class Node {
         let key: Key
@@ -25,16 +26,19 @@ final class LRUCache<Key: Hashable, Value> {
     private(set) var count: Int = 0
     private let capacity: Int
 
+    /// Creates a cache with the requested capacity, clamped to at least one entry.
     init(capacity: Int) {
         self.capacity = max(1, capacity)
     }
 
+    /// Returns the cached value for a key and promotes it to the most recently used position.
     func get(_ key: Key) -> Value? {
         guard let node = dict[key] else { return nil }
         moveToHead(node)
         return node.value
     }
 
+    /// Stores or replaces a cached value and evicts the least recently used entry if capacity is exceeded.
     func set(_ key: Key, value: Value) {
         if let node = dict[key] {
             node.value = value
@@ -99,6 +103,7 @@ final class LRUCache<Key: Hashable, Value> {
 
 // MARK: - Apple Music Presence Manager
 @MainActor
+/// Monitors Apple Music playback and mirrors the current track into Discord Rich Presence.
 class AppleMusicPresenceManager: ObservableObject {
     static let shared = AppleMusicPresenceManager()
     
@@ -147,6 +152,7 @@ class AppleMusicPresenceManager: ObservableObject {
     }
     
     // MARK: - Monitoring Control
+    /// Starts polling Music.app and scheduling Discord presence refreshes.
     func startMonitoring() {
         guard monitorTimer == nil else { return }
         
@@ -177,6 +183,7 @@ class AppleMusicPresenceManager: ObservableObject {
         }
     }
     
+    /// Stops monitoring timers, clears Discord activity, and resets local playback state.
     func stopMonitoring() {
         monitorTimer?.invalidate()
         monitorTimer = nil
@@ -196,6 +203,7 @@ class AppleMusicPresenceManager: ObservableObject {
         lastArtworkFetchKey = ""
     }
     
+    /// Produces a normalized cache key so artwork lookups remain stable across case and Unicode differences.
     private func normalizedCacheKey(artist: String, album: String, track: String) -> String {
         let normalizedArtist = normalizeComponent(artist)
         let normalizedAlbum = normalizeComponent(album)
@@ -221,6 +229,7 @@ class AppleMusicPresenceManager: ObservableObject {
     }
     
     // MARK: - Discord Configuration
+    /// Lazily configures the Discord SDK before any Apple Music activity updates are attempted.
     private func ensureDiscordConfigured() async {
         guard !isDiscordConfigured else {
             discordStatus = "Configured"
@@ -239,6 +248,7 @@ class AppleMusicPresenceManager: ObservableObject {
     }
     
     // MARK: - Fetch Now Playing
+    /// Queries Music.app for the current track, artwork, and playback position, then refreshes cached state.
     private func fetchNowPlaying() async {
         let lines: [String] = [
             "tell application \"System Events\"",
@@ -406,6 +416,7 @@ class AppleMusicPresenceManager: ObservableObject {
     }
     
     // MARK: - Image Cache Helpers
+    /// Stores artwork images in the memory cache using an approximate byte-size cost.
     private func cacheImage(_ image: NSImage, forKey key: String) {
         let cost = approximateByteSize(of: image)
         imageCache.setObject(image, forKey: key as NSString, cost: cost)
@@ -432,6 +443,7 @@ class AppleMusicPresenceManager: ObservableObject {
     }
     
     // MARK: - Discord Update
+    /// Applies a minimum refresh interval before sending another playback update to Discord.
     private func updateDiscordIfNeeded() async {
         guard isPlaying else { return }
         
@@ -443,6 +455,7 @@ class AppleMusicPresenceManager: ObservableObject {
         await updateDiscordPresence()
     }
     
+    /// Sends the current Apple Music playback session to Discord as a listening activity.
     private func updateDiscordPresence() async {
         guard isPlaying else { return }
         guard isDiscordConfigured else {
