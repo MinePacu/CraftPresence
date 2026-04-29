@@ -9,6 +9,7 @@ struct OverviewView: View {
 
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
+    @State private var showingDiscordConnection: Bool = false
 
     private var isTracked: Bool {
         guard let activeBundleID else { return false }
@@ -20,6 +21,7 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 statusGrid
+                discordConnectionPanel
                 if let lastErrorMessage = discordManager.lastErrorMessage, !lastErrorMessage.isEmpty {
                     errorPanel(message: lastErrorMessage)
                 }
@@ -27,6 +29,10 @@ struct OverviewView: View {
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
+        }
+        .sheet(isPresented: $showingDiscordConnection) {
+            DiscordConnectionView()
+                .environmentObject(localizationManager)
         }
     }
 
@@ -47,7 +53,7 @@ struct OverviewView: View {
                     title: t("overview.discord_status"),
                     systemImage: "gamecontroller",
                     accent: statusColor,
-                    value: discordManager.dashboardStatus.title,
+                    value: t(discordManager.dashboardStatus.localizationKey),
                     detail: statusDetailText
                 ) {
                     statusBadge
@@ -132,8 +138,30 @@ struct OverviewView: View {
         )
     }
 
+    private var discordConnectionPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(t("overview.discord_connection"))
+                .font(.headline)
+
+            Text(t("overview.discord_connection_description"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(discordConnectionButtonTitle) {
+                showingDiscordConnection = true
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.secondary.opacity(0.08))
+        )
+    }
+
     private var statusBadge: some View {
-        Text(discordManager.dashboardStatus.title)
+        Text(t(discordManager.dashboardStatus.localizationKey))
             .font(.footnote.weight(.semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -181,6 +209,17 @@ struct OverviewView: View {
             return t("common.unauthorized")
         case .unknown:
             return t("common.unknown")
+        }
+    }
+
+    private var discordConnectionButtonTitle: String {
+        switch discordManager.dashboardStatus {
+        case .ready:
+            return t("overview.manage_discord_connection")
+        case .authorizing, .connecting:
+            return t("discord.connection.connecting")
+        case .configured, .notConfigured, .unauthorized, .failed:
+            return t("overview.connect_discord")
         }
     }
 

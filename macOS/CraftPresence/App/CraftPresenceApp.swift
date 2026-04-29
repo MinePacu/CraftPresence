@@ -14,6 +14,9 @@ import AppKit
 struct CraftPresenceApp: App {
     @StateObject private var permissionsService = PermissionsService()
     @StateObject private var localizationManager = LocalizationManager.shared
+    @StateObject private var discordManager = DiscordSDKManager.shared
+    @AppStorage("discordOnboardingCompleted") private var discordOnboardingCompleted: Bool = false
+    @State private var showingDiscordOnboarding: Bool = false
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
@@ -67,6 +70,7 @@ struct CraftPresenceApp: App {
                 #endif
                 configureDiscordSDK()
                 hideTitleBarOnCatalyst()
+                updateDiscordOnboardingPresentation()
             }
             #if os(macOS)
             .onChange(of: scenePhase) { _, newPhase in
@@ -74,12 +78,27 @@ struct CraftPresenceApp: App {
                 permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: false)
             }
             #endif
+            .onChange(of: permissionsService.isTrusted) { _, _ in
+                updateDiscordOnboardingPresentation()
+            }
+            .onChange(of: discordOnboardingCompleted) { _, _ in
+                updateDiscordOnboardingPresentation()
+            }
             .task {
                 await seedAutomationSettingsIfNeeded()
                 await localizationManager.load()
             }
+            .sheet(isPresented: $showingDiscordOnboarding) {
+                DiscordConnectionView(mode: .onboarding) {
+                    discordOnboardingCompleted = true
+                    showingDiscordOnboarding = false
+                }
+                .interactiveDismissDisabled()
+                .environmentObject(localizationManager)
+            }
             .environmentObject(localizationManager)
             .environment(\.locale, localizationManager.locale)
+            .environmentObject(discordManager)
         }
         .modelContainer(sharedModelContainer)
     }
@@ -108,6 +127,12 @@ struct CraftPresenceApp: App {
             print("Failed to seed automation settings: \(error)")
             #endif
         }
+    }
+
+    private func updateDiscordOnboardingPresentation() {
+        showingDiscordOnboarding = permissionsService.isTrusted
+            && !discordOnboardingCompleted
+            && !AutomationLaunchOptions.isUITesting
     }
 }
 

@@ -57,15 +57,15 @@ final class DiscordSDKManager: ObservableObject {
         case unauthorized
         case failed
 
-        public var title: String {
+        public var localizationKey: String {
             switch self {
-            case .notConfigured: return "Not Configured"
-            case .configured: return "Configured"
-            case .authorizing: return "Authorizing"
-            case .connecting: return "Connecting"
-            case .ready: return "Ready"
-            case .unauthorized: return "Unauthorized"
-            case .failed: return "Failed"
+            case .notConfigured: return "discord.status.not_configured"
+            case .configured: return "discord.status.configured"
+            case .authorizing: return "discord.status.authorizing"
+            case .connecting: return "discord.status.connecting"
+            case .ready: return "discord.status.ready"
+            case .unauthorized: return "discord.status.unauthorized"
+            case .failed: return "discord.status.failed"
             }
         }
     }
