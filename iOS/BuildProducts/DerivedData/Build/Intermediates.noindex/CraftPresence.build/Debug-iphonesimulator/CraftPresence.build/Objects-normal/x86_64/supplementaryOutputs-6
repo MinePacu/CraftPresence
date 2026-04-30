@@ -1,0 +1,23 @@
+{
+  "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Programs/ProgramDetector.swift" : {
+    "const-values" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramDetector.swiftconstvalues",
+    "dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramDetector.d",
+    "diagnostics" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramDetector.dia",
+    "object" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramDetector.o",
+    "swift-dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramDetector.swiftdeps"
+  },
+  "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Programs/ProgramsView.swift" : {
+    "const-values" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramsView.swiftconstvalues",
+    "dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramsView.d",
+    "diagnostics" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramsView.dia",
+    "object" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramsView.o",
+    "swift-dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/ProgramsView.swiftdeps"
+  },
+  "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Settings/SettingView.swift" : {
+    "const-values" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/SettingView.swiftconstvalues",
+    "dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/SettingView.d",
+    "diagnostics" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/SettingView.dia",
+    "object" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/SettingView.o",
+    "swift-dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphonesimulator/CraftPresence.build/Objects-normal/x86_64/SettingView.swiftdeps"
+  }
+}

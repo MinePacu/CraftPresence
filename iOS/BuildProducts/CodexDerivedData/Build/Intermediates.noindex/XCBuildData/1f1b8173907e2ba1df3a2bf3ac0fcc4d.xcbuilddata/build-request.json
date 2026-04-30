@@ -1,0 +1,73 @@
+{
+  "buildCommand" : {
+    "command" : "build",
+    "skipDependencies" : false,
+    "style" : "buildOnly"
+  },
+  "configuredTargets" : [
+    {
+      "guid" : "d43ae83965d7571e426270e24bd5108e79431f460bec7da5fc3e73d9858e387d"
+    }
+  ],
+  "containerPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence.xcodeproj",
+  "continueBuildingAfterErrors" : false,
+  "dependencyScope" : "workspace",
+  "enableIndexBuildArena" : false,
+  "hideShellScriptEnvironment" : false,
+  "parameters" : {
+    "action" : "build",
+    "activeArchitecture" : "undefined_arch",
+    "activeRunDestination" : {
+      "disableOnlyActiveArch" : true,
+      "hostTargetedPlatform" : null,
+      "platform" : "iphoneos",
+      "sdk" : "iphoneos26.4",
+      "sdkVariant" : "iphoneos",
+      "supportedArchitectures" : [
+        "armv4t",
+        "armv5",
+        "armv6",
+        "armv7",
+        "armv7f",
+        "armv7s",
+        "armv7k",
+        "arm64",
+        "arm64e"
+      ],
+      "targetArchitecture" : "undefined_arch"
+    },
+    "arenaInfo" : {
+      "buildIntermediatesPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData/Build/Intermediates.noindex",
+      "buildProductsPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData/Build/Products",
+      "derivedDataPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData",
+      "indexDataStoreFolderPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData/Index.noindex/DataStore",
+      "indexEnableDataStore" : true,
+      "indexPCHPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData/Index.noindex/PrecompiledHeaders",
+      "pchPath" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData/Build/Intermediates.noindex/PrecompiledHeaders"
+    },
+    "configurationName" : "Debug",
+    "overrides" : {
+      "commandLine" : {
+        "table" : {
+          "CODE_SIGNING_ALLOWED" : "NO"
+        }
+      },
+      "synthesized" : {
+        "table" : {
+          "ACTION" : "build",
+          "CLANG_COVERAGE_MAPPING" : "YES",
+          "CLANG_PROFILE_DATA_DIRECTORY" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/CodexDerivedData/Build/ProfileData",
+          "ENABLE_PREVIEWS" : "NO",
+          "ENABLE_XOJIT_PREVIEWS" : "YES",
+          "ONLY_ACTIVE_ARCH" : "YES"
+        }
+      }
+    }
+  },
+  "schemeCommand" : "launch",
+  "showNonLoggedProgress" : true,
+  "useDryRun" : false,
+  "useImplicitDependencies" : true,
+  "useLegacyBuildLocations" : false,
+  "useParallelTargets" : true
+}

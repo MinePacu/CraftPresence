@@ -1,0 +1,1 @@
+@rpath/CraftPresence.debug.dylib

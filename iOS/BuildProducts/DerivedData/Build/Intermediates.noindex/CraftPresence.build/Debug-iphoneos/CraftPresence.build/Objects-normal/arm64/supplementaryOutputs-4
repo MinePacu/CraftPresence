@@ -1,0 +1,23 @@
+{
+  "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Presence/AppleMusic/AppleMusicPresence.swift" : {
+    "const-values" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/AppleMusicPresence.swiftconstvalues",
+    "dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/AppleMusicPresence.d",
+    "diagnostics" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/AppleMusicPresence.dia",
+    "object" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/AppleMusicPresence.o",
+    "swift-dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/AppleMusicPresence.swiftdeps"
+  },
+  "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Presence/AppleMusic/MediaRemoteHelper.swift" : {
+    "const-values" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/MediaRemoteHelper.swiftconstvalues",
+    "dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/MediaRemoteHelper.d",
+    "diagnostics" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/MediaRemoteHelper.dia",
+    "object" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/MediaRemoteHelper.o",
+    "swift-dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/MediaRemoteHelper.swiftdeps"
+  },
+  "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Presence/AppleMusic/NowPlayingTestView.swift" : {
+    "const-values" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/NowPlayingTestView.swiftconstvalues",
+    "dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/NowPlayingTestView.d",
+    "diagnostics" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/NowPlayingTestView.dia",
+    "object" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/NowPlayingTestView.o",
+    "swift-dependencies" : "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/BuildProducts/DerivedData/Build/Intermediates.noindex/CraftPresence.build/Debug-iphoneos/CraftPresence.build/Objects-normal/arm64/NowPlayingTestView.swiftdeps"
+  }
+}

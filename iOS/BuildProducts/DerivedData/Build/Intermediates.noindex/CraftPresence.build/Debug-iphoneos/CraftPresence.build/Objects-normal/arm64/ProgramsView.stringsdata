@@ -1,0 +1,24 @@
+{
+  "source": "/Users/nohyunsoo/Desktop/projects/iOS/CraftPresence/CraftPresence/Features/Programs/ProgramsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 485
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 494
+        }
+      }
+    ]
+  },
+  "version": 1
+}
