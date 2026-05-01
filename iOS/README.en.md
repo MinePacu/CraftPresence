@@ -51,7 +51,13 @@ The project file currently sets the iOS deployment target to `26.4`. If that doe
 
 2. Open `CraftPresence.xcodeproj` in Xcode.
 
-3. Check that the `APPLICATION_ID` value in the `CraftPresence` target points to your Discord application ID.
+3. Add your Discord application ID to the local configuration file.
+
+   ```sh
+   cp CraftPresence/Config/CraftPresence.local.example.xcconfig CraftPresence/Config/CraftPresence.local.xcconfig
+   ```
+
+   Replace `INFOPLIST_KEY_APPLICATION_ID` in `CraftPresence/Config/CraftPresence.local.xcconfig` with your Discord application ID. This file is not committed to git.
 
 4. In the Discord Developer Portal, make sure the redirect URI or URL scheme settings match the app schemes.
 
@@ -64,7 +70,7 @@ The project file currently sets the iOS deployment target to `26.4`. If that doe
 
 ## Discord Configuration
 
-The app reads `APPLICATION_ID` from `Info.plist` to configure the Discord SDK. The Xcode project wires this through the `INFOPLIST_KEY_APPLICATION_ID` build setting, so forks and release builds should use their own Discord application ID.
+The app reads `APPLICATION_ID` from `Info.plist` to configure the Discord SDK. The tracked `CraftPresence/Config/CraftPresence.xcconfig` keeps only a placeholder, while the real Discord application ID is provided by the git-ignored `CraftPresence/Config/CraftPresence.local.xcconfig`.
 
 The `largeImageKey` and `smallImageKey` values used in Rich Presence presets must match Rich Presence asset keys registered in the Discord Developer Portal.
 

@@ -188,10 +188,6 @@ struct ContentView: View {
                         if selection != .programs { selectionStack.append(selection) }
                         selection = .programs
                     }
-                    SidebarRow(title: t("sidebar.builtin"), systemImage: "bolt.fill", isSelected: selection == .builtin, tint: .pink, accessibilityIdentifier: "sidebar.builtin") {
-                        if selection != .builtin { selectionStack.append(selection) }
-                        selection = .builtin
-                    }
                     SidebarRow(title: t("sidebar.about"), systemImage: "info.circle", isSelected: selection == .about, tint: .pink, accessibilityIdentifier: "sidebar.about") {
                         if selection != .about { selectionStack.append(selection) }
                         selection = .about
@@ -280,11 +276,6 @@ struct ContentView: View {
                         Label(t("sidebar.programs"), systemImage: "list.bullet.rectangle")
                     }
                     .accessibilityIdentifier("sidebar.programs")
-
-                    NavigationLink(value: DetailSelection.builtin) {
-                        Label(t("sidebar.builtin"), systemImage: "bolt.fill")
-                    }
-                    .accessibilityIdentifier("sidebar.builtin")
 
                     NavigationLink(value: DetailSelection.about) {
                         Label(t("sidebar.about"), systemImage: "info.circle")

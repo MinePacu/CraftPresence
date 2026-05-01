@@ -51,7 +51,13 @@ CraftPresence/
 
 2. `CraftPresence.xcodeproj`를 Xcode에서 엽니다.
 
-3. `CraftPresence` 타깃의 `APPLICATION_ID` 값이 본인의 Discord 애플리케이션 ID인지 확인합니다.
+3. Discord 애플리케이션 ID를 로컬 설정 파일에 입력합니다.
+
+   ```sh
+   cp CraftPresence/Config/CraftPresence.local.example.xcconfig CraftPresence/Config/CraftPresence.local.xcconfig
+   ```
+
+   `CraftPresence/Config/CraftPresence.local.xcconfig`의 `INFOPLIST_KEY_APPLICATION_ID` 값을 본인의 Discord 애플리케이션 ID로 바꿉니다. 이 파일은 git에 커밋되지 않습니다.
 
 4. Discord Developer Portal에서 Redirect URI 또는 URL Scheme 설정이 앱의 scheme과 맞는지 확인합니다.
 
@@ -64,7 +70,7 @@ CraftPresence/
 
 ## Discord 설정
 
-앱은 `Info.plist`의 `APPLICATION_ID`를 읽어 Discord SDK를 설정합니다. 기본 Xcode 설정에는 `INFOPLIST_KEY_APPLICATION_ID` 빌드 설정이 연결되어 있으므로, 배포하거나 포크해서 사용할 때는 본인의 Discord 애플리케이션 ID로 바꾸는 것이 좋습니다.
+앱은 `Info.plist`의 `APPLICATION_ID`를 읽어 Discord SDK를 설정합니다. 추적되는 `CraftPresence/Config/CraftPresence.xcconfig`에는 placeholder만 두고, 실제 Discord 애플리케이션 ID는 git이 무시하는 `CraftPresence/Config/CraftPresence.local.xcconfig`에서 덮어씁니다.
 
 Rich Presence 이미지 필드에 입력하는 `largeImageKey`, `smallImageKey`는 Discord Developer Portal에 등록된 Rich Presence asset key와 일치해야 합니다.
 

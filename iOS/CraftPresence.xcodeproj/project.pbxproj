@@ -77,6 +77,8 @@
 		7D3CEDAD2FA349C200694E71 /* CraftPresenceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CraftPresenceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D3CEDB72FA349C200694E71 /* CraftPresenceUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CraftPresenceUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7D4A00002FA4000000694E71 /* CraftPresence/ThirdParty/DiscordSocialSDK/discord_partner_sdk.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = CraftPresence/ThirdParty/DiscordSocialSDK/discord_partner_sdk.xcframework; sourceTree = "<group>"; };
+		7D5500012FA6000000694E71 /* CraftPresence.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CraftPresence.xcconfig; sourceTree = "<group>"; };
+		7D5500022FA6000000694E71 /* CraftPresence.local.example.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = CraftPresence.local.example.xcconfig; sourceTree = "<group>"; };
 		7D5200012FA5000000694E71 /* CraftPresenceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CraftPresenceApp.swift; sourceTree = "<group>"; };
 		7D5200022FA5000000694E71 /* LSUIElement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LSUIElement.swift; sourceTree = "<group>"; };
 		7D5200032FA5000000694E71 /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
@@ -162,12 +164,22 @@
 			isa = PBXGroup;
 			children = (
 				7D5300012FA5000000694E71 /* App */,
+				7D5500032FA6000000694E71 /* Config */,
 				7D5300022FA5000000694E71 /* Features */,
 				7D5300102FA5000000694E71 /* Shared */,
 				7D52001A2FA5000000694E71 /* Assets.xcassets */,
 				7D5400012FA5000000694E71 /* Localizable.strings */,
 			);
 			path = CraftPresence;
+			sourceTree = "<group>";
+		};
+		7D5500032FA6000000694E71 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				7D5500012FA6000000694E71 /* CraftPresence.xcconfig */,
+				7D5500022FA6000000694E71 /* CraftPresence.local.example.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		7D3CEDB02FA349C200694E71 /* CraftPresenceTests */ = {
@@ -666,6 +678,7 @@
 		};
 		7D3CEDC22FA349C200694E71 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7D5500012FA6000000694E71 /* CraftPresence.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -675,7 +688,6 @@
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CraftPresence/Info.plist;
-				INFOPLIST_KEY_APPLICATION_ID = YOUR_APPLICATION_ID;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -700,6 +712,7 @@
 		};
 		7D3CEDC32FA349C200694E71 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7D5500012FA6000000694E71 /* CraftPresence.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -709,7 +722,6 @@
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = CraftPresence/Info.plist;
-				INFOPLIST_KEY_APPLICATION_ID = YOUR_APPLICATION_ID;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

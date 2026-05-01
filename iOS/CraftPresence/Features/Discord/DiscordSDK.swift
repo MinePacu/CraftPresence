@@ -115,10 +115,23 @@ final class DiscordSDKManager: ObservableObject {
 
         if autoAuthorize {
             authorizeIfNeeded()
+        } else if tokenStore.load() != nil {
+            restoreAuthorizationIfPossible()
         }
     }
 
     func authorizeIfNeeded(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
+        authorizeIfNeeded(allowInteractiveAuthorization: true, completion: completion)
+    }
+
+    func restoreAuthorizationIfPossible(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
+        authorizeIfNeeded(allowInteractiveAuthorization: false, completion: completion)
+    }
+
+    private func authorizeIfNeeded(
+        allowInteractiveAuthorization: Bool,
+        completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil
+    ) {
         #if canImport(discord_partner_sdk)
         guard isClientInitialized else {
             completion?(.failure(.notConfigured))
@@ -134,7 +147,8 @@ final class DiscordSDKManager: ObservableObject {
 
         Task {
             do {
-                if let savedToken = tokenStore.load() {
+                let savedToken = tokenStore.load()
+                if let savedToken {
                     if savedToken.isAccessTokenUsable {
                         try await updateSDKToken(savedToken)
                         let user = try await fetchAuthenticatedUser(using: savedToken)
@@ -162,6 +176,16 @@ final class DiscordSDKManager: ObservableObject {
                         }
                         return
                     }
+                }
+
+                guard allowInteractiveAuthorization else {
+                    await MainActor.run {
+                        authorizationStatus = .unauthorized
+                        dashboardStatus = .unauthorized
+                        lastErrorMessage = nil
+                        completion?(.failure(.unauthorized))
+                    }
+                    return
                 }
 
                 let token = try await runOAuthAuthorization(applicationId: applicationId)
@@ -388,6 +412,14 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    func restoreAuthorizationIfPossible() async throws -> DiscordUser {
+        try await withCheckedThrowingContinuation { continuation in
+            restoreAuthorizationIfPossible { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+
     func currentUser() async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { continuation in
             fetchCurrentUser { result in
@@ -419,6 +451,10 @@ final class DiscordSDKManager: ObservableObject {
         end: Date? = nil,
         activityType: DiscordActivity.ActivityType = .playing
     ) async throws {
+        if authorizationStatus != .authorized {
+            _ = try await restoreAuthorizationIfPossible()
+        }
+
         try await withCheckedThrowingContinuation { continuation in
             updateActivity(
                 name: name,

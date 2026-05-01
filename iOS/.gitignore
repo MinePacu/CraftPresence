@@ -3,6 +3,9 @@ BuildProducts/
 DerivedData/
 *.xcuserdata/
 
+# Local app configuration
+CraftPresence/Config/CraftPresence.local.xcconfig
+
 # Discord SDK binaries and generated headers
 *.xcframework/
 CraftPresence/ThirdParty/DiscordSocialSDK/
