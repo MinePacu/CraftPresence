@@ -8,6 +8,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var bundleIDs: [String] = []
     public var programSettings: [String: ProgramPresenceSettings] = [:]
     public var customPresencePresets: [CustomPresencePreset] = CustomPresencePreset.defaults
+    public var lastCustomPresence: CustomPresencePreset?
+    public var appliedCustomPresence: CustomPresencePreset?
     public var activeCustomPresencePresetID: UUID?
     public var preferredLanguage: AppLanguage = .system
     
@@ -22,6 +24,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case bundleIDs
         case programSettings
         case customPresencePresets
+        case lastCustomPresence
+        case appliedCustomPresence
         case activeCustomPresencePresetID
         case preferredLanguage
     }
@@ -31,6 +35,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.bundleIDs = try container.decodeIfPresent([String].self, forKey: .bundleIDs) ?? []
         self.programSettings = try container.decodeIfPresent([String: ProgramPresenceSettings].self, forKey: .programSettings) ?? [:]
         self.customPresencePresets = try container.decodeIfPresent([CustomPresencePreset].self, forKey: .customPresencePresets) ?? CustomPresencePreset.defaults
+        self.lastCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .lastCustomPresence)
+        self.appliedCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .appliedCustomPresence)
         self.activeCustomPresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
     }
@@ -40,6 +46,8 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encode(bundleIDs, forKey: .bundleIDs)
         try container.encode(programSettings, forKey: .programSettings)
         try container.encode(customPresencePresets, forKey: .customPresencePresets)
+        try container.encodeIfPresent(lastCustomPresence, forKey: .lastCustomPresence)
+        try container.encodeIfPresent(appliedCustomPresence, forKey: .appliedCustomPresence)
         try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activeCustomPresencePresetID)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
     }
@@ -108,10 +116,65 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var smallImageKey: String = ""
     public var smallImageText: String = ""
     public var usesElapsedTime: Bool = true
+    public var elapsedStartDate: Date?
+    public var usesParty: Bool = false
     public var partyCurrent: Int = 1
     public var partyMax: Int = 1
 
     nonisolated public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case activityType
+        case details
+        case state
+        case largeImageKey
+        case largeImageText
+        case smallImageKey
+        case smallImageText
+        case usesElapsedTime
+        case elapsedStartDate
+        case usesParty
+        case partyCurrent
+        case partyMax
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        self.title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        self.activityType = try container.decodeIfPresent(ProgramPresenceSettings.ActivityType.self, forKey: .activityType) ?? .playing
+        self.details = try container.decodeIfPresent(String.self, forKey: .details) ?? ""
+        self.state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
+        self.largeImageKey = try container.decodeIfPresent(String.self, forKey: .largeImageKey) ?? ""
+        self.largeImageText = try container.decodeIfPresent(String.self, forKey: .largeImageText) ?? ""
+        self.smallImageKey = try container.decodeIfPresent(String.self, forKey: .smallImageKey) ?? ""
+        self.smallImageText = try container.decodeIfPresent(String.self, forKey: .smallImageText) ?? ""
+        self.usesElapsedTime = try container.decodeIfPresent(Bool.self, forKey: .usesElapsedTime) ?? true
+        self.elapsedStartDate = try container.decodeIfPresent(Date.self, forKey: .elapsedStartDate)
+        self.usesParty = try container.decodeIfPresent(Bool.self, forKey: .usesParty) ?? false
+        self.partyCurrent = try container.decodeIfPresent(Int.self, forKey: .partyCurrent) ?? 1
+        self.partyMax = try container.decodeIfPresent(Int.self, forKey: .partyMax) ?? 1
+    }
+
+    nonisolated public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(activityType, forKey: .activityType)
+        try container.encode(details, forKey: .details)
+        try container.encode(state, forKey: .state)
+        try container.encode(largeImageKey, forKey: .largeImageKey)
+        try container.encode(largeImageText, forKey: .largeImageText)
+        try container.encode(smallImageKey, forKey: .smallImageKey)
+        try container.encode(smallImageText, forKey: .smallImageText)
+        try container.encode(usesElapsedTime, forKey: .usesElapsedTime)
+        try container.encodeIfPresent(elapsedStartDate, forKey: .elapsedStartDate)
+        try container.encode(usesParty, forKey: .usesParty)
+        try container.encode(partyCurrent, forKey: .partyCurrent)
+        try container.encode(partyMax, forKey: .partyMax)
+    }
 
     nonisolated public init(
         id: UUID = UUID(),
@@ -124,6 +187,8 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         smallImageKey: String = "",
         smallImageText: String = "",
         usesElapsedTime: Bool = true,
+        elapsedStartDate: Date? = nil,
+        usesParty: Bool = false,
         partyCurrent: Int = 1,
         partyMax: Int = 1
     ) {
@@ -137,6 +202,8 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.smallImageKey = smallImageKey
         self.smallImageText = smallImageText
         self.usesElapsedTime = usesElapsedTime
+        self.elapsedStartDate = elapsedStartDate
+        self.usesParty = usesParty
         self.partyCurrent = partyCurrent
         self.partyMax = partyMax
     }
@@ -173,6 +240,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
 /// Actor-backed settings store that loads, mutates, and persists app configuration safely across tasks.
 public actor ConfigUtility {
     public static let shared = ConfigUtility()
+    public static let settingsDidChangeNotification = Notification.Name("ConfigUtilitySettingsDidChange")
 
     private let fileURL: URL
     private let encoder: JSONEncoder
@@ -275,6 +343,22 @@ public actor ConfigUtility {
         return settings.customPresencePresets.first { $0.id == id }
     }
 
+    /// Returns the Presence payload that should seed the manual customization screen.
+    public func currentCustomPresenceDraft() -> CustomPresencePreset? {
+        if let activeID = settings.activeCustomPresencePresetID {
+            if settings.lastCustomPresence?.id == activeID {
+                return settings.lastCustomPresence
+            }
+            return settings.customPresencePresets.first { $0.id == activeID }
+        }
+        return settings.lastCustomPresence
+    }
+
+    /// Returns the custom Presence that this app last applied and should keep authoritative.
+    public func currentAppliedCustomPresence() -> CustomPresencePreset? {
+        settings.appliedCustomPresence
+    }
+
     @discardableResult
     /// Adds a new custom Rich Presence preset.
     public func addCustomPresencePreset(_ preset: CustomPresencePreset) async throws -> CustomPresencePreset {
@@ -296,11 +380,30 @@ public actor ConfigUtility {
     }
 
     @discardableResult
+    /// Stores the latest manually published or edited custom Presence payload.
+    public func setLastCustomPresence(_ preset: CustomPresencePreset?) async throws -> AppSettings {
+        settings.lastCustomPresence = preset
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Stores the latest custom Presence that was actually published to Discord.
+    public func setAppliedCustomPresence(_ preset: CustomPresencePreset?) async throws -> AppSettings {
+        settings.appliedCustomPresence = preset
+        try persist()
+        return settings
+    }
+
+    @discardableResult
     /// Removes a custom preset and clears active state if that preset was published.
     public func removeCustomPresencePreset(id: UUID) async throws -> AppSettings {
         settings.customPresencePresets.removeAll { $0.id == id }
         if settings.activeCustomPresencePresetID == id {
             settings.activeCustomPresencePresetID = nil
+        }
+        if settings.appliedCustomPresence?.id == id {
+            settings.appliedCustomPresence = nil
         }
         try persist()
         return settings
@@ -318,6 +421,9 @@ public actor ConfigUtility {
 
     private func persist() throws {
         try ConfigUtility.persist(settings: settings, to: fileURL, with: encoder)
+        Task { @MainActor in
+            NotificationCenter.default.post(name: ConfigUtility.settingsDidChangeNotification, object: nil)
+        }
     }
 
     private static func persist(settings: AppSettings, to url: URL, with encoder: JSONEncoder) throws {

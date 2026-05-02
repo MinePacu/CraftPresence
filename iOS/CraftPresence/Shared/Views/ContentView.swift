@@ -17,6 +17,7 @@ struct ContentView: View {
     /// Navigation targets presented in the split view detail column.
     private enum DetailSelection: Equatable, Hashable {
         case overview
+        case customPresence
         case programs
         case builtin
         case about
@@ -28,6 +29,7 @@ struct ContentView: View {
         static func == (lhs: DetailSelection, rhs: DetailSelection) -> Bool {
             switch (lhs, rhs) {
             case (.overview, .overview): return true
+            case (.customPresence, .customPresence): return true
             case (.programs, .programs): return true
             case (.builtin, .builtin): return true
             case (.about, .about): return true
@@ -43,6 +45,8 @@ struct ContentView: View {
             switch self {
             case .overview:
                 hasher.combine("overview")
+            case .customPresence:
+                hasher.combine("customPresence")
             case .programs:
                 hasher.combine("programs")
             case .builtin:
@@ -156,6 +160,7 @@ struct ContentView: View {
             List(selection: Binding(get: {
                 switch selection {
                 case .overview: return "overview"
+                case .customPresence: return "customPresence"
                 case .programs: return "programs"
                 case .builtin: return "builtin"
                 case .about: return "about"
@@ -167,6 +172,7 @@ struct ContentView: View {
             }, set: { newValue in
                 guard let key = newValue else { return }
                 if key == "overview" { selection = .overview }
+                else if key == "customPresence" { selection = .customPresence }
                 else if key == "programs" { selection = .programs }
                 else if key == "builtin" { selection = .builtin }
                 else if key == "about" { selection = .about }
@@ -183,6 +189,10 @@ struct ContentView: View {
                     SidebarRow(title: t("sidebar.overview"), systemImage: "rectangle.and.text.magnifyingglass", isSelected: selection == .overview, tint: .pink, accessibilityIdentifier: "sidebar.overview") {
                         if selection != .overview { selectionStack.append(selection) }
                         selection = .overview
+                    }
+                    SidebarRow(title: t("sidebar.custom_presence"), systemImage: "slider.horizontal.3", isSelected: selection == .customPresence, tint: .pink, accessibilityIdentifier: "sidebar.customPresence") {
+                        if selection != .customPresence { selectionStack.append(selection) }
+                        selection = .customPresence
                     }
                     SidebarRow(title: t("sidebar.programs"), systemImage: "list.bullet.rectangle", isSelected: selection == .programs, tint: .pink, accessibilityIdentifier: "sidebar.programs") {
                         if selection != .programs { selectionStack.append(selection) }
@@ -272,6 +282,11 @@ struct ContentView: View {
                     }
                     .accessibilityIdentifier("sidebar.overview")
 
+                    NavigationLink(value: DetailSelection.customPresence) {
+                        Label(t("sidebar.custom_presence"), systemImage: "slider.horizontal.3")
+                    }
+                    .accessibilityIdentifier("sidebar.customPresence")
+
                     NavigationLink(value: DetailSelection.programs) {
                         Label(t("sidebar.programs"), systemImage: "list.bullet.rectangle")
                     }
@@ -335,6 +350,8 @@ struct ContentView: View {
                 activeBundleID: activeBundleID,
                 programIDs: programIDs
             )
+        case .customPresence:
+            CustomPresenceView()
         case .programs:
             ProgramsView(
                 programIDs: $programIDs,
@@ -372,6 +389,8 @@ struct ContentView: View {
         switch selection {
         case .overview:
             return t("sidebar.overview")
+        case .customPresence:
+            return t("sidebar.custom_presence")
         case .programs:
             return t("sidebar.programs")
         case .builtin:

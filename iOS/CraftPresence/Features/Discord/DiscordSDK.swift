@@ -428,6 +428,17 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    func currentPresenceActivity() async throws -> DiscordActivity? {
+        if authorizationStatus != .authorized {
+            _ = try await restoreAuthorizationIfPossible()
+        }
+        #if canImport(discord_partner_sdk)
+        return currentPresenceActivityFromAuthenticatedClient()
+        #else
+        throw DiscordSDKError.unsupportedPlatform
+        #endif
+    }
+
     func logout() async throws {
         try await withCheckedThrowingContinuation { continuation in
             logout { result in
@@ -804,6 +815,24 @@ final class DiscordSDKManager: ObservableObject {
         )
     }
 
+    private func currentPresenceActivityFromAuthenticatedClient() -> DiscordActivity? {
+        guard isClientInitialized else { return nil }
+
+        var userHandle = Discord_UserHandle(opaque: nil)
+        let hasV2User = Discord_Client_GetCurrentUserV2(&client, &userHandle)
+        if !hasV2User || userHandle.opaque == nil {
+            Discord_Client_GetCurrentUser(&client, &userHandle)
+        }
+        guard userHandle.opaque != nil else { return nil }
+        defer { Discord_UserHandle_Drop(&userHandle) }
+
+        var nativeActivity = Discord_Activity(opaque: nil)
+        guard Discord_UserHandle_GameActivity(&userHandle, &nativeActivity) else { return nil }
+        defer { Discord_Activity_Drop(&nativeActivity) }
+
+        return DiscordActivity(nativeActivity: &nativeActivity)
+    }
+
     private func requiredUserString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Void) -> String {
         var string = Discord_String(ptr: nil, size: 0)
         getter(&string)
@@ -1019,6 +1048,65 @@ struct DiscordActivity: Sendable, Equatable {
     var type: ActivityType = .playing
 }
 
+@MainActor
+final class PresencePriorityController {
+    static let shared = PresencePriorityController()
+
+    private var enforcementTask: Task<Void, Never>?
+    private var isReapplying = false
+    private let enforcementIntervalNanoseconds: UInt64 = 8_000_000_000
+
+    private init() {}
+
+    func start() {
+        guard enforcementTask == nil, !AutomationLaunchOptions.isUITesting else { return }
+        enforcementTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: enforcementIntervalNanoseconds)
+                await enforceAppliedPresenceIfNeeded()
+            }
+        }
+    }
+
+    func stop() {
+        enforcementTask?.cancel()
+        enforcementTask = nil
+    }
+
+    func enforceAppliedPresenceIfNeeded() async {
+        guard !isReapplying else { return }
+        guard let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() else { return }
+
+        do {
+            let currentActivity = try await DiscordSDKManager.shared.currentPresenceActivity()
+            guard currentActivity?.matches(appliedPresence) != true else { return }
+
+            isReapplying = true
+            defer { isReapplying = false }
+
+            try await DiscordSDKManager.shared.updateActivity(
+                name: appliedPresence.title.nilIfEmpty ?? "CraftPresence",
+                state: appliedPresence.state.nilIfEmpty,
+                details: appliedPresence.details.nilIfEmpty,
+                largeImageKey: appliedPresence.largeImageKey.nilIfEmpty,
+                largeImageText: appliedPresence.largeImageText.nilIfEmpty,
+                smallImageKey: appliedPresence.smallImageKey.nilIfEmpty,
+                smallImageText: appliedPresence.smallImageText.nilIfEmpty,
+                partyID: appliedPresence.partyID,
+                partyCurrent: appliedPresence.partyCurrentValue,
+                partyMax: appliedPresence.partyMaxValue,
+                start: appliedPresence.usesElapsedTime ? appliedPresence.elapsedStartDate : nil,
+                activityType: appliedPresence.activityType.discordActivityType
+            )
+        } catch {
+            #if DEBUG
+            print("Failed to enforce applied Presence priority: \(error)")
+            #endif
+        }
+    }
+}
+
 enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
     case invalidApplicationID(String)
     case notConfigured
@@ -1039,6 +1127,44 @@ enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
         case .sdk(let message):
             return message
         }
+    }
+}
+
+private extension DiscordActivity {
+    func matches(_ preset: CustomPresencePreset) -> Bool {
+        stringValue(name) == stringValue(preset.title)
+            && stringValue(details) == stringValue(preset.details)
+            && stringValue(state) == stringValue(preset.state)
+            && stringValue(assets.largeImage) == stringValue(preset.largeImageKey)
+            && stringValue(assets.largeText) == stringValue(preset.largeImageText)
+            && stringValue(assets.smallImage) == stringValue(preset.smallImageKey)
+            && stringValue(assets.smallText) == stringValue(preset.smallImageText)
+            && type == preset.activityType.discordActivityType
+            && timestampsMatch(preset)
+            && partyMatches(preset)
+    }
+
+    private func timestampsMatch(_ preset: CustomPresencePreset) -> Bool {
+        guard preset.usesElapsedTime else {
+            return timestamps.start == nil
+        }
+        guard let expectedStart = preset.elapsedStartDate,
+              let actualStart = timestamps.start else {
+            return false
+        }
+        return abs(actualStart.timeIntervalSince(expectedStart)) < 2
+    }
+
+    private func partyMatches(_ preset: CustomPresencePreset) -> Bool {
+        if preset.partyID == nil {
+            return party.currentSize == nil && party.maxSize == nil
+        }
+        return party.currentSize == preset.partyCurrentValue
+            && party.maxSize == preset.partyMaxValue
+    }
+
+    private func stringValue(_ value: String?) -> String? {
+        value?.nilIfEmpty
     }
 }
 
@@ -1121,6 +1247,77 @@ private extension DiscordActivity.ActivityType {
         case .competing:
             return Discord_ActivityTypes_Competing
         }
+    }
+
+    init?(socialSDKActivityType: Discord_ActivityTypes) {
+        switch socialSDKActivityType {
+        case Discord_ActivityTypes_Playing:
+            self = .playing
+        case Discord_ActivityTypes_Streaming:
+            self = .streaming
+        case Discord_ActivityTypes_Listening:
+            self = .listening
+        case Discord_ActivityTypes_Watching:
+            self = .watching
+        case Discord_ActivityTypes_Competing:
+            self = .competing
+        default:
+            return nil
+        }
+    }
+}
+
+private extension DiscordActivity {
+    init(nativeActivity: UnsafeMutablePointer<Discord_Activity>) {
+        var activity = DiscordActivity()
+        activity.name = Self.requiredString { Discord_Activity_Name(nativeActivity, $0) }
+        activity.state = Self.optionalString { Discord_Activity_State(nativeActivity, $0) }
+        activity.details = Self.optionalString { Discord_Activity_Details(nativeActivity, $0) }
+        activity.type = ActivityType(socialSDKActivityType: Discord_Activity_Type(nativeActivity)) ?? .playing
+
+        var nativeAssets = Discord_ActivityAssets(opaque: nil)
+        if Discord_Activity_Assets(nativeActivity, &nativeAssets) {
+            defer { Discord_ActivityAssets_Drop(&nativeAssets) }
+            activity.assets.largeImage = Self.optionalString { Discord_ActivityAssets_LargeImage(&nativeAssets, $0) }
+            activity.assets.largeText = Self.optionalString { Discord_ActivityAssets_LargeText(&nativeAssets, $0) }
+            activity.assets.smallImage = Self.optionalString { Discord_ActivityAssets_SmallImage(&nativeAssets, $0) }
+            activity.assets.smallText = Self.optionalString { Discord_ActivityAssets_SmallText(&nativeAssets, $0) }
+        }
+
+        var nativeTimestamps = Discord_ActivityTimestamps(opaque: nil)
+        if Discord_Activity_Timestamps(nativeActivity, &nativeTimestamps) {
+            defer { Discord_ActivityTimestamps_Drop(&nativeTimestamps) }
+            let start = Discord_ActivityTimestamps_Start(&nativeTimestamps)
+            let end = Discord_ActivityTimestamps_End(&nativeTimestamps)
+            activity.timestamps.start = start > 0 ? Date(timeIntervalSince1970: TimeInterval(start)) : nil
+            activity.timestamps.end = end > 0 ? Date(timeIntervalSince1970: TimeInterval(end)) : nil
+        }
+
+        var nativeParty = Discord_ActivityParty(opaque: nil)
+        if Discord_Activity_Party(nativeActivity, &nativeParty) {
+            defer { Discord_ActivityParty_Drop(&nativeParty) }
+            activity.party.id = Self.requiredString { Discord_ActivityParty_Id(&nativeParty, $0) }
+            let currentSize = Int(Discord_ActivityParty_CurrentSize(&nativeParty))
+            let maxSize = Int(Discord_ActivityParty_MaxSize(&nativeParty))
+            activity.party.currentSize = currentSize > 0 ? currentSize : nil
+            activity.party.maxSize = maxSize > 0 ? maxSize : nil
+        }
+
+        self = activity
+    }
+
+    private static func requiredString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Void) -> String? {
+        var string = Discord_String(ptr: nil, size: 0)
+        getter(&string)
+        defer { Discord_Free(string.ptr) }
+        return DiscordSDKManager.string(from: string)?.nilIfEmpty
+    }
+
+    private static func optionalString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Bool) -> String? {
+        var string = Discord_String(ptr: nil, size: 0)
+        guard getter(&string) else { return nil }
+        defer { Discord_Free(string.ptr) }
+        return DiscordSDKManager.string(from: string)?.nilIfEmpty
     }
 }
 

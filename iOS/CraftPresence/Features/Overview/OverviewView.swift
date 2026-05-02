@@ -1,6 +1,7 @@
+import Combine
 import SwiftUI
 
-/// Dashboard-style summary of Discord state and the manually selected Rich Presence preset.
+/// Dashboard-style summary of Discord state and the Rich Presence payload currently available to the app.
 struct OverviewView: View {
     let activeAppName: String?
     let activeWindowTitle: String?
@@ -9,9 +10,11 @@ struct OverviewView: View {
 
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showingDiscordConnection: Bool = false
-    @State private var activePreset: CustomPresencePreset?
+    @State private var currentPresence: CustomPresencePreset?
     @State private var presetCount = 0
+    @State private var now = Date()
 
     private var isTracked: Bool {
         guard let activeBundleID else { return false }
@@ -37,7 +40,20 @@ struct OverviewView: View {
                 .environmentObject(localizationManager)
         }
         .task {
-            await reloadPresetSummary()
+            await reloadPresenceSummary()
+        }
+        .onAppear {
+            Task { await reloadPresenceSummary() }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            Task { await reloadPresenceSummary() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ConfigUtility.settingsDidChangeNotification)) { _ in
+            Task { await reloadPresenceSummary() }
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
+            now = date
         }
     }
 
@@ -102,8 +118,8 @@ struct OverviewView: View {
             title: t("overview.active_preset"),
             systemImage: "paperplane.fill",
             accent: .orange,
-            value: activePreset?.title ?? t("common.none"),
-            detail: activePreset?.details.nilIfEmpty ?? t("overview.no_active_preset")
+            value: currentPresence?.title ?? t("common.none"),
+            detail: currentPresence?.details.nilIfEmpty ?? t("overview.no_active_preset")
         )
     }
 
@@ -115,7 +131,7 @@ struct OverviewView: View {
             value: String(format: t("overview.preset_count_format"), presetCount),
             detail: t("overview.preset_library_detail")
         ) {
-            if activePreset != nil {
+            if currentPresence != nil {
                 Label(t("overview.presence_live"), systemImage: "checkmark.circle.fill")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.green)
@@ -134,23 +150,30 @@ struct OverviewView: View {
 
             overviewRow(
                 title: t("presets.editor.title"),
-                value: activePreset?.title ?? t("common.none"),
+                value: currentPresence?.title ?? t("common.none"),
                 systemImage: "tag",
                 valueAccessibilityIdentifier: "overview.appName"
             )
 
             overviewRow(
                 title: t("programs.sheet.details"),
-                value: activePreset?.details.nilIfEmpty ?? t("common.none"),
+                value: currentPresence?.details.nilIfEmpty ?? t("common.none"),
                 systemImage: "text.alignleft",
                 valueAccessibilityIdentifier: "overview.windowTitle"
             )
 
             overviewRow(
                 title: t("programs.sheet.state_message"),
-                value: activePreset?.state.nilIfEmpty ?? t("common.none"),
+                value: currentPresence?.state.nilIfEmpty ?? t("common.none"),
                 systemImage: "bubble.left",
                 valueAccessibilityIdentifier: "overview.bundleID"
+            )
+
+            overviewRow(
+                title: t("overview.elapsed_time"),
+                value: elapsedTimeText,
+                systemImage: "clock",
+                valueAccessibilityIdentifier: "overview.elapsedTime"
             )
 
             overviewRow(
@@ -251,6 +274,24 @@ struct OverviewView: View {
             return t("overview.connect_discord")
         }
     }
+
+    private var elapsedTimeText: String {
+        guard let currentPresence, currentPresence.usesElapsedTime else {
+            return t("common.none")
+        }
+        guard let elapsedStartDate = currentPresence.elapsedStartDate else {
+            return t("overview.elapsed_time_unavailable")
+        }
+        return Self.elapsedTimeFormatter.string(from: max(0, now.timeIntervalSince(elapsedStartDate))) ?? t("common.none")
+    }
+
+    private static let elapsedTimeFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .positional
+        formatter.zeroFormattingBehavior = [.pad]
+        return formatter
+    }()
 
     /// Builds a highlighted status card with an optional accessory view in the trailing corner.
     private func metricCard<Accessory: View>(
@@ -355,14 +396,17 @@ struct OverviewView: View {
     }
 
     @MainActor
-    private func reloadPresetSummary() async {
+    private func reloadPresenceSummary() async {
         let settings = await ConfigUtility.shared.currentSettings()
         presetCount = settings.customPresencePresets.count
-        if let id = settings.activeCustomPresencePresetID {
-            activePreset = settings.customPresencePresets.first { $0.id == id }
-        } else {
-            activePreset = nil
+
+        if let liveActivity = try? await DiscordSDKManager.shared.currentPresenceActivity(),
+           let livePresence = CustomPresencePreset(discordActivity: liveActivity) {
+            currentPresence = livePresence
+            return
         }
+
+        currentPresence = await ConfigUtility.shared.currentCustomPresenceDraft()
     }
 }
 

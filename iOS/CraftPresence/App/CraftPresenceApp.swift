@@ -52,6 +52,7 @@ struct CraftPresenceApp: App {
                 permissionsService.pollAccessibilityPrivileges()
                 #endif
                 configureDiscordSDK()
+                PresencePriorityController.shared.start()
                 hideTitleBarOnCatalyst()
                 updateDiscordOnboardingPresentation()
             }
