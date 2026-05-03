@@ -16,9 +16,9 @@ struct CraftPresenceApp: App {
     @StateObject private var discordManager = DiscordSDKManager.shared
     @AppStorage("discordOnboardingCompleted") private var discordOnboardingCompleted: Bool = false
     @State private var showingDiscordOnboarding: Bool = false
+    @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @Environment(\.scenePhase) private var scenePhase
     #endif
     /// Reads the Discord application identifier from configuration and initializes the SDK where supported.
     private func configureDiscordSDK() {
@@ -56,12 +56,15 @@ struct CraftPresenceApp: App {
                 hideTitleBarOnCatalyst()
                 updateDiscordOnboardingPresentation()
             }
-            #if os(macOS)
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
+                #if os(macOS)
                 permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: false)
+                #endif
+                Task {
+                    await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
+                }
             }
-            #endif
             .onChange(of: permissionsService.isTrusted) { _, _ in
                 updateDiscordOnboardingPresentation()
             }

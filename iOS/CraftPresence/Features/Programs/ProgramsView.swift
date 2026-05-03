@@ -215,6 +215,7 @@ struct ProgramsView: View {
             )
             _ = try await ConfigUtility.shared.setLastCustomPresence(publishedPreset)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(publishedPreset)
+            _ = try await ConfigUtility.shared.setCustomPresenceDraft(publishedPreset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: publishedPreset.id)
             await reloadPresets()
             statusMessage = String(format: t("presets.published_format"), publishedPreset.title)
@@ -441,9 +442,11 @@ private struct PresencePresetForm: View {
 struct CustomPresenceView: View {
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var draft = CustomPresencePreset.makeDraft()
     @State private var statusMessage = ""
+    @State private var hasLoadedInitialDraft = false
 
     var body: some View {
         ScrollView {
@@ -461,6 +464,25 @@ struct CustomPresenceView: View {
         }
         .task {
             await loadCurrentPresenceDraft()
+        }
+        .onChange(of: draft) { _, newDraft in
+            guard hasLoadedInitialDraft else { return }
+            Task {
+                await persistDraft(newDraft)
+            }
+        }
+        .onDisappear {
+            let currentDraft = draft
+            Task {
+                await persistDraft(currentDraft)
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase != .active else { return }
+            let currentDraft = draft
+            Task {
+                await persistDraft(currentDraft)
+            }
         }
     }
 
@@ -628,8 +650,10 @@ struct CustomPresenceView: View {
             )
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(preset)
+            _ = try await ConfigUtility.shared.setCustomPresenceDraft(preset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
             draft = preset
+            hasLoadedInitialDraft = true
             statusMessage = String(format: t("custom_presence.published_format"), preset.title)
         } catch {
             statusMessage = error.localizedDescription
@@ -642,7 +666,9 @@ struct CustomPresenceView: View {
             let preset = draft.normalized
             _ = try await ConfigUtility.shared.upsertCustomPresencePreset(preset)
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
+            _ = try await ConfigUtility.shared.setCustomPresenceDraft(preset)
             draft = preset
+            hasLoadedInitialDraft = true
             statusMessage = t("presets.saved")
         } catch {
             statusMessage = error.localizedDescription
@@ -667,11 +693,24 @@ struct CustomPresenceView: View {
         if let liveActivity = try? await DiscordSDKManager.shared.currentPresenceActivity(),
            let liveDraft = CustomPresencePreset(discordActivity: liveActivity) {
             draft = liveDraft
+            hasLoadedInitialDraft = true
             return
         }
 
-        guard let storedDraft = await ConfigUtility.shared.currentCustomPresenceDraft() else { return }
-        draft = storedDraft
+        if let storedDraft = await ConfigUtility.shared.currentCustomPresenceDraft() {
+            draft = storedDraft
+        }
+        hasLoadedInitialDraft = true
+    }
+
+    private func persistDraft(_ draft: CustomPresencePreset) async {
+        do {
+            _ = try await ConfigUtility.shared.setCustomPresenceDraft(draft.normalized)
+        } catch {
+            #if DEBUG
+            print("Failed to persist custom Presence draft: \(error)")
+            #endif
+        }
     }
 
     private func t(_ key: String) -> String {

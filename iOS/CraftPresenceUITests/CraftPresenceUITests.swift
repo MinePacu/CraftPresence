@@ -79,6 +79,26 @@ final class CraftPresenceUITests: XCTestCase {
     }
 
     @MainActor
+    func testCustomPresenceRestoresUnsavedDraftAfterRelaunch() throws {
+        let app = launchApp()
+
+        openCustomPresence(in: app)
+        app.descendants(matching: .any)["presenceForm.title"].clearAndTypeText("Unsaved Presence")
+        app.descendants(matching: .any)["presenceForm.details"].tapAndTypeText("Draft only")
+        app.descendants(matching: .any)["presenceForm.state"].tapAndTypeText("Relaunch keeps it")
+        XCTAssertTrue(app.staticTexts["Unsaved Presence"].waitForExistence(timeout: 5))
+
+        Thread.sleep(forTimeInterval: 1)
+        app.terminate()
+        let relaunchedApp = launchApp()
+        openCustomPresence(in: relaunchedApp)
+
+        XCTAssertTrue(relaunchedApp.staticTexts["Unsaved Presence"].waitForExistence(timeout: 5))
+        XCTAssertTrue(relaunchedApp.staticTexts["Draft only"].exists)
+        XCTAssertTrue(relaunchedApp.staticTexts["Relaunch keeps it"].exists)
+    }
+
+    @MainActor
     func testOverviewShowsLatestCustomPresenceDraft() throws {
         let app = launchApp()
 

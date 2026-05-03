@@ -1062,6 +1062,7 @@ final class PresencePriorityController {
         guard enforcementTask == nil, !AutomationLaunchOptions.isUITesting else { return }
         enforcementTask = Task { [weak self] in
             guard let self else { return }
+            await enforceAppliedPresenceIfNeeded()
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: enforcementIntervalNanoseconds)
                 await enforceAppliedPresenceIfNeeded()

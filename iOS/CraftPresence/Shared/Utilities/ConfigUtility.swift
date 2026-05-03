@@ -8,6 +8,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var bundleIDs: [String] = []
     public var programSettings: [String: ProgramPresenceSettings] = [:]
     public var customPresencePresets: [CustomPresencePreset] = CustomPresencePreset.defaults
+    public var customPresenceDraft: CustomPresencePreset?
     public var lastCustomPresence: CustomPresencePreset?
     public var appliedCustomPresence: CustomPresencePreset?
     public var activeCustomPresencePresetID: UUID?
@@ -24,6 +25,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case bundleIDs
         case programSettings
         case customPresencePresets
+        case customPresenceDraft
         case lastCustomPresence
         case appliedCustomPresence
         case activeCustomPresencePresetID
@@ -35,6 +37,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.bundleIDs = try container.decodeIfPresent([String].self, forKey: .bundleIDs) ?? []
         self.programSettings = try container.decodeIfPresent([String: ProgramPresenceSettings].self, forKey: .programSettings) ?? [:]
         self.customPresencePresets = try container.decodeIfPresent([CustomPresencePreset].self, forKey: .customPresencePresets) ?? CustomPresencePreset.defaults
+        self.customPresenceDraft = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .customPresenceDraft)
         self.lastCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .lastCustomPresence)
         self.appliedCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .appliedCustomPresence)
         self.activeCustomPresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
@@ -46,6 +49,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encode(bundleIDs, forKey: .bundleIDs)
         try container.encode(programSettings, forKey: .programSettings)
         try container.encode(customPresencePresets, forKey: .customPresencePresets)
+        try container.encodeIfPresent(customPresenceDraft, forKey: .customPresenceDraft)
         try container.encodeIfPresent(lastCustomPresence, forKey: .lastCustomPresence)
         try container.encodeIfPresent(appliedCustomPresence, forKey: .appliedCustomPresence)
         try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activeCustomPresencePresetID)
@@ -345,6 +349,9 @@ public actor ConfigUtility {
 
     /// Returns the Presence payload that should seed the manual customization screen.
     public func currentCustomPresenceDraft() -> CustomPresencePreset? {
+        if let customPresenceDraft = settings.customPresenceDraft {
+            return customPresenceDraft
+        }
         if let activeID = settings.activeCustomPresencePresetID {
             if settings.lastCustomPresence?.id == activeID {
                 return settings.lastCustomPresence
@@ -352,6 +359,14 @@ public actor ConfigUtility {
             return settings.customPresencePresets.first { $0.id == activeID }
         }
         return settings.lastCustomPresence
+    }
+
+    @discardableResult
+    /// Stores the in-progress custom Presence editor draft independently of the last published payload.
+    public func setCustomPresenceDraft(_ preset: CustomPresencePreset?) async throws -> AppSettings {
+        settings.customPresenceDraft = preset
+        try persist()
+        return settings
     }
 
     /// Returns the custom Presence that this app last applied and should keep authoritative.
