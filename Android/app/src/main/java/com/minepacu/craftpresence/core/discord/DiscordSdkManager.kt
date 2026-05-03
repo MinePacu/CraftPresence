@@ -1,9 +1,16 @@
 package com.minepacu.craftpresence.core.discord
 
 import android.content.Context
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -11,10 +18,15 @@ class DiscordSdkManager(
     private val appContext: Context,
     private val gateway: DiscordGateway = AndroidDiscordGateway(),
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
+    private val tokenStore = DiscordTokenStore(appContext)
 
     private var configuredApplicationId: String? = null
     private var sessionId: Long = 0
+    private var lastActivity: DiscordActivity? = null
+    private var priorityJob: Job? = null
+    private val priorityOwners = mutableSetOf<String>()
 
     private val _state = MutableStateFlow(DiscordState())
     val state: StateFlow<DiscordState> = _state.asStateFlow()
@@ -22,13 +34,16 @@ class DiscordSdkManager(
     suspend fun configure(
         applicationId: String? = DiscordAppConfig.applicationId(appContext),
         autoAuthorize: Boolean = true,
+        allowInteractiveAuthorization: Boolean = false,
     ) {
         val validationError = DiscordAppConfig.validationError(applicationId)
         if (validationError != null) {
             mutex.withLock {
                 sessionId += 1
                 configuredApplicationId = null
+                lastActivity = null
             }
+            stopActivityPriority()
             _state.value = DiscordState(
                 authorizationStatus = DiscordAuthorizationStatus.UNAUTHORIZED,
                 dashboardStatus = DiscordDashboardStatus.FAILED,
@@ -42,17 +57,18 @@ class DiscordSdkManager(
             if (configuredApplicationId != normalizedId) {
                 sessionId += 1
                 configuredApplicationId = normalizedId
+                lastActivity = null
                 gateway.configure(normalizedId)
                 _state.value = DiscordState(dashboardStatus = DiscordDashboardStatus.CONFIGURED)
             }
         }
 
         if (autoAuthorize) {
-            authorizeIfNeeded()
+            authorizeIfNeeded(allowInteractiveAuthorization = allowInteractiveAuthorization)
         }
     }
 
-    suspend fun authorizeIfNeeded(): DiscordUser {
+    suspend fun authorizeIfNeeded(allowInteractiveAuthorization: Boolean = true): DiscordUser {
         mutex.withLock {
             if (gateway.isAuthorized()) {
                 val user = gateway.currentUser()
@@ -67,14 +83,41 @@ class DiscordSdkManager(
             _state.value = _state.value.copy(dashboardStatus = DiscordDashboardStatus.AUTHORIZING)
         }
 
+        val applicationId = mutex.withLock { configuredApplicationId }.orEmpty()
+        val storedRefreshToken = tokenStore.refreshToken(applicationId)
+        if (storedRefreshToken.isNotBlank()) {
+            runCatching {
+                val result = gateway.refreshAuthorization(storedRefreshToken)
+                tokenStore.setRefreshToken(applicationId, result.refreshToken)
+                _state.value = DiscordState(
+                    authorizationStatus = DiscordAuthorizationStatus.AUTHORIZED,
+                    currentUser = result.user,
+                    dashboardStatus = DiscordDashboardStatus.READY,
+                )
+                return result.user
+            }.onFailure {
+                tokenStore.clearRefreshToken(applicationId)
+            }
+        }
+
+        if (!allowInteractiveAuthorization) {
+            _state.value = DiscordState(
+                authorizationStatus = DiscordAuthorizationStatus.UNAUTHORIZED,
+                dashboardStatus = DiscordDashboardStatus.UNAUTHORIZED,
+                lastErrorMessage = "Discord authorization is required.",
+            )
+            throw DiscordSdkError.Unauthorized
+        }
+
         return try {
-            val user = gateway.authorize()
+            val result = gateway.authorize()
+            tokenStore.setRefreshToken(applicationId, result.refreshToken)
             _state.value = DiscordState(
                 authorizationStatus = DiscordAuthorizationStatus.AUTHORIZED,
-                currentUser = user,
+                currentUser = result.user,
                 dashboardStatus = DiscordDashboardStatus.READY,
             )
-            user
+            result.user
         } catch (error: Exception) {
             _state.value = DiscordState(
                 authorizationStatus = DiscordAuthorizationStatus.UNAUTHORIZED,
@@ -86,6 +129,11 @@ class DiscordSdkManager(
     }
 
     suspend fun logout() {
+        mutex.withLock {
+            lastActivity = null
+        }
+        tokenStore.clearRefreshToken(mutex.withLock { configuredApplicationId })
+        stopActivityPriority()
         gateway.logout()
         _state.value = DiscordState(
             authorizationStatus = DiscordAuthorizationStatus.UNAUTHORIZED,
@@ -106,17 +154,58 @@ class DiscordSdkManager(
 
     suspend fun updateActivity(activity: DiscordActivity) {
         if (!gateway.isAuthorized()) {
-            authorizeIfNeeded()
+            authorizeIfNeeded(allowInteractiveAuthorization = false)
         }
         gateway.updateActivity(activity)
+        mutex.withLock {
+            lastActivity = activity
+        }
         _state.value = _state.value.copy(dashboardStatus = DiscordDashboardStatus.READY)
     }
 
     suspend fun clearActivity() {
+        mutex.withLock {
+            lastActivity = null
+        }
         gateway.clearActivity()
     }
 
+    fun retainActivityPriority(owner: String) {
+        synchronized(priorityOwners) {
+            priorityOwners += owner
+            if (priorityJob?.isActive == true) return
+            priorityJob = scope.launch {
+                while (isActive) {
+                    val activity = mutex.withLock { lastActivity }
+                    if (activity != null) {
+                        runCatching { updateActivity(activity) }
+                    }
+                    delay(ACTIVITY_PRIORITY_INTERVAL_MS)
+                }
+            }
+        }
+    }
+
+    fun releaseActivityPriority(owner: String) {
+        synchronized(priorityOwners) {
+            priorityOwners -= owner
+            if (priorityOwners.isEmpty()) {
+                stopActivityPriority()
+            }
+        }
+    }
+
+    private fun stopActivityPriority() {
+        synchronized(priorityOwners) {
+            priorityOwners.clear()
+            priorityJob?.cancel()
+            priorityJob = null
+        }
+    }
+
     companion object {
+        private const val ACTIVITY_PRIORITY_INTERVAL_MS = 5_000L
+
         @Volatile private var instance: DiscordSdkManager? = null
 
         fun getInstance(context: Context): DiscordSdkManager {

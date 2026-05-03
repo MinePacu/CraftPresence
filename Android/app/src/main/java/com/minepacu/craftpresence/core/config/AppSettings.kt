@@ -9,6 +9,7 @@ data class AppSettings(
     val appDisplayNames: Map<String, String> = emptyMap(),
     val programSettings: Map<String, ProgramPresenceSettings> = emptyMap(),
     val preferredLanguage: AppLanguage = AppLanguage.SYSTEM,
+    val programPresenceEnabled: Boolean = true,
     val showForegroundAppIndicator: Boolean = true,
     val showForegroundAppNotification: Boolean = false,
     val hasCompletedDiscordOnboarding: Boolean = false,
@@ -16,6 +17,7 @@ data class AppSettings(
     fun toJson(): JSONObject = JSONObject()
         .put("packageNames", JSONArray(packageNames))
         .put("preferredLanguage", preferredLanguage.value)
+        .put("programPresenceEnabled", programPresenceEnabled)
         .put("showForegroundAppIndicator", showForegroundAppIndicator)
         .put("showForegroundAppNotification", showForegroundAppNotification)
         .put("hasCompletedDiscordOnboarding", hasCompletedDiscordOnboarding)
@@ -62,6 +64,7 @@ data class AppSettings(
                 appDisplayNames = displayNames,
                 programSettings = settings,
                 preferredLanguage = AppLanguage.fromValue(json.optString("preferredLanguage")),
+                programPresenceEnabled = json.optBoolean("programPresenceEnabled", true),
                 showForegroundAppIndicator = json.optBoolean("showForegroundAppIndicator", true),
                 showForegroundAppNotification = json.optBoolean("showForegroundAppNotification", false),
                 hasCompletedDiscordOnboarding = json.optBoolean("hasCompletedDiscordOnboarding", false),

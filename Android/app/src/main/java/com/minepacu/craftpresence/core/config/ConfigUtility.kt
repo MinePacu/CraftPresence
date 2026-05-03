@@ -18,7 +18,9 @@ class ConfigUtility private constructor(context: Context) {
 
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
-    suspend fun currentSettings(): AppSettings = mutex.withLock { _settings.value }
+    suspend fun currentSettings(): AppSettings = mutex.withLock { loadLatest() }
+
+    suspend fun refreshSettings(): AppSettings = mutex.withLock { loadLatest() }
 
     suspend fun setSettings(newValue: AppSettings): AppSettings = mutex.withLock {
         persist(newValue)
@@ -27,32 +29,34 @@ class ConfigUtility private constructor(context: Context) {
     }
 
     suspend fun addPackageName(packageName: String, displayName: String = ""): AppSettings = mutex.withLock {
+        val current = loadLatest()
         val normalized = packageName.trim()
         val normalizedDisplayName = displayName.trim()
         if (normalized.isEmpty()) {
-            return@withLock _settings.value
+            return@withLock current
         }
-        val packages = if (normalized in _settings.value.packageNames) {
-            _settings.value.packageNames
+        val packages = if (normalized in current.packageNames) {
+            current.packageNames
         } else {
-            (_settings.value.packageNames + normalized).sorted()
+            (current.packageNames + normalized).sorted()
         }
         val displayNames = if (normalizedDisplayName.isBlank()) {
-            _settings.value.appDisplayNames
+            current.appDisplayNames
         } else {
-            _settings.value.appDisplayNames + (normalized to normalizedDisplayName)
+            current.appDisplayNames + (normalized to normalizedDisplayName)
         }
-        val next = _settings.value.copy(packageNames = packages, appDisplayNames = displayNames)
+        val next = current.copy(packageNames = packages, appDisplayNames = displayNames)
         persist(next)
         _settings.value = next
         next
     }
 
     suspend fun removePackageName(packageName: String): AppSettings = mutex.withLock {
-        val next = _settings.value.copy(
-            packageNames = _settings.value.packageNames.filterNot { it == packageName },
-            appDisplayNames = _settings.value.appDisplayNames - packageName,
-            programSettings = _settings.value.programSettings - packageName,
+        val current = loadLatest()
+        val next = current.copy(
+            packageNames = current.packageNames.filterNot { it == packageName },
+            appDisplayNames = current.appDisplayNames - packageName,
+            programSettings = current.programSettings - packageName,
         )
         persist(next)
         _settings.value = next
@@ -60,26 +64,27 @@ class ConfigUtility private constructor(context: Context) {
     }
 
     suspend fun containsPackageName(packageName: String): Boolean = mutex.withLock {
-        packageName in _settings.value.packageNames
+        packageName in loadLatest().packageNames
     }
 
     suspend fun programSettings(packageName: String): ProgramPresenceSettings = mutex.withLock {
-        _settings.value.programSettings[packageName] ?: ProgramPresenceSettings()
+        loadLatest().programSettings[packageName] ?: ProgramPresenceSettings()
     }
 
     suspend fun appDisplayName(packageName: String): String = mutex.withLock {
-        _settings.value.appDisplayNames[packageName].orEmpty()
+        loadLatest().appDisplayNames[packageName].orEmpty()
     }
 
     suspend fun setAppDisplayName(packageName: String, displayName: String): AppSettings = mutex.withLock {
+        val current = loadLatest()
         val normalizedPackage = packageName.trim()
         val normalizedDisplayName = displayName.trim()
-        if (normalizedPackage.isBlank()) return@withLock _settings.value
-        val next = _settings.value.copy(
+        if (normalizedPackage.isBlank()) return@withLock current
+        val next = current.copy(
             appDisplayNames = if (normalizedDisplayName.isBlank()) {
-                _settings.value.appDisplayNames - normalizedPackage
+                current.appDisplayNames - normalizedPackage
             } else {
-                _settings.value.appDisplayNames + (normalizedPackage to normalizedDisplayName)
+                current.appDisplayNames + (normalizedPackage to normalizedDisplayName)
             },
         )
         persist(next)
@@ -91,9 +96,10 @@ class ConfigUtility private constructor(context: Context) {
         packageName: String,
         newValue: ProgramPresenceSettings,
     ): ProgramPresenceSettings = mutex.withLock {
+        val current = loadLatest()
         if (packageName.isBlank()) return@withLock newValue
-        val next = _settings.value.copy(
-            programSettings = _settings.value.programSettings + (packageName to newValue),
+        val next = current.copy(
+            programSettings = current.programSettings + (packageName to newValue),
         )
         persist(next)
         _settings.value = next
@@ -103,6 +109,14 @@ class ConfigUtility private constructor(context: Context) {
     private fun load(): AppSettings {
         val raw = preferences.getString(KEY_SETTINGS, null) ?: return AppSettings()
         return runCatching { AppSettings.fromJson(JSONObject(raw)) }.getOrDefault(AppSettings())
+    }
+
+    private fun loadLatest(): AppSettings {
+        val latest = load()
+        if (latest != _settings.value) {
+            _settings.value = latest
+        }
+        return latest
     }
 
     private fun persist(settings: AppSettings) {

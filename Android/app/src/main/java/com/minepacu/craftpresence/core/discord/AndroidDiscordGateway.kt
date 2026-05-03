@@ -8,8 +8,12 @@ class AndroidDiscordGateway : DiscordGateway {
         NativeDiscordBridge.configure(applicationId)?.let { throw DiscordSdkError.Sdk(it) }
     }
 
-    override suspend fun authorize(): DiscordUser = withContext(Dispatchers.IO) {
-        NativeDiscordBridge.authorize().toDiscordUser()
+    override suspend fun authorize(): DiscordAuthorizationResult = withContext(Dispatchers.IO) {
+        NativeDiscordBridge.authorize().toAuthorizationResult()
+    }
+
+    override suspend fun refreshAuthorization(refreshToken: String): DiscordAuthorizationResult = withContext(Dispatchers.IO) {
+        NativeDiscordBridge.refreshAuthorization(refreshToken).toAuthorizationResult()
     }
 
     override suspend fun currentUser(): DiscordUser = withContext(Dispatchers.IO) {
@@ -52,6 +56,14 @@ class AndroidDiscordGateway : DiscordGateway {
         return DiscordUser(
             id = getOrNull(1).orEmpty(),
             username = getOrNull(2).orEmpty(),
+        )
+    }
+
+    private fun Array<String>.toAuthorizationResult(): DiscordAuthorizationResult {
+        val user = toDiscordUser()
+        return DiscordAuthorizationResult(
+            user = user,
+            refreshToken = getOrNull(4).orEmpty(),
         )
     }
 

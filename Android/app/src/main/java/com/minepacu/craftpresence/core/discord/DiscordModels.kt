@@ -6,6 +6,11 @@ data class DiscordUser(
     val discriminator: String? = null,
 )
 
+data class DiscordAuthorizationResult(
+    val user: DiscordUser,
+    val refreshToken: String,
+)
+
 data class DiscordActivity(
     val name: String? = null,
     val state: String? = null,

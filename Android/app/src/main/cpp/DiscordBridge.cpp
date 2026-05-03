@@ -81,13 +81,21 @@ jstring stringToJstring(JNIEnv* env, const std::string& value) {
     return env->NewStringUTF(value.c_str());
 }
 
-jobjectArray userResult(JNIEnv* env, bool success, const std::string& id, const std::string& username, const std::string& error) {
+jobjectArray userResult(
+    JNIEnv* env,
+    bool success,
+    const std::string& id,
+    const std::string& username,
+    const std::string& error,
+    const std::string& refreshToken = ""
+) {
     auto stringClass = env->FindClass("java/lang/String");
-    auto result = env->NewObjectArray(4, stringClass, stringToJstring(env, ""));
+    auto result = env->NewObjectArray(5, stringClass, stringToJstring(env, ""));
     env->SetObjectArrayElement(result, 0, stringToJstring(env, success ? "true" : "false"));
     env->SetObjectArrayElement(result, 1, stringToJstring(env, id));
     env->SetObjectArrayElement(result, 2, stringToJstring(env, username));
     env->SetObjectArrayElement(result, 3, stringToJstring(env, error));
+    env->SetObjectArrayElement(result, 4, stringToJstring(env, refreshToken));
     return result;
 }
 
@@ -225,7 +233,10 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
                     return;
                 }
 
-                g_last_refresh_token = refreshToken;
+                {
+                    std::lock_guard<std::mutex> lock(g_mutex);
+                    g_last_refresh_token = refreshToken;
+                }
                 client->UpdateToken(tokenType, accessToken, [client, &completed, &error](discordpp::ClientResult updateResult) {
                     if (!updateResult.Successful()) {
                         error = resultMessage(updateResult);
@@ -256,7 +267,83 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
     auto user = client->GetCurrentUserV2();
     if (!user.has_value()) return userResult(env, false, "", "", "Discord user is unavailable.");
 
-    return userResult(env, true, std::to_string(user->Id()), user->Username(), "");
+    std::string refreshToken;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        refreshToken = g_last_refresh_token;
+    }
+    return userResult(env, true, std::to_string(user->Id()), user->Username(), "", refreshToken);
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
+Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_refreshAuthorization(
+    JNIEnv* env,
+    jobject,
+    jstring refreshToken
+) {
+    auto client = clientSnapshot();
+    if (!client) return userResult(env, false, "", "", "Discord SDK is not configured.");
+
+    const uint64_t clientId = parseApplicationId();
+    if (clientId == 0) return userResult(env, false, "", "", "Invalid Discord application ID.");
+
+    const auto previousRefreshToken = jstringToString(env, refreshToken);
+    if (previousRefreshToken.empty()) return userResult(env, false, "", "", "Discord refresh token is missing.");
+
+    bool completed = false;
+    std::string error;
+    std::string nextRefreshToken;
+
+    try {
+        client->RefreshToken(clientId, previousRefreshToken, [client, &completed, &error, &nextRefreshToken](
+            discordpp::ClientResult tokenResult,
+            std::string accessToken,
+            std::string refreshedToken,
+            discordpp::AuthorizationTokenType tokenType,
+            int32_t,
+            std::string
+        ) {
+            if (!tokenResult.Successful()) {
+                error = resultMessage(tokenResult);
+                completed = true;
+                return;
+            }
+
+            nextRefreshToken = refreshedToken;
+            {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                g_last_refresh_token = refreshedToken;
+            }
+            client->UpdateToken(tokenType, accessToken, [client, &completed, &error](discordpp::ClientResult updateResult) {
+                if (!updateResult.Successful()) {
+                    error = resultMessage(updateResult);
+                    completed = true;
+                    return;
+                }
+                try {
+                    client->Connect();
+                } catch (const std::exception& exception) {
+                    error = exception.what();
+                }
+                completed = true;
+            });
+        });
+    } catch (const std::exception& exception) {
+        return userResult(env, false, "", "", exception.what());
+    }
+
+    const bool finished = waitUntil([&] { return completed; }, kAuthTimeout);
+    if (!finished) return userResult(env, false, "", "", "Discord token refresh timed out.");
+    if (!error.empty()) return userResult(env, false, "", "", error);
+
+    if (auto readyError = waitForReady(client.get())) {
+        return userResult(env, false, "", "", *readyError);
+    }
+
+    auto user = client->GetCurrentUserV2();
+    if (!user.has_value()) return userResult(env, false, "", "", "Discord user is unavailable.");
+
+    return userResult(env, true, std::to_string(user->Id()), user->Username(), "", nextRefreshToken);
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
@@ -346,9 +433,9 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_updateActivity(
     }
 
     const auto party = jstringToString(env, partyId);
-    if (!party.empty() || partyCurrent > 0 || partyMax > 0) {
+    if (!party.empty()) {
         discordpp::ActivityParty activityParty;
-        if (!party.empty()) activityParty.SetId(party);
+        activityParty.SetId(party);
         if (partyCurrent > 0) activityParty.SetCurrentSize(partyCurrent);
         if (partyMax > 0) activityParty.SetMaxSize(partyMax);
         activity.SetParty(std::move(activityParty));

@@ -2,7 +2,8 @@ package com.minepacu.craftpresence.core.discord
 
 interface DiscordGateway {
     suspend fun configure(applicationId: String)
-    suspend fun authorize(): DiscordUser
+    suspend fun authorize(): DiscordAuthorizationResult
+    suspend fun refreshAuthorization(refreshToken: String): DiscordAuthorizationResult
     suspend fun currentUser(): DiscordUser
     suspend fun logout()
     suspend fun updateActivity(activity: DiscordActivity)
@@ -20,10 +21,16 @@ class NoopDiscordGateway : DiscordGateway {
         configuredApplicationId = applicationId
     }
 
-    override suspend fun authorize(): DiscordUser {
+    override suspend fun authorize(): DiscordAuthorizationResult {
         val applicationId = configuredApplicationId ?: throw DiscordSdkError.NotConfigured
         user = DiscordUser(id = applicationId, username = "Local Discord Bridge")
-        return requireNotNull(user)
+        return DiscordAuthorizationResult(requireNotNull(user), "local-refresh-token")
+    }
+
+    override suspend fun refreshAuthorization(refreshToken: String): DiscordAuthorizationResult {
+        val applicationId = configuredApplicationId ?: throw DiscordSdkError.NotConfigured
+        user = DiscordUser(id = applicationId, username = "Local Discord Bridge")
+        return DiscordAuthorizationResult(requireNotNull(user), refreshToken)
     }
 
     override suspend fun currentUser(): DiscordUser {

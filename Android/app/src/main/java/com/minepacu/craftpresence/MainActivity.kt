@@ -2,16 +2,17 @@ package com.minepacu.craftpresence
 
 import android.Manifest
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,11 +21,14 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,6 +41,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -73,6 +78,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
@@ -99,13 +105,25 @@ import com.minepacu.craftpresence.core.programs.ProgramDetector
 import com.minepacu.craftpresence.ui.localization.LocalizedText
 import com.minepacu.craftpresence.ui.localization.LocalizedTextProvider
 import com.minepacu.craftpresence.ui.localization.rememberLocalizedText
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DiscordSocialSdkInit.setEngineActivity(this)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(
+                lightScrim = android.graphics.Color.TRANSPARENT,
+                darkScrim = android.graphics.Color.TRANSPARENT,
+            ),
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+        }
+        @Suppress("DEPRECATION")
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
         setContent {
             MaterialTheme {
                 CraftPresenceApp()
@@ -116,6 +134,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         DiscordSocialSdkInit.setEngineActivity(this)
+        lifecycleScope.launch {
+            ConfigUtility.getInstance(this@MainActivity).refreshSettings()
+        }
     }
 }
 
@@ -123,6 +144,7 @@ private enum class AppTab(val icon: ImageVector) {
     OVERVIEW(Icons.Filled.Home),
     DISCORD(Icons.Filled.SportsEsports),
     PROGRAMS(Icons.Filled.Apps),
+    PRESENCE(Icons.Filled.Edit),
     MUSIC(Icons.Filled.MusicNote),
     PERMISSIONS(Icons.Filled.Security),
     SETTINGS(Icons.Filled.Settings),
@@ -131,6 +153,7 @@ private enum class AppTab(val icon: ImageVector) {
 private data class InstalledAppInfo(
     val label: String,
     val packageName: String,
+    val isSystemApp: Boolean,
 )
 
 @Composable
@@ -156,16 +179,24 @@ private fun CraftPresenceApp() {
     var showInstalledAppPicker by remember { mutableStateOf(false) }
     var installedAppSearch by remember { mutableStateOf("") }
     var installedApps by remember { mutableStateOf(emptyList<InstalledAppInfo>()) }
+    var installedAppsLoading by remember { mutableStateOf(false) }
+    var showSystemApps by remember { mutableStateOf(true) }
     val foregroundDisplayEnabled = settings.showForegroundAppIndicator
     val foregroundNotificationEnabled = settings.showForegroundAppNotification
     val text = rememberLocalizedText(settings.preferredLanguage)
     val scope = rememberCoroutineScope()
-    val filteredInstalledApps = remember(installedApps, installedAppSearch) {
+    val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val filteredInstalledApps = remember(installedApps, installedAppSearch, showSystemApps) {
         val query = installedAppSearch.trim()
-        if (query.isBlank()) {
+        val visibleApps = if (showSystemApps) {
             installedApps
         } else {
-            installedApps.filter {
+            installedApps.filterNot { it.isSystemApp }
+        }
+        if (query.isBlank()) {
+            visibleApps
+        } else {
+            visibleApps.filter {
                 it.label.contains(query, ignoreCase = true) ||
                     it.packageName.contains(query, ignoreCase = true)
             }
@@ -180,7 +211,10 @@ private fun CraftPresenceApp() {
 
         showDiscordOnboarding = false
         runCatching {
-            discord.configure(autoAuthorize = true)
+            discord.configure(
+                autoAuthorize = true,
+                allowInteractiveAuthorization = false,
+            )
         }.onSuccess {
             automaticDiscordMessage = ""
         }.onFailure {
@@ -193,6 +227,21 @@ private fun CraftPresenceApp() {
             detector.start()
         } else {
             detector.stop()
+        }
+    }
+
+    LaunchedEffect(
+        settings.programPresenceEnabled,
+        settings.packageNames,
+        settings.hasCompletedDiscordOnboarding,
+    ) {
+        val shouldRunProgramPresence = settings.programPresenceEnabled &&
+            settings.packageNames.isNotEmpty() &&
+            settings.hasCompletedDiscordOnboarding
+        if (shouldRunProgramPresence) {
+            programPresence.startMonitoring()
+        } else if (programState.isEnabled) {
+            programPresence.stopMonitoring()
         }
     }
 
@@ -212,30 +261,37 @@ private fun CraftPresenceApp() {
 
     CompositionLocalProvider(LocalizedTextProvider provides text) {
         Scaffold(
-        bottomBar = {
-            NavigationBar {
-                AppTab.entries.forEach { tab ->
-                    val title = tabTitle(tab, text)
-                    NavigationBarItem(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = title,
-                            )
-                        },
-                        label = { Text(title) },
-                    )
+            containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets(0.dp),
+            bottomBar = {
+                NavigationBar {
+                    AppTab.entries.forEach { tab ->
+                        val title = tabTitle(tab, text)
+                        NavigationBarItem(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            icon = {
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = title,
+                                )
+                            },
+                            label = { Text(title) },
+                        )
+                    }
                 }
-            }
-        },
-    ) { innerPadding ->
+            },
+        ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(18.dp),
+            contentPadding = PaddingValues(
+                start = 18.dp,
+                top = statusBarTopPadding + 18.dp,
+                end = 18.dp,
+                bottom = 18.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
@@ -301,10 +357,23 @@ private fun CraftPresenceApp() {
                             InstalledAppPickerHeader(
                                 searchQuery = installedAppSearch,
                                 onSearchQueryChange = { installedAppSearch = it },
+                                showSystemApps = showSystemApps,
+                                onShowSystemAppsChange = { showSystemApps = it },
                                 onBack = { showInstalledAppPicker = false },
                             )
                         }
-                        if (filteredInstalledApps.isEmpty()) {
+                        if (installedAppsLoading) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 28.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        } else if (filteredInstalledApps.isEmpty()) {
                             item {
                                 Text(
                                     text.noAppsFound,
@@ -331,10 +400,21 @@ private fun CraftPresenceApp() {
                             ProgramPresenceControls(
                                 stateEnabled = programState.isEnabled,
                                 status = programState.discordStatus,
+                                lastError = programState.lastErrorMessage,
                                 activeAppName = programState.activeAppName,
                                 activePackageName = programState.activePackageName,
-                                onStart = { programPresence.startMonitoring() },
-                                onStop = { programPresence.stopMonitoring() },
+                                onStart = {
+                                    scope.launch {
+                                        config.setSettings(settings.copy(programPresenceEnabled = true))
+                                        programPresence.startMonitoring()
+                                    }
+                                },
+                                onStop = {
+                                    scope.launch {
+                                        config.setSettings(settings.copy(programPresenceEnabled = false))
+                                        programPresence.stopMonitoring()
+                                    }
+                                },
                             )
                         }
                         item {
@@ -345,8 +425,18 @@ private fun CraftPresenceApp() {
                                 foregroundApp = if (foregroundDisplayEnabled) foreground.appName.orEmpty() else "",
                                 config = config,
                                 onChooseInstalledApp = {
-                                    installedApps = installedLaunchableApps(context)
                                     showInstalledAppPicker = true
+                                    if (installedApps.isEmpty() && !installedAppsLoading) {
+                                        installedAppsLoading = true
+                                        scope.launch {
+                                            installedApps = runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    installedApplications(context.applicationContext)
+                                                }
+                                            }.getOrDefault(emptyList())
+                                            installedAppsLoading = false
+                                        }
+                                    }
                                 },
                             )
                         }
@@ -361,6 +451,17 @@ private fun CraftPresenceApp() {
                                 config = config,
                             )
                         }
+                    }
+                }
+
+                AppTab.PRESENCE -> {
+                    item {
+                        PresenceScreen(
+                            settings = settings,
+                            currentPackageName = foreground.packageName.orEmpty(),
+                            currentAppName = foreground.appName.orEmpty(),
+                            config = config,
+                        )
                     }
                 }
 
@@ -691,6 +792,7 @@ private fun DiscordScreen(
 private fun ProgramPresenceControls(
     stateEnabled: Boolean,
     status: String,
+    lastError: String?,
     activeAppName: String,
     activePackageName: String,
     onStart: () -> Unit,
@@ -702,6 +804,9 @@ private fun ProgramPresenceControls(
         KeyValueRow(text.status, presenceStatusText(status, text))
         KeyValueRow(text.currentApp, activeAppName.ifBlank { text.notDetected })
         KeyValueRow(text.packageName, activePackageName.ifBlank { text.notDetected })
+        if (!lastError.isNullOrBlank()) {
+            Text(lastError, color = MaterialTheme.colorScheme.error)
+        }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onStart, enabled = !stateEnabled) { Text(text.startDetection) }
@@ -798,6 +903,8 @@ private fun AddProgramCard(
 private fun InstalledAppPickerHeader(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
+    showSystemApps: Boolean,
+    onShowSystemAppsChange: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     val text = LocalizedTextProvider.current
@@ -808,6 +915,18 @@ private fun InstalledAppPickerHeader(
                 Spacer(Modifier.width(6.dp))
                 Text(text.cancel)
             }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(text.showSystemApps, fontWeight = FontWeight.SemiBold)
+            Switch(
+                checked = showSystemApps,
+                onCheckedChange = onShowSystemAppsChange,
+            )
         }
         Spacer(Modifier.height(10.dp))
         OutlinedTextField(
@@ -849,7 +968,18 @@ private fun InstalledAppRow(
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text(app.label, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        app.label,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (app.isSystemApp) {
+                        StatusChip(text.systemApp, MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 Text(
                     app.packageName,
                     style = MaterialTheme.typography.bodySmall,
@@ -999,12 +1129,6 @@ private fun ProgramSettingsDialog(
                 PresenceTextField(text.smallImageText, text.imageHoverText, draft.smallImageText) {
                     draft = draft.copy(smallImageText = it)
                 }
-                NumberStepper(text.partyCurrent, draft.partyCurrent, 0, draft.partyMax.coerceAtLeast(0)) {
-                    draft = draft.copy(partyCurrent = it)
-                }
-                NumberStepper(text.partyMax, draft.partyMax, draft.partyCurrent.coerceAtLeast(1), 99) {
-                    draft = draft.copy(partyMax = it)
-                }
             }
         },
         confirmButton = {
@@ -1018,6 +1142,147 @@ private fun ProgramSettingsDialog(
             }
         },
     )
+}
+
+@Composable
+private fun PresenceScreen(
+    settings: AppSettings,
+    currentPackageName: String,
+    currentAppName: String,
+    config: ConfigUtility,
+) {
+    val context = LocalContext.current
+    val text = LocalizedTextProvider.current
+    val scope = rememberCoroutineScope()
+    var selectedPackage by remember(settings.packageNames) {
+        mutableStateOf(
+            currentPackageName
+                .takeIf { it in settings.packageNames }
+                ?: settings.packageNames.firstOrNull().orEmpty(),
+        )
+    }
+    var draft by remember { mutableStateOf(ProgramPresenceSettings()) }
+    var displayName by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+    val selectedSettings = settings.programSettings[selectedPackage] ?: ProgramPresenceSettings()
+    val selectedDisplayName = settings.appDisplayNames[selectedPackage]
+        ?: selectedPackage.takeIf { it.isNotBlank() }?.let { appLabel(context, it) }
+        ?: ""
+
+    LaunchedEffect(settings.packageNames, currentPackageName) {
+        if (selectedPackage !in settings.packageNames) {
+            selectedPackage = currentPackageName
+                .takeIf { it in settings.packageNames }
+                ?: settings.packageNames.firstOrNull().orEmpty()
+        }
+    }
+
+    LaunchedEffect(selectedPackage, selectedSettings, selectedDisplayName) {
+        draft = selectedSettings
+        displayName = selectedDisplayName
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        InfoCard(text.presenceCustomizer) {
+            Text(text.presenceCustomizerDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(6.dp))
+            KeyValueRow(text.currentApp, currentAppName.ifBlank { text.notDetected })
+            KeyValueRow(text.packageName, currentPackageName.ifBlank { text.notDetected })
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            config.refreshSettings()
+                            message = text.presenceReloaded
+                        }
+                    },
+                ) {
+                    Text(text.refreshPresence)
+                }
+            }
+            if (message.isNotBlank()) {
+                AssistChip(onClick = { message = "" }, label = { Text(message) })
+            }
+        }
+
+        if (settings.packageNames.isEmpty()) {
+            InfoCard(text.currentPresence) {
+                Text(text.noRegisteredAppsForPresence, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            return@Column
+        }
+
+        InfoCard(text.selectPresenceApp) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                settings.packageNames.forEach { packageName ->
+                    val name = settings.appDisplayNames[packageName] ?: appLabel(context, packageName)
+                    FilterChip(
+                        selected = selectedPackage == packageName,
+                        onClick = { selectedPackage = packageName },
+                        label = { Text(name) },
+                    )
+                }
+            }
+        }
+
+        InfoCard(text.currentPresence) {
+            PresenceTextField(text.displayName, text.displayNameExample, displayName) { displayName = it }
+            KeyValueRow(text.packageName, selectedPackage)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            Text(text.activityType, fontWeight = FontWeight.SemiBold)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DiscordActivity.ActivityType.entries.forEach { type ->
+                    FilterChip(
+                        selected = draft.activityType == type,
+                        onClick = { draft = draft.copy(activityType = type) },
+                        label = { Text(activityTypeText(type, text)) },
+                    )
+                }
+            }
+            PresenceTextField(text.detailText, text.defaultDetailText, draft.detailText) { draft = draft.copy(detailText = it) }
+            PresenceTextField(text.stateText, text.defaultStateText, draft.stateText) { draft = draft.copy(stateText = it) }
+            Text(
+                text.templateHelp,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text.useAppIconForLargeImage)
+                Switch(
+                    checked = draft.useAppIconForLargeImage,
+                    onCheckedChange = { draft = draft.copy(useAppIconForLargeImage = it) },
+                )
+            }
+            PresenceTextField(text.largeImageKeyOrUrl, text.discordAssetKeyOrUrl, draft.largeImageKey) {
+                draft = draft.copy(largeImageKey = it)
+            }
+            PresenceTextField(text.largeImageText, text.imageHoverText, draft.largeImageText) {
+                draft = draft.copy(largeImageText = it)
+            }
+            PresenceTextField(text.smallImageKeyOrUrl, text.discordAssetKeyOrUrl, draft.smallImageKey) {
+                draft = draft.copy(smallImageKey = it)
+            }
+            PresenceTextField(text.smallImageText, text.imageHoverText, draft.smallImageText) {
+                draft = draft.copy(smallImageText = it)
+            }
+            Button(
+                onClick = {
+                    scope.launch {
+                        config.setAppDisplayName(selectedPackage, displayName)
+                        config.setProgramSettings(selectedPackage, draft)
+                    }
+                },
+                enabled = selectedPackage.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text.save)
+            }
+        }
+    }
 }
 
 @Composable
@@ -1398,6 +1663,7 @@ private fun tabTitle(tab: AppTab, text: LocalizedText): String = when (tab) {
     AppTab.OVERVIEW -> text.tabOverview
     AppTab.DISCORD -> text.tabDiscord
     AppTab.PROGRAMS -> text.tabPrograms
+    AppTab.PRESENCE -> text.tabPresence
     AppTab.MUSIC -> text.tabMusic
     AppTab.PERMISSIONS -> text.tabPermissions
     AppTab.SETTINGS -> text.tabSettings
@@ -1425,6 +1691,7 @@ private fun presenceStatusText(status: String, text: LocalizedText): String = wh
     "Configured" -> text.configured
     "Idle" -> text.standby
     "Not Tracked" -> text.untracked
+    "Authorization Required" -> text.unauthorized
     "Active" -> text.active
     "Update Failed" -> text.failed
     else -> status
@@ -1474,27 +1741,29 @@ private fun appLabel(context: Context, packageName: String): String {
     }.getOrDefault(packageName.substringAfterLast('.').ifBlank { packageName })
 }
 
-private fun installedLaunchableApps(context: Context): List<InstalledAppInfo> {
+private fun installedApplications(context: Context): List<InstalledAppInfo> {
     val packageManager = context.packageManager
-    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-    val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        packageManager.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
+    val applications = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
     } else {
         @Suppress("DEPRECATION")
-        packageManager.queryIntentActivities(intent, 0)
+        packageManager.getInstalledApplications(0)
     }
 
-    return resolved
-        .mapNotNull { info ->
-            val packageName = info.activityInfo?.packageName.orEmpty()
+    return applications
+        .mapNotNull { appInfo ->
+            val packageName = appInfo.packageName.orEmpty()
             if (packageName.isBlank()) {
                 null
             } else {
+                val isSystemApp = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0 ||
+                    appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
                 InstalledAppInfo(
-                    label = info.loadLabel(packageManager)?.toString()
+                    label = packageManager.getApplicationLabel(appInfo)?.toString()
                         ?.takeIf { it.isNotBlank() }
                         ?: packageName.substringAfterLast('.'),
                     packageName = packageName,
+                    isSystemApp = isSystemApp,
                 )
             }
         }

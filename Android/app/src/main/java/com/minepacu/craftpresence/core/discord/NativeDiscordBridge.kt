@@ -7,6 +7,7 @@ internal object NativeDiscordBridge {
 
     external fun configure(applicationId: String): String?
     external fun authorize(): Array<String>
+    external fun refreshAuthorization(refreshToken: String): Array<String>
     external fun currentUser(): Array<String>
     external fun logout(): String?
     external fun updateActivity(

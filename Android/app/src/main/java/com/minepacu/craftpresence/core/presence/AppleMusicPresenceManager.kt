@@ -60,6 +60,7 @@ class AppleMusicPresenceManager private constructor(context: Context) {
         }
         if (nextPlatforms == _state.value.enabledPlatforms && monitorJob != null) return
 
+        discord.retainActivityPriority(PRIORITY_OWNER)
         _state.value = _state.value.copy(enabledPlatforms = nextPlatforms, discordStatus = "Configuring...")
         if (monitorJob == null) {
             monitor.start(nextPlatforms.map { it.packageName }.toSet())
@@ -115,6 +116,7 @@ class AppleMusicPresenceManager private constructor(context: Context) {
         monitorJob = null
         updateJob = null
         monitor.stop()
+        discord.releaseActivityPriority(PRIORITY_OWNER)
         scope.launch { discord.clearActivity() }
         _state.value = AppleMusicPresenceState(discordStatus = "Not Connected")
     }
@@ -211,6 +213,7 @@ class AppleMusicPresenceManager private constructor(context: Context) {
 
     companion object {
         private const val MINIMUM_UPDATE_INTERVAL_MS = 15_000L
+        private const val PRIORITY_OWNER = "music-presence"
 
         @Volatile private var instance: AppleMusicPresenceManager? = null
 
