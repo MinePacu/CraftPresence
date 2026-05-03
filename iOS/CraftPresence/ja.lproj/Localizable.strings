@@ -33,6 +33,7 @@
 "discord.status.failed" = "失敗";
 "settings.title" = "設定";
 "settings.section.general" = "一般";
+"settings.section.rich_presence" = "Rich Presence";
 "settings.section.debug" = "デバッグ";
 "settings.language" = "言語";
 "settings.language.system" = "システム設定に従う";
@@ -42,6 +43,9 @@
 "settings.menu_bar_only.title" = "メニューバー専用モード";
 "settings.menu_bar_only.description" = "Dock アイコンを非表示にし、メニューバーアイコンのみで動作します。";
 "settings.menu_bar_only.help" = "有効にすると Dock と App Switcher から非表示になり、ステータスバーのメニューからのみ操作できます。";
+"settings.presence_priority.title" = "このアプリの Presence を維持";
+"settings.presence_priority.description" = "他のアプリや Discord クライアントが Rich Presence を変更した場合、最後に公開した CraftPresence 設定を再適用します。";
+"settings.presence_priority.help" = "有効にすると、外部変更を検知したあと CraftPresence が最後に公開した Presence を定期的に復元します。";
 "settings.debug_logging.title" = "デバッグログを有効化";
 "settings.debug_logging.description" = "開発またはテスト時のみ使用します。リリースビルドでは無視されます。";
 "settings.debug_logging.footer" = "この設定はデバッグビルドでのみ表示されます。リリースビルドでは常に無効です。";
@@ -121,6 +125,7 @@
 "presets.editor.text" = "表示テキスト";
 "presets.editor.elapsed_time" = "経過時間を表示";
 "presets.editor.assets" = "画像アセット";
+"presets.editor.assets_help" = "大きい画像キーと小さい画像キーには、Discord Developer Portal の Rich Presence アセットキー、または公開 HTTPS 画像 URL を入力してください。この端末内の画像ファイルパスは Discord から読み込めません。";
 "presets.editor.party" = "パーティー";
 "presets.editor.party_enabled" = "パーティー人数を表示";
 "custom_presence.title" = "Presence をカスタマイズ";

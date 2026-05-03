@@ -9,6 +9,7 @@ struct ProgramsView: View {
 
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var presets: [CustomPresencePreset] = []
     @State private var activePresetID: UUID?
@@ -17,17 +18,21 @@ struct ProgramsView: View {
     @State private var statusMessage = ""
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                controlPanel
-                if !statusMessage.isEmpty {
-                    messagePanel(statusMessage)
-                }
-                presetList
+        CPSettingsPage {
+            CPHeaderCard(
+                title: t("presets.title"),
+                subtitle: t("presets.subtitle"),
+                systemImage: "slider.horizontal.3",
+                tint: .orange
+            )
+
+            controlPanel
+
+            if !statusMessage.isEmpty {
+                messagePanel(statusMessage)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 18)
+
+            presetList
         }
         .task {
             await reloadPresets()
@@ -53,13 +58,26 @@ struct ProgramsView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(t("presets.title"), systemImage: "slider.horizontal.3")
-                .font(.title2.weight(.bold))
-                .accessibilityIdentifier("programs.title")
-            Text(t("presets.subtitle"))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if showsInlinePageHeader {
+                Label(t("presets.title"), systemImage: "slider.horizontal.3")
+                    .font(.title2.weight(.bold))
+                    .accessibilityIdentifier("programs.title")
+            }
+            if showsInlinePageHeader {
+                Text(t("presets.subtitle"))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(t("presets.subtitle"))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("programs.title")
+            }
         }
+    }
+
+    private var showsInlinePageHeader: Bool {
+        horizontalSizeClass != .compact
     }
 
     private var controlPanel: some View {
@@ -82,7 +100,7 @@ struct ProgramsView: View {
                     .foregroundStyle(statusColor)
             }
 
-            HStack(spacing: 10) {
+            LazyVGrid(columns: actionColumns, alignment: .leading, spacing: 10) {
                 Button {
                     editingPreset = nil
                     isPresentingEditor = true
@@ -103,7 +121,11 @@ struct ProgramsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(cardBackground)
+        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private var actionColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 148), spacing: 10)]
     }
 
     private var presetList: some View {
@@ -148,7 +170,7 @@ struct ProgramsView: View {
     }
 
     private var cardBackground: some ShapeStyle {
-        Color.secondary.opacity(0.08)
+        CPStyle.cardBackground
     }
 
     private func messagePanel(_ message: String) -> some View {
@@ -157,7 +179,7 @@ struct ProgramsView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(cardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     @MainActor
@@ -194,7 +216,7 @@ struct ProgramsView: View {
     private func publish(_ preset: CustomPresencePreset) async {
         do {
             var publishedPreset = preset.normalized
-            let startDate = publishedPreset.usesElapsedTime ? Date() : nil
+            let startDate = publishedPreset.elapsedStartDateForPublish()
             publishedPreset.elapsedStartDate = startDate
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
@@ -316,7 +338,7 @@ private struct PresencePresetRow: View {
             .labelStyle(.iconOnly)
         }
         .padding(16)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var icon: some View {
@@ -407,7 +429,7 @@ private struct PresencePresetForm: View {
                 .accessibilityIdentifier("presenceForm.elapsedTime")
         }
 
-        Section(t("presets.editor.assets")) {
+        Section {
             TextField(t("programs.sheet.large_image_key"), text: $preset.largeImageKey)
                 .accessibilityIdentifier("presenceForm.largeImageKey")
             TextField(t("programs.sheet.large_image_text"), text: $preset.largeImageText)
@@ -416,6 +438,10 @@ private struct PresencePresetForm: View {
                 .accessibilityIdentifier("presenceForm.smallImageKey")
             TextField(t("programs.sheet.small_image_text"), text: $preset.smallImageText)
                 .accessibilityIdentifier("presenceForm.smallImageText")
+        } header: {
+            Text(t("presets.editor.assets"))
+        } footer: {
+            Text(t("presets.editor.assets_help"))
         }
 
         Section(t("presets.editor.party")) {
@@ -442,6 +468,7 @@ private struct PresencePresetForm: View {
 struct CustomPresenceView: View {
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var draft = CustomPresencePreset.makeDraft()
@@ -449,18 +476,22 @@ struct CustomPresenceView: View {
     @State private var hasLoadedInitialDraft = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                previewPanel
-                actionPanel
-                if !statusMessage.isEmpty {
-                    messagePanel(statusMessage)
-                }
-                editorPanel
+        CPSettingsPage {
+            CPHeaderCard(
+                title: t("custom_presence.title"),
+                subtitle: t("custom_presence.subtitle"),
+                systemImage: "slider.horizontal.3",
+                tint: .blue
+            )
+
+            previewPanel
+            actionPanel
+
+            if !statusMessage.isEmpty {
+                messagePanel(statusMessage)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 18)
+
+            editorPanel
         }
         .task {
             await loadCurrentPresenceDraft()
@@ -488,13 +519,26 @@ struct CustomPresenceView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label(t("custom_presence.title"), systemImage: "slider.horizontal.3")
-                .font(.title2.weight(.bold))
-                .accessibilityIdentifier("customPresence.title")
-            Text(t("custom_presence.subtitle"))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if showsInlinePageHeader {
+                Label(t("custom_presence.title"), systemImage: "slider.horizontal.3")
+                    .font(.title2.weight(.bold))
+                    .accessibilityIdentifier("customPresence.title")
+            }
+            if showsInlinePageHeader {
+                Text(t("custom_presence.subtitle"))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(t("custom_presence.subtitle"))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("customPresence.title")
+            }
         }
+    }
+
+    private var showsInlinePageHeader: Bool {
+        horizontalSizeClass != .compact
     }
 
     private var previewPanel: some View {
@@ -532,7 +576,7 @@ struct CustomPresenceView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var actionPanel: some View {
@@ -593,14 +637,8 @@ struct CustomPresenceView: View {
     }
 
     private var editorPanel: some View {
-        Form {
-            PresencePresetForm(preset: $draft)
-        }
-        .formStyle(.grouped)
-        .frame(minHeight: 520)
-        .background(Color.clear)
-        .scrollContentBackground(.hidden)
-        .accessibilityIdentifier("customPresence.editor")
+        PresencePresetInlineForm(preset: $draft)
+            .accessibilityIdentifier("customPresence.editor")
     }
 
     private var statusColor: Color {
@@ -622,14 +660,14 @@ struct CustomPresenceView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     @MainActor
     private func publishDraft() async {
         do {
             var preset = draft.normalized
-            let startDate = preset.usesElapsedTime ? Date() : nil
+            let startDate = preset.elapsedStartDateForPublish()
             preset.elapsedStartDate = startDate
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
@@ -690,9 +728,10 @@ struct CustomPresenceView: View {
 
     @MainActor
     private func loadCurrentPresenceDraft() async {
+        let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
         if let liveActivity = try? await DiscordSDKManager.shared.currentPresenceActivity(),
            let liveDraft = CustomPresencePreset(discordActivity: liveActivity) {
-            draft = liveDraft
+            draft = liveDraft.preservingElapsedTime(from: appliedPresence)
             hasLoadedInitialDraft = true
             return
         }
@@ -711,6 +750,106 @@ struct CustomPresenceView: View {
             print("Failed to persist custom Presence draft: \(error)")
             #endif
         }
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private struct PresencePresetInlineForm: View {
+    @Binding var preset: CustomPresencePreset
+    @EnvironmentObject private var localizationManager: LocalizationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            formSection(title: t("presets.editor.identity")) {
+                TextField(t("presets.editor.title"), text: $preset.title)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.title")
+
+                Picker(t("programs.sheet.activity_type"), selection: $preset.activityType) {
+                    ForEach(ProgramPresenceSettings.ActivityType.allCases) { type in
+                        Label(type.localizedLabel, systemImage: type.systemImage).tag(type)
+                    }
+                }
+                .accessibilityIdentifier("presenceForm.activityType")
+            }
+
+            formSection(title: t("presets.editor.text")) {
+                TextField(t("programs.sheet.details"), text: $preset.details, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.details")
+
+                TextField(t("programs.sheet.state_message"), text: $preset.state, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.state")
+
+                Toggle(t("presets.editor.elapsed_time"), isOn: $preset.usesElapsedTime)
+                    .accessibilityIdentifier("presenceForm.elapsedTime")
+            }
+
+            formSection(
+                title: t("presets.editor.assets"),
+                footer: t("presets.editor.assets_help")
+            ) {
+                TextField(t("programs.sheet.large_image_key"), text: $preset.largeImageKey)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.largeImageKey")
+
+                TextField(t("programs.sheet.large_image_text"), text: $preset.largeImageText)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.largeImageText")
+
+                TextField(t("programs.sheet.small_image_key"), text: $preset.smallImageKey)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.smallImageKey")
+
+                TextField(t("programs.sheet.small_image_text"), text: $preset.smallImageText)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("presenceForm.smallImageText")
+            }
+
+            formSection(title: t("presets.editor.party")) {
+                Toggle(t("presets.editor.party_enabled"), isOn: $preset.usesParty)
+                    .accessibilityIdentifier("presenceForm.partyEnabled")
+
+                Stepper(value: $preset.partyCurrent, in: 0...max(0, preset.partyMax)) {
+                    LabeledContent(t("programs.sheet.party_current"), value: "\(preset.partyCurrent)")
+                }
+                .disabled(!preset.usesParty)
+                .accessibilityIdentifier("presenceForm.partyCurrent")
+
+                Stepper(value: $preset.partyMax, in: max(1, preset.partyCurrent)...99) {
+                    LabeledContent(t("programs.sheet.party_max"), value: "\(preset.partyMax)")
+                }
+                .disabled(!preset.usesParty)
+                .accessibilityIdentifier("presenceForm.partyMax")
+            }
+        }
+    }
+
+    private func formSection<Content: View>(
+        title: String,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+
+            content()
+
+            if let footer {
+                Text(footer)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func t(_ key: String) -> String {
@@ -797,6 +936,26 @@ extension CustomPresencePreset {
         return copy
     }
 
+    func elapsedStartDateForPublish(now: Date = Date()) -> Date? {
+        guard usesElapsedTime else { return nil }
+        return elapsedStartDate ?? now
+    }
+
+    func preservingElapsedTime(from fallback: CustomPresencePreset?) -> CustomPresencePreset {
+        guard let fallback,
+              fallback.usesElapsedTime,
+              let fallbackStartDate = fallback.elapsedStartDate,
+              elapsedStartDate == nil,
+              matchesPresencePayload(of: fallback) else {
+            return self
+        }
+
+        var copy = self
+        copy.usesElapsedTime = true
+        copy.elapsedStartDate = fallbackStartDate
+        return copy
+    }
+
     var partyID: String? {
         guard usesParty, partyCurrent > 0, partyMax >= partyCurrent else { return nil }
         return "preset:\(id.uuidString)"
@@ -808,6 +967,23 @@ extension CustomPresencePreset {
 
     var partyMaxValue: Int? {
         partyID == nil ? nil : partyMax
+    }
+
+    private func matchesPresencePayload(of other: CustomPresencePreset) -> Bool {
+        normalizedString(title) == normalizedString(other.title)
+            && activityType == other.activityType
+            && normalizedString(details) == normalizedString(other.details)
+            && normalizedString(state) == normalizedString(other.state)
+            && normalizedString(largeImageKey) == normalizedString(other.largeImageKey)
+            && normalizedString(largeImageText) == normalizedString(other.largeImageText)
+            && normalizedString(smallImageKey) == normalizedString(other.smallImageKey)
+            && normalizedString(smallImageText) == normalizedString(other.smallImageText)
+            && partyCurrentValue == other.partyCurrentValue
+            && partyMaxValue == other.partyMaxValue
+    }
+
+    private func normalizedString(_ value: String) -> String? {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 }
 

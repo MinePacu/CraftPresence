@@ -13,6 +13,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var appliedCustomPresence: CustomPresencePreset?
     public var activeCustomPresencePresetID: UUID?
     public var preferredLanguage: AppLanguage = .system
+    public var presencePriorityEnabled: Bool = true
     
     nonisolated init() { }
 
@@ -30,6 +31,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case appliedCustomPresence
         case activeCustomPresencePresetID
         case preferredLanguage
+        case presencePriorityEnabled
     }
 
     nonisolated public init(from decoder: Decoder) throws {
@@ -42,6 +44,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.appliedCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .appliedCustomPresence)
         self.activeCustomPresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
+        self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -54,6 +57,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encodeIfPresent(appliedCustomPresence, forKey: .appliedCustomPresence)
         try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activeCustomPresencePresetID)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
+        try container.encode(presencePriorityEnabled, forKey: .presencePriorityEnabled)
     }
 }
 
@@ -352,6 +356,9 @@ public actor ConfigUtility {
         if let customPresenceDraft = settings.customPresenceDraft {
             return customPresenceDraft
         }
+        if let appliedCustomPresence = settings.appliedCustomPresence {
+            return appliedCustomPresence
+        }
         if let activeID = settings.activeCustomPresencePresetID {
             if settings.lastCustomPresence?.id == activeID {
                 return settings.lastCustomPresence
@@ -372,6 +379,19 @@ public actor ConfigUtility {
     /// Returns the custom Presence that this app last applied and should keep authoritative.
     public func currentAppliedCustomPresence() -> CustomPresencePreset? {
         settings.appliedCustomPresence
+    }
+
+    /// Returns whether CraftPresence should reapply its last published custom Presence when another client changes it.
+    public func isPresencePriorityEnabled() -> Bool {
+        settings.presencePriorityEnabled
+    }
+
+    @discardableResult
+    /// Persists whether the app should keep its last published custom Presence authoritative.
+    public func setPresencePriorityEnabled(_ enabled: Bool) async throws -> AppSettings {
+        settings.presencePriorityEnabled = enabled
+        try persist()
+        return settings
     }
 
     @discardableResult

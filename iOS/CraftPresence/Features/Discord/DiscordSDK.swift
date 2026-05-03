@@ -334,10 +334,10 @@ final class DiscordSDKManager: ObservableObject {
             Discord_ActivityTimestamps_Init(&timestamps)
             defer { Discord_ActivityTimestamps_Drop(&timestamps) }
             if let start {
-                Discord_ActivityTimestamps_SetStart(&timestamps, UInt64(start.timeIntervalSince1970))
+                Discord_ActivityTimestamps_SetStart(&timestamps, Self.discordTimestamp(from: start))
             }
             if let end {
-                Discord_ActivityTimestamps_SetEnd(&timestamps, UInt64(end.timeIntervalSince1970))
+                Discord_ActivityTimestamps_SetEnd(&timestamps, Self.discordTimestamp(from: end))
             }
             Discord_Activity_SetTimestamps(&activity, &timestamps)
         }
@@ -908,6 +908,10 @@ final class DiscordSDKManager: ObservableObject {
         return String(bytes: buffer, encoding: .utf8)
     }
 
+    fileprivate static func discordTimestamp(from date: Date) -> UInt64 {
+        UInt64(max(0, (date.timeIntervalSince1970 * 1_000).rounded()))
+    }
+
     fileprivate static func resultErrorMessage(_ result: UnsafeMutablePointer<Discord_ClientResult>) -> String? {
         var error = Discord_String(ptr: nil, size: 0)
         Discord_ClientResult_Error(result, &error)
@@ -1077,6 +1081,7 @@ final class PresencePriorityController {
 
     func enforceAppliedPresenceIfNeeded() async {
         guard !isReapplying else { return }
+        guard await ConfigUtility.shared.isPresencePriorityEnabled() else { return }
         guard let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() else { return }
 
         do {
@@ -1290,8 +1295,8 @@ private extension DiscordActivity {
             defer { Discord_ActivityTimestamps_Drop(&nativeTimestamps) }
             let start = Discord_ActivityTimestamps_Start(&nativeTimestamps)
             let end = Discord_ActivityTimestamps_End(&nativeTimestamps)
-            activity.timestamps.start = start > 0 ? Date(timeIntervalSince1970: TimeInterval(start)) : nil
-            activity.timestamps.end = end > 0 ? Date(timeIntervalSince1970: TimeInterval(end)) : nil
+            activity.timestamps.start = Self.date(fromDiscordTimestamp: start)
+            activity.timestamps.end = Self.date(fromDiscordTimestamp: end)
         }
 
         var nativeParty = Discord_ActivityParty(opaque: nil)
@@ -1319,6 +1324,17 @@ private extension DiscordActivity {
         guard getter(&string) else { return nil }
         defer { Discord_Free(string.ptr) }
         return DiscordSDKManager.string(from: string)?.nilIfEmpty
+    }
+
+    private static func date(fromDiscordTimestamp value: UInt64) -> Date? {
+        guard value > 0 else { return nil }
+        let seconds: TimeInterval
+        if value < 10_000_000_000 {
+            seconds = TimeInterval(value)
+        } else {
+            seconds = TimeInterval(value) / 1_000
+        }
+        return Date(timeIntervalSince1970: seconds)
     }
 }
 

@@ -11,6 +11,7 @@ struct OverviewView: View {
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingDiscordConnection: Bool = false
     @State private var currentPresence: CustomPresencePreset?
     @State private var presetCount = 0
@@ -22,18 +23,22 @@ struct OverviewView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                header
-                statusGrid
-                discordConnectionPanel
-                if let lastErrorMessage = discordManager.lastErrorMessage, !lastErrorMessage.isEmpty {
-                    errorPanel(message: lastErrorMessage)
-                }
-                activityPanel
+        CPSettingsPage {
+            CPHeaderCard(
+                title: t("overview.title"),
+                subtitle: t("overview.subtitle"),
+                systemImage: "rectangle.and.text.magnifyingglass",
+                tint: .pink
+            )
+
+            statusGrid
+            discordConnectionPanel
+
+            if let lastErrorMessage = discordManager.lastErrorMessage, !lastErrorMessage.isEmpty {
+                errorPanel(message: lastErrorMessage)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 18)
+
+            activityPanel
         }
         .sheet(isPresented: $showingDiscordConnection) {
             DiscordConnectionView()
@@ -59,12 +64,24 @@ struct OverviewView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(t("overview.title"), systemImage: "rectangle.and.text.magnifyingglass")
-                .font(.title2.weight(.bold))
-                .accessibilityIdentifier("overview.title")
-            Text(t("overview.subtitle"))
-                .foregroundStyle(.secondary)
+            if showsInlinePageHeader {
+                Label(t("overview.title"), systemImage: "rectangle.and.text.magnifyingglass")
+                    .font(.title2.weight(.bold))
+                    .accessibilityIdentifier("overview.title")
+            }
+            if showsInlinePageHeader {
+                Text(t("overview.subtitle"))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(t("overview.subtitle"))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("overview.title")
+            }
         }
+    }
+
+    private var showsInlinePageHeader: Bool {
+        horizontalSizeClass != .compact
     }
 
     private var statusGrid: some View {
@@ -185,8 +202,8 @@ struct OverviewView: View {
         }
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.secondary.opacity(0.08))
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(CPStyle.cardBackground)
         )
     }
 
@@ -207,8 +224,8 @@ struct OverviewView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.secondary.opacity(0.08))
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(CPStyle.cardBackground)
         )
     }
 
@@ -282,7 +299,9 @@ struct OverviewView: View {
         guard let elapsedStartDate = currentPresence.elapsedStartDate else {
             return t("overview.elapsed_time_unavailable")
         }
-        return Self.elapsedTimeFormatter.string(from: max(0, now.timeIntervalSince(elapsedStartDate))) ?? t("common.none")
+        let elapsed = now.timeIntervalSince(elapsedStartDate)
+        let displayElapsed = elapsed > 0 ? max(1, elapsed) : 1
+        return Self.elapsedTimeFormatter.string(from: displayElapsed) ?? t("common.none")
     }
 
     private static let elapsedTimeFormatter: DateComponentsFormatter = {
@@ -322,8 +341,8 @@ struct OverviewView: View {
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.secondary.opacity(0.08))
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(CPStyle.cardBackground)
         )
     }
 
@@ -359,11 +378,11 @@ struct OverviewView: View {
         }
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color.red.opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.red.opacity(0.18), lineWidth: 1)
         )
     }
@@ -402,11 +421,15 @@ struct OverviewView: View {
 
         if let liveActivity = try? await DiscordSDKManager.shared.currentPresenceActivity(),
            let livePresence = CustomPresencePreset(discordActivity: liveActivity) {
-            currentPresence = livePresence
+            currentPresence = livePresence.preservingElapsedTime(from: settings.appliedCustomPresence)
             return
         }
 
-        currentPresence = await ConfigUtility.shared.currentCustomPresenceDraft()
+        if let storedPresence = settings.appliedCustomPresence ?? settings.customPresenceDraft {
+            currentPresence = storedPresence
+        } else {
+            currentPresence = await ConfigUtility.shared.currentCustomPresenceDraft()
+        }
     }
 }
 

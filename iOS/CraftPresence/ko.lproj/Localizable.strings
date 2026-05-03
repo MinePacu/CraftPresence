@@ -33,6 +33,7 @@
 "discord.status.failed" = "실패";
 "settings.title" = "설정";
 "settings.section.general" = "일반";
+"settings.section.rich_presence" = "Rich Presence";
 "settings.section.debug" = "디버그";
 "settings.language" = "언어";
 "settings.language.system" = "시스템 설정 따르기";
@@ -42,6 +43,9 @@
 "settings.menu_bar_only.title" = "메뉴 막대 전용 모드";
 "settings.menu_bar_only.description" = "Dock 아이콘을 숨기고 메뉴 막대 아이콘으로만 동작합니다.";
 "settings.menu_bar_only.help" = "활성화 시 Dock과 앱 전환기에서 숨겨지고, 상태바 아이콘 메뉴로만 조작합니다.";
+"settings.presence_priority.title" = "이 앱의 Presence 유지";
+"settings.presence_priority.description" = "다른 앱이나 Discord 클라이언트가 Rich Presence를 바꾸면 마지막으로 게시한 CraftPresence 설정을 다시 적용합니다.";
+"settings.presence_priority.help" = "켜두면 외부 변경이 감지될 때 CraftPresence가 마지막으로 게시한 Presence를 주기적으로 복원합니다.";
 "settings.debug_logging.title" = "디버그 로그 사용";
 "settings.debug_logging.description" = "개발 또는 테스트 중에만 사용됩니다. 릴리즈 빌드에서는 무시됩니다.";
 "settings.debug_logging.footer" = "이 설정은 디버그 빌드에서만 노출됩니다. 릴리즈 빌드에서는 항상 비활성화됩니다.";
@@ -121,6 +125,7 @@
 "presets.editor.text" = "표시 문구";
 "presets.editor.elapsed_time" = "경과 시간 표시";
 "presets.editor.assets" = "이미지 에셋";
+"presets.editor.assets_help" = "큰 이미지 키와 작은 이미지 키에는 Discord 개발자 포털의 Rich Presence 에셋 키 또는 공개 HTTPS 이미지 URL을 입력하세요. 기기 내부 이미지 파일 경로는 Discord에서 가져올 수 없습니다.";
 "presets.editor.party" = "파티 정보";
 "presets.editor.party_enabled" = "파티 인원 표시";
 "custom_presence.title" = "Presence 커스텀";

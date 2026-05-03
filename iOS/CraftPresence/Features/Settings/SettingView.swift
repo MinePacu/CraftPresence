@@ -13,51 +13,84 @@ struct SettingView: View {
     @AppStorage("debugLoggingEnabled") private var debugLoggingEnabled: Bool = false
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
+    @State private var presencePriorityEnabled: Bool = true
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(header: Text(t("settings.section.general"))) {
-                    Picker(t("settings.language"), selection: languageBinding) {
-                        ForEach(AppLanguage.allCases) { language in
-                            Text(languageLabel(for: language)).tag(language)
+            CPSettingsPage {
+                CPHeaderCard(
+                    title: t("settings.title"),
+                    subtitle: t("settings.presence_priority.description"),
+                    systemImage: "gearshape",
+                    tint: .gray
+                )
+
+                CPGroupedSection {
+                    CPSettingsRow(title: t("settings.language"), systemImage: "globe", tint: .blue) {
+                        Picker(t("settings.language"), selection: languageBinding) {
+                            ForEach(AppLanguage.allCases) { language in
+                                Text(languageLabel(for: language)).tag(language)
+                            }
                         }
+                        .labelsHidden()
                     }
 
 #if os(macOS)
-                    Toggle(isOn: $menuBarOnlyEnabled.onChange(menuBarToggleChanged)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(t("settings.menu_bar_only.title"))
-                            Text(t("settings.menu_bar_only.description"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                    CPSectionDivider()
+                    CPSettingsRow(
+                        title: t("settings.menu_bar_only.title"),
+                        subtitle: t("settings.menu_bar_only.description"),
+                        systemImage: "menubar.rectangle",
+                        tint: .purple
+                    ) {
+                        Toggle(t("settings.menu_bar_only.title"), isOn: $menuBarOnlyEnabled.onChange(menuBarToggleChanged))
+                            .labelsHidden()
                     }
                     .help(t("settings.menu_bar_only.help"))
 #endif
                 }
 
+                CPGroupedSection {
+                    CPSettingsRow(
+                        title: t("settings.presence_priority.title"),
+                        subtitle: t("settings.presence_priority.description"),
+                        systemImage: "paperplane.fill",
+                        tint: .pink
+                    ) {
+                        Toggle(t("settings.presence_priority.title"), isOn: $presencePriorityEnabled.onChange(presencePriorityToggleChanged))
+                            .labelsHidden()
+                    }
+                    .help(t("settings.presence_priority.help"))
+                    .accessibilityIdentifier("settings.presencePriority")
+                }
+
                 #if DEBUG
-                Section(header: Text(t("settings.section.debug"))) {
-                    Toggle(isOn: $debugLoggingEnabled) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(t("settings.debug_logging.title"))
-                            Text(t("settings.debug_logging.description"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
+                CPGroupedSection {
+                    CPSettingsRow(
+                        title: t("settings.debug_logging.title"),
+                        subtitle: t("settings.debug_logging.description"),
+                        systemImage: "ladybug",
+                        tint: .orange
+                    ) {
+                        Toggle(t("settings.debug_logging.title"), isOn: $debugLoggingEnabled)
+                            .labelsHidden()
                     }
                 }
 
-                Section(footer: Text(t("settings.debug_logging.footer"))) {
-                    EmptyView()
-                }
+                Text(t("settings.debug_logging.footer"))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
                 #endif
             }
             .navigationTitle(t("settings.title"))
+            .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 // 설정 화면 진입 시 현재 저장된 상태를 보장 적용
                 applyMenuBarMode(menuBarOnlyEnabled)
+                Task {
+                    presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+                }
             }
         }
     }
@@ -76,6 +109,20 @@ struct SettingView: View {
             LSUIElementController.shared.disableMenuBarOnly()
         }
         #endif
+    }
+
+    /// Saves whether the app should reapply its own Presence after another client changes it.
+    private func presencePriorityToggleChanged(_ enabled: Bool) {
+        Task {
+            do {
+                _ = try await ConfigUtility.shared.setPresencePriorityEnabled(enabled)
+                if enabled {
+                    await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
+                }
+            } catch {
+                presencePriorityEnabled.toggle()
+            }
+        }
     }
 
     /// Two-way binding that saves language changes asynchronously through the localization manager.

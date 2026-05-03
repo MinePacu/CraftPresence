@@ -275,50 +275,104 @@ struct ContentView: View {
 #if os(iOS)
     private var compactNavigation: some View {
         NavigationStack {
-            List {
-                Section(t("sidebar.section.menu")) {
+            CPSettingsPage {
+                CPHeaderCard(
+                    title: "CraftPresence",
+                    subtitle: t("overview.subtitle"),
+                    systemImage: "sparkles",
+                    tint: .pink
+                )
+
+                CPGroupedSection {
                     NavigationLink(value: DetailSelection.overview) {
-                        Label(t("sidebar.overview"), systemImage: "rectangle.and.text.magnifyingglass")
+                        CPNavigationRow(
+                            title: t("sidebar.overview"),
+                            subtitle: nil,
+                            systemImage: "rectangle.and.text.magnifyingglass",
+                            tint: .pink
+                        )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("sidebar.overview")
+                    CPSectionDivider()
 
                     NavigationLink(value: DetailSelection.customPresence) {
-                        Label(t("sidebar.custom_presence"), systemImage: "slider.horizontal.3")
+                        CPNavigationRow(
+                            title: t("sidebar.custom_presence"),
+                            subtitle: nil,
+                            systemImage: "slider.horizontal.3",
+                            tint: .blue
+                        )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("sidebar.customPresence")
+                    CPSectionDivider()
 
                     NavigationLink(value: DetailSelection.programs) {
-                        Label(t("sidebar.programs"), systemImage: "list.bullet.rectangle")
+                        CPNavigationRow(
+                            title: t("sidebar.programs"),
+                            subtitle: nil,
+                            systemImage: "list.bullet.rectangle",
+                            tint: .orange
+                        )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("sidebar.programs")
+                    CPSectionDivider()
 
                     NavigationLink(value: DetailSelection.about) {
-                        Label(t("sidebar.about"), systemImage: "info.circle")
+                        CPNavigationRow(
+                            title: t("sidebar.about"),
+                            subtitle: nil,
+                            systemImage: "info.circle",
+                            tint: .gray
+                        )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("sidebar.about")
                 }
 
-                Section(t("sidebar.section.test")) {
+                CPGroupedSection {
                     NavigationLink(value: DetailSelection.discordTest) {
-                        Label(t("sidebar.discord_test"), systemImage: "gamecontroller")
+                        CPNavigationRow(
+                            title: t("sidebar.discord_test"),
+                            subtitle: nil,
+                            systemImage: "gamecontroller",
+                            tint: .purple
+                        )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("sidebar.discordTest")
+                    CPSectionDivider()
 
                     NavigationLink(value: DetailSelection.nowPlayingTest) {
-                        Label(t("sidebar.now_playing_test"), systemImage: "music.note")
+                        CPNavigationRow(
+                            title: t("sidebar.now_playing_test"),
+                            subtitle: nil,
+                            systemImage: "music.note",
+                            tint: .green
+                        )
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("sidebar.nowPlayingTest")
 
                     ForEach(items) { item in
+                        CPSectionDivider()
                         NavigationLink(value: DetailSelection.item(item)) {
-                            Label(item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock")
+                            CPNavigationRow(
+                                title: item.timestamp.formatted(date: .numeric, time: .standard),
+                                subtitle: nil,
+                                systemImage: "clock",
+                                tint: .gray
+                            )
                         }
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("sidebar.item.\(item.id)")
                     }
-                    .onDelete(perform: deleteItems)
                 }
             }
-            .navigationTitle(t("sidebar.section.menu"))
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
