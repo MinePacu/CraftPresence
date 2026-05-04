@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -16,18 +17,111 @@ WORKSPACE = Path(os.environ.get("CRAFTPRESENCE_MIGRATION_WORKSPACE", ROOT.parent
 STATE_DIR = WORKSPACE / "state"
 REPORT_DIR = WORKSPACE / "reports"
 REWRITTEN_DIR = WORKSPACE / "rewritten"
+SOURCES_DIR = WORKSPACE / "sources"
 
-REPOS = {
-    "CraftPresence-Android": "MinePacu/CraftPresence-Android",
-    "CraftPresence-iOS": "MinePacu/CraftPresence-iOS",
-    "CraftPresence": "MinePacu/CraftPresence",
-}
+REPOS = [
+    {"local": "CraftPresence-Android", "repo": "MinePacu/CraftPresence-Android"},
+    {"local": "CraftPresence-iOS", "repo": "MinePacu/CraftPresence-iOS"},
+    {"local": "CraftPresence", "repo": "MinePacu/CraftPresence"},
+]
 
 REF_RE = re.compile(r"(?<![\w/.-])(?:(?P<keyword>fixes|fixed|closes|closed|resolves|resolved)\s+)?(?P<form>#|GH-)(?P<number>[1-9]\d*)\b", re.IGNORECASE)
 
 
 def run_git(repo: Path, args: list[str], input_text: str | None = None) -> str:
     return subprocess.run(["git", "-C", str(repo), *args], input=input_text, text=True, capture_output=True, check=True).stdout
+
+
+def run_gh(args: list[str]) -> str:
+    return subprocess.run(["gh", *args], text=True, capture_output=True, check=True).stdout
+
+
+def parse_json_stream(text: str) -> list[dict]:
+    decoder = json.JSONDecoder()
+    pos = 0
+    values: list[dict] = []
+    text = text.strip()
+    while pos < len(text):
+        obj, pos = decoder.raw_decode(text, pos)
+        if isinstance(obj, list):
+            values.extend(obj)
+        else:
+            values.append(obj)
+        while pos < len(text) and text[pos].isspace():
+            pos += 1
+    return values
+
+
+def find_refs(message: str, source_repo: str) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    for match in REF_RE.finditer(message):
+        number = match.group("number")
+        refs.append(
+            {
+                "reference": match.group(0),
+                "source_issue": f"{source_repo}#{number}",
+            }
+        )
+    return refs
+
+
+def subject(message: str) -> str:
+    for line in message.splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def local_log(repo_dir: Path) -> list[tuple[str, str, str]]:
+    log = run_git(repo_dir, ["log", "--all", "--format=%H%x00%B%x00END%x00"])
+    commits: list[tuple[str, str, str]] = []
+    for chunk in log.split("\0END\0"):
+        parts = chunk.strip("\0\n").split("\0", 1)
+        if len(parts) != 2:
+            continue
+        commit, message = parts
+        commits.append((commit, subject(message), message))
+    return commits
+
+
+def gh_default_branch(repo: str) -> str | None:
+    if shutil.which("gh") is None:
+        return None
+    result = subprocess.run(
+        ["gh", "repo", "view", repo, "--json", "defaultBranchRef"],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    data = json.loads(result.stdout)
+    return data.get("defaultBranchRef", {}).get("name")
+
+
+def gh_commit_log(repo: str) -> tuple[list[tuple[str, str, str]], str]:
+    if shutil.which("gh") is None:
+        return [], "gh is not installed or not on PATH"
+    branch = gh_default_branch(repo)
+    if not branch:
+        return [], "could not determine default branch with gh"
+    commits = parse_json_stream(run_gh(["api", f"repos/{repo}/commits?sha={branch}&per_page=100", "--paginate"]))
+    rows: list[tuple[str, str, str]] = []
+    for item in commits:
+        message = item.get("commit", {}).get("message") or ""
+        rows.append((item.get("sha") or "", subject(message), message))
+    return rows, f"GitHub commits API default branch `{branch}`"
+
+
+def load_commit_log(local_name: str, source_repo: str, prefer_rewritten: bool) -> tuple[list[tuple[str, str, str]], str]:
+    rewritten_dir = REWRITTEN_DIR / local_name
+    source_dir = SOURCES_DIR / local_name
+    if prefer_rewritten and rewritten_dir.exists():
+        return local_log(rewritten_dir), f"rewritten repo `{rewritten_dir}`"
+    if source_dir.exists():
+        return local_log(source_dir), f"source repo clone `{source_dir}`"
+    if rewritten_dir.exists():
+        return local_log(rewritten_dir), f"rewritten repo `{rewritten_dir}`"
+    return gh_commit_log(source_repo)
 
 
 def rewrite_message(message: str, source_repo: str, issue_map: dict[str, int]) -> tuple[str, list[str]]:
@@ -58,40 +152,90 @@ def main() -> int:
     issue_map_path = STATE_DIR / "issue-map.json"
     if issue_map_path.exists():
         issue_map = json.loads(issue_map_path.read_text(encoding="utf-8"))
+        has_issue_map = True
     else:
-        issue_map = json.loads((ROOT / "examples" / "issue-map.example.json").read_text(encoding="utf-8"))
+        issue_map = {}
+        has_issue_map = False
 
     report_lines = ["# Issue Reference Rewrite Report", "", f"Dry run: {dry_run}", ""]
-    for local_name, source_repo in REPOS.items():
-        repo_dir = REWRITTEN_DIR / local_name
+    if has_issue_map:
+        report_lines.extend([f"Issue map: `{issue_map_path}`", ""])
+    else:
+        report_lines.extend(
+            [
+                f"Issue map missing: `{issue_map_path}`",
+                "Commit message rewrite was not run because target issue numbers are unknown until issue import creates `state/issue-map.json`.",
+                "The sections below scan source commit messages and report potential issue references only.",
+                "",
+            ]
+        )
+
+    if args.execute and not has_issue_map:
+        report_lines.append("Execute mode stopped before rewriting because `state/issue-map.json` does not exist.")
+        report = REPORT_DIR / "issue-ref-rewrite-report.md"
+        report.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+        print(f"Issue reference rewrite report: {report}")
+        print("No commit messages were changed.")
+        return 1
+
+    for repo_info in REPOS:
+        local_name = repo_info["local"]
+        source_repo = repo_info["repo"]
         report_lines.append(f"## {source_repo}")
-        if not repo_dir.exists():
-            report_lines.append(f"- Rewritten repo not found yet: `{repo_dir}`")
+        commits, source_description = load_commit_log(local_name, source_repo, prefer_rewritten=has_issue_map)
+        report_lines.append(f"- Scan source: {source_description}")
+        if not commits:
+            report_lines.append("- No commits available to scan.")
             report_lines.append("")
             continue
 
-        log = run_git(repo_dir, ["log", "--format=%H%x00%B%x00END%x00"])
-        chunks = log.split("\0END\0")
         callback_cases: list[tuple[str, str, str, list[str]]] = []
-        for chunk in chunks:
-            parts = chunk.strip("\0\n").split("\0", 1)
-            if len(parts) != 2:
+        potential_refs = 0
+        for commit, commit_subject, message in commits:
+            refs = find_refs(message, source_repo)
+            if not refs:
                 continue
-            commit, message = parts
-            rewritten, changes = rewrite_message(message, source_repo, issue_map)
-            if changes:
-                callback_cases.append((commit, message, rewritten, changes))
-                report_lines.append(f"- `{commit[:12]}`")
-                for change in changes:
-                    report_lines.append(f"  - {change}")
+            potential_refs += len(refs)
+            if not has_issue_map:
+                report_lines.append(f"- commit: `{commit[:12]}`")
+                report_lines.append(f"  - subject: {commit_subject}")
+                for ref in refs:
+                    report_lines.append(f"  - reference: `{ref['reference']}` -> interpreted source issue `{ref['source_issue']}`")
+                continue
 
-        if not callback_cases:
-            report_lines.append("- No rewrite candidates found.")
+            rewritten, changes = rewrite_message(message, source_repo, issue_map)
+            if not changes:
+                report_lines.append(f"- commit: `{commit[:12]}`")
+                report_lines.append(f"  - subject: {commit_subject}")
+                for ref in refs:
+                    report_lines.append(f"  - reference: `{ref['reference']}` -> interpreted source issue `{ref['source_issue']}`")
+                    report_lines.append("  - mapped issue: not found in issue-map.json")
+                continue
+
+            callback_cases.append((commit, message, rewritten, changes))
+            report_lines.append(f"- commit: `{commit[:12]}`")
+            report_lines.append(f"  - subject: {commit_subject}")
+            report_lines.append("  - before:")
+            report_lines.append("    ```text")
+            report_lines.extend(f"    {line}" for line in message.strip().splitlines())
+            report_lines.append("    ```")
+            report_lines.append("  - after:")
+            report_lines.append("    ```text")
+            report_lines.extend(f"    {line}" for line in rewritten.strip().splitlines())
+            report_lines.append("    ```")
+            for change in changes:
+                report_lines.append(f"  - mapped issue: {change}")
+
+        if potential_refs == 0:
+            report_lines.append("- No potential issue references found.")
         report_lines.append("")
 
-        if dry_run or not callback_cases:
+        if dry_run or not callback_cases or not has_issue_map:
             continue
 
+        repo_dir = REWRITTEN_DIR / local_name
+        if not repo_dir.exists():
+            raise RuntimeError(f"Cannot execute rewrite because rewritten repo does not exist: {repo_dir}")
         callback = repo_dir / ".git" / "craftpresence-message-callback.py"
         callback.write_text(
             "import json, re\n"
@@ -125,4 +269,3 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as exc:
         print(exc.stderr or str(exc), file=sys.stderr)
         raise SystemExit(exc.returncode)
-

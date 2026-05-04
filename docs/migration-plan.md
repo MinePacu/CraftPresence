@@ -112,6 +112,8 @@ Supported forms include:
 
 The dry-run report is written to `reports/issue-ref-rewrite-report.md`.
 
+If `state/issue-map.json` does not exist yet, the script does not rewrite commit messages. It writes that reason to the report and scans source commit logs for potential issue references so they can be reviewed before issue import creates the final map.
+
 ## Phase 7: `.gitignore` merge
 
 ```bash
