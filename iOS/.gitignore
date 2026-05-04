@@ -1,0 +1,17 @@
+# Xcode build output
+BuildProducts/
+DerivedData/
+*.xcuserdata/
+
+# Local app configuration
+CraftPresence/Config/CraftPresence.local.xcconfig
+
+# Discord SDK binaries and generated headers
+*.xcframework/
+CraftPresence/ThirdParty/DiscordSocialSDK/
+**/discord_partner_sdk.framework/
+**/discord_partner_sdk.framework/Headers/*.[ch]
+**/discord_partner_sdk.framework/Headers/*.hpp
+
+# macOS metadata
+.DS_Store
