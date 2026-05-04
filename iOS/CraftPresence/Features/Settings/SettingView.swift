@@ -14,6 +14,7 @@ struct SettingView: View {
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
     @State private var presencePriorityEnabled: Bool = true
+    @State private var presenceLiveActivityEnabled: Bool = true
 
     var body: some View {
         NavigationStack {
@@ -62,6 +63,21 @@ struct SettingView: View {
                     }
                     .help(t("settings.presence_priority.help"))
                     .accessibilityIdentifier("settings.presencePriority")
+
+                    #if os(iOS)
+                    CPSectionDivider()
+                    CPSettingsRow(
+                        title: t("settings.live_activity.title"),
+                        subtitle: t("settings.live_activity.description"),
+                        systemImage: "iphone.gen3",
+                        tint: .green
+                    ) {
+                        Toggle(t("settings.live_activity.title"), isOn: $presenceLiveActivityEnabled.onChange(liveActivityToggleChanged))
+                            .labelsHidden()
+                    }
+                    .help(t("settings.live_activity.help"))
+                    .accessibilityIdentifier("settings.liveActivity")
+                    #endif
                 }
 
                 #if DEBUG
@@ -90,6 +106,7 @@ struct SettingView: View {
                 applyMenuBarMode(menuBarOnlyEnabled)
                 Task {
                     presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+                    presenceLiveActivityEnabled = await ConfigUtility.shared.isPresenceLiveActivityEnabled()
                 }
             }
         }
@@ -121,6 +138,25 @@ struct SettingView: View {
                 }
             } catch {
                 presencePriorityEnabled.toggle()
+            }
+        }
+    }
+
+    /// Saves whether ActivityKit should mirror the currently published Presence.
+    private func liveActivityToggleChanged(_ enabled: Bool) {
+        Task {
+            do {
+                _ = try await ConfigUtility.shared.setPresenceLiveActivityEnabled(enabled)
+                if enabled, let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() {
+                    await PresenceLiveActivityController.shared.publish(
+                        appliedPresence,
+                        connectionStatus: t(DiscordSDKManager.shared.dashboardStatus.localizationKey)
+                    )
+                } else {
+                    await PresenceLiveActivityController.shared.end()
+                }
+            } catch {
+                presenceLiveActivityEnabled.toggle()
             }
         }
     }

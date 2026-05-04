@@ -150,6 +150,9 @@ struct ContentView: View {
             // 앱이 보일 때 저장된 설정을 즉시 반영
             applyMenuBarMode(menuBarOnlyEnabled)
         }
+        .onOpenURL { url in
+            handleIncomingURL(url)
+        }
     }
 
     // MARK: Navigation
@@ -571,6 +574,31 @@ struct ContentView: View {
 
         if let activeWindowTitle = AutomationLaunchOptions.activeWindowTitle {
             self.activeWindowTitle = activeWindowTitle
+        }
+    }
+
+    private func handleIncomingURL(_ url: URL) {
+        guard url.scheme == "craftpresence" else { return }
+
+        if url.host == "overview" {
+            selection = .overview
+            return
+        }
+
+        if url.host == "presets" || url.host == "custom-presence" {
+            selection = .customPresence
+            return
+        }
+
+        if url.host == "presence", url.path == "/stop" {
+            selection = .overview
+            Task {
+                try? await DiscordSDKManager.shared.clearActivity()
+                _ = try? await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
+                _ = try? await ConfigUtility.shared.setLastCustomPresence(nil)
+                _ = try? await ConfigUtility.shared.setAppliedCustomPresence(nil)
+                await PresenceLiveActivityController.shared.end()
+            }
         }
     }
 

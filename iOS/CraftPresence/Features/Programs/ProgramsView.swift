@@ -240,6 +240,10 @@ struct ProgramsView: View {
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(publishedPreset)
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(publishedPreset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: publishedPreset.id)
+            await PresenceLiveActivityController.shared.publish(
+                publishedPreset,
+                connectionStatus: t(discordManager.dashboardStatus.localizationKey)
+            )
             await reloadPresets()
             statusMessage = String(format: t("presets.published_format"), publishedPreset.title)
         } catch {
@@ -254,6 +258,7 @@ struct ProgramsView: View {
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
             _ = try await ConfigUtility.shared.setLastCustomPresence(nil)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(nil)
+            await PresenceLiveActivityController.shared.end()
             await reloadPresets()
             statusMessage = t("presets.cleared")
         } catch {
@@ -748,6 +753,10 @@ struct CustomPresenceView: View {
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(preset)
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(preset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
+            await PresenceLiveActivityController.shared.publish(
+                preset,
+                connectionStatus: t(discordManager.dashboardStatus.localizationKey)
+            )
             draft = preset
             hasLoadedInitialDraft = true
             statusMessage = String(format: t("custom_presence.published_format"), preset.title)
@@ -778,6 +787,7 @@ struct CustomPresenceView: View {
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
             _ = try await ConfigUtility.shared.setLastCustomPresence(nil)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(nil)
+            await PresenceLiveActivityController.shared.end()
             statusMessage = t("presets.cleared")
         } catch {
             statusMessage = error.localizedDescription

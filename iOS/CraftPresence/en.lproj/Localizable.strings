@@ -46,6 +46,9 @@
 "settings.presence_priority.title" = "Keep this app's Presence";
 "settings.presence_priority.description" = "If another app or Discord client changes Rich Presence, reapply the last CraftPresence settings you published.";
 "settings.presence_priority.help" = "When enabled, CraftPresence periodically restores the last Presence it published after an external change is detected.";
+"settings.live_activity.title" = "Show Live Activity";
+"settings.live_activity.description" = "Mirror the current Presence on the Lock Screen and Dynamic Island when supported.";
+"settings.live_activity.help" = "When disabled, publishing Presence still updates Discord but does not start or update a Live Activity.";
 "settings.debug_logging.title" = "Enable debug logging";
 "settings.debug_logging.description" = "Use only during development or testing. Ignored in release builds.";
 "settings.debug_logging.footer" = "This setting is shown only in debug builds. It is always disabled in release builds.";

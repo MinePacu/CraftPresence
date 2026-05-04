@@ -40,6 +40,12 @@
 		7D51001C2FA5000000694E71 /* CraftPresenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D52001E2FA5000000694E71 /* CraftPresenceTests.swift */; };
 		7D51001D2FA5000000694E71 /* CraftPresenceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D52001F2FA5000000694E71 /* CraftPresenceUITests.swift */; };
 		7D51001E2FA5000000694E71 /* CraftPresenceUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D5200202FA5000000694E71 /* CraftPresenceUITestsLaunchTests.swift */; };
+		7D6A00012FA7000000694E71 /* PresenceActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6B00012FA7000000694E71 /* PresenceActivityAttributes.swift */; };
+		7D6A00022FA7000000694E71 /* PresenceLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6B00022FA7000000694E71 /* PresenceLiveActivityController.swift */; };
+		7D6A00032FA7000000694E71 /* CraftPresenceLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6B00032FA7000000694E71 /* CraftPresenceLiveActivityBundle.swift */; };
+		7D6A00042FA7000000694E71 /* PresenceLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6B00042FA7000000694E71 /* PresenceLiveActivityWidget.swift */; };
+		7D6A00052FA7000000694E71 /* PresenceActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6B00012FA7000000694E71 /* PresenceActivityAttributes.swift */; };
+		7D6A00062FA7000000694E71 /* CraftPresenceLiveActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7D6B00062FA7000000694E71 /* CraftPresenceLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +63,13 @@
 			remoteGlobalIDString = 7D3CED9D2FA349C000694E71;
 			remoteInfo = CraftPresence;
 		};
+		7D6E00032FA7000000694E71 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7D3CED962FA349C000694E71 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7D6E00012FA7000000694E71;
+			remoteInfo = CraftPresenceLiveActivity;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -69,6 +82,17 @@
 				7D4A00032FA4000000694E71 /* CraftPresence/ThirdParty/DiscordSocialSDK/discord_partner_sdk.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7D6D00012FA7000000694E71 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7D6A00062FA7000000694E71 /* CraftPresenceLiveActivity.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -113,6 +137,12 @@
 		7D52001E2FA5000000694E71 /* CraftPresenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CraftPresenceTests.swift; sourceTree = "<group>"; };
 		7D52001F2FA5000000694E71 /* CraftPresenceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CraftPresenceUITests.swift; sourceTree = "<group>"; };
 		7D5200202FA5000000694E71 /* CraftPresenceUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CraftPresenceUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		7D6B00012FA7000000694E71 /* PresenceActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceActivityAttributes.swift; sourceTree = "<group>"; };
+		7D6B00022FA7000000694E71 /* PresenceLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceLiveActivityController.swift; sourceTree = "<group>"; };
+		7D6B00032FA7000000694E71 /* CraftPresenceLiveActivityBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CraftPresenceLiveActivityBundle.swift; sourceTree = "<group>"; };
+		7D6B00042FA7000000694E71 /* PresenceLiveActivityWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceLiveActivityWidget.swift; sourceTree = "<group>"; };
+		7D6B00052FA7000000694E71 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7D6B00062FA7000000694E71 /* CraftPresenceLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CraftPresenceLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -138,6 +168,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7D6D00032FA7000000694E71 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -147,6 +184,7 @@
 				7D3CEDA02FA349C000694E71 /* CraftPresence */,
 				7D3CEDB02FA349C200694E71 /* CraftPresenceTests */,
 				7D3CEDBA2FA349C200694E71 /* CraftPresenceUITests */,
+				7D6C00022FA7000000694E71 /* CraftPresenceLiveActivity */,
 				7D4A00002FA4000000694E71 /* CraftPresence/ThirdParty/DiscordSocialSDK/discord_partner_sdk.xcframework */,
 				7D3CED9F2FA349C000694E71 /* Products */,
 			);
@@ -158,6 +196,7 @@
 				7D3CED9E2FA349C000694E71 /* CraftPresence.app */,
 				7D3CEDAD2FA349C200694E71 /* CraftPresenceTests.xctest */,
 				7D3CEDB72FA349C200694E71 /* CraftPresenceUITests.xctest */,
+				7D6B00062FA7000000694E71 /* CraftPresenceLiveActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -264,9 +303,18 @@
 			children = (
 				7D5300082FA5000000694E71 /* AppleMusic */,
 				7D52000D2FA5000000694E71 /* BuiltinPresenceStubs.swift */,
+				7D6C00012FA7000000694E71 /* LiveActivity */,
 				7D5300092FA5000000694E71 /* Xcode */,
 			);
 			path = Presence;
+			sourceTree = "<group>";
+		};
+		7D6C00012FA7000000694E71 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				7D6B00022FA7000000694E71 /* PresenceLiveActivityController.swift */,
+			);
+			path = LiveActivity;
 			sourceTree = "<group>";
 		};
 		7D5300082FA5000000694E71 /* AppleMusic */ = {
@@ -320,6 +368,7 @@
 			isa = PBXGroup;
 			children = (
 				7D5200142FA5000000694E71 /* Item.swift */,
+				7D6B00012FA7000000694E71 /* PresenceActivityAttributes.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -344,6 +393,16 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		7D6C00022FA7000000694E71 /* CraftPresenceLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				7D6B00032FA7000000694E71 /* CraftPresenceLiveActivityBundle.swift */,
+				7D6B00042FA7000000694E71 /* PresenceLiveActivityWidget.swift */,
+				7D6B00052FA7000000694E71 /* Info.plist */,
+			);
+			path = CraftPresenceLiveActivity;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -355,10 +414,12 @@
 				7D3CED9B2FA349C000694E71 /* Frameworks */,
 				7D3CED9C2FA349C000694E71 /* Resources */,
 				7D4A00022FA4000000694E71 /* Embed Frameworks */,
+				7D6D00012FA7000000694E71 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7D6E00022FA7000000694E71 /* PBXTargetDependency */,
 			);
 			name = CraftPresence;
 			packageProductDependencies = (
@@ -407,6 +468,25 @@
 			productReference = 7D3CEDB72FA349C200694E71 /* CraftPresenceUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		7D6E00012FA7000000694E71 /* CraftPresenceLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7D6F00032FA7000000694E71 /* Build configuration list for PBXNativeTarget "CraftPresenceLiveActivity" */;
+			buildPhases = (
+				7D6D00022FA7000000694E71 /* Sources */,
+				7D6D00032FA7000000694E71 /* Frameworks */,
+				7D6D00042FA7000000694E71 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CraftPresenceLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = CraftPresenceLiveActivity;
+			productReference = 7D6B00062FA7000000694E71 /* CraftPresenceLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -427,6 +507,9 @@
 					7D3CEDB62FA349C200694E71 = {
 						CreatedOnToolsVersion = 26.4.1;
 						TestTargetID = 7D3CED9D2FA349C000694E71;
+					};
+					7D6E00012FA7000000694E71 = {
+						CreatedOnToolsVersion = 26.4.1;
 					};
 				};
 			};
@@ -449,6 +532,7 @@
 				7D3CED9D2FA349C000694E71 /* CraftPresence */,
 				7D3CEDAC2FA349C200694E71 /* CraftPresenceTests */,
 				7D3CEDB62FA349C200694E71 /* CraftPresenceUITests */,
+				7D6E00012FA7000000694E71 /* CraftPresenceLiveActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -477,6 +561,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7D6D00042FA7000000694E71 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -498,12 +589,14 @@
 				7D51000C2FA5000000694E71 /* NowPlayingTestView.swift in Sources */,
 				7D51000D2FA5000000694E71 /* BuiltinPresenceStubs.swift in Sources */,
 				7D51000E2FA5000000694E71 /* XcodePresence.swift in Sources */,
+				7D6A00022FA7000000694E71 /* PresenceLiveActivityController.swift in Sources */,
 				7D51000F2FA5000000694E71 /* BuiltinView.swift in Sources */,
 				7D5100102FA5000000694E71 /* ProgramDetector.swift in Sources */,
 				7D5100112FA5000000694E71 /* ProgramsView.swift in Sources */,
 				7D5100122FA5000000694E71 /* SettingView.swift in Sources */,
 				7D5100132FA5000000694E71 /* SettingsView.swift in Sources */,
 				7D5100142FA5000000694E71 /* Item.swift in Sources */,
+				7D6A00012FA7000000694E71 /* PresenceActivityAttributes.swift in Sources */,
 				7D5100152FA5000000694E71 /* AutomationLaunchOptions.swift in Sources */,
 				7D5100162FA5000000694E71 /* ConfigUtility.swift in Sources */,
 				7D5100172FA5000000694E71 /* LocalizationManager.swift in Sources */,
@@ -530,6 +623,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7D6D00022FA7000000694E71 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7D6A00032FA7000000694E71 /* CraftPresenceLiveActivityBundle.swift in Sources */,
+				7D6A00042FA7000000694E71 /* PresenceLiveActivityWidget.swift in Sources */,
+				7D6A00052FA7000000694E71 /* PresenceActivityAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -542,6 +645,11 @@
 			isa = PBXTargetDependency;
 			target = 7D3CED9D2FA349C000694E71 /* CraftPresence */;
 			targetProxy = 7D3CEDB82FA349C200694E71 /* PBXContainerItemProxy */;
+		};
+		7D6E00022FA7000000694E71 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7D6E00012FA7000000694E71 /* CraftPresenceLiveActivity */;
+			targetProxy = 7D6E00032FA7000000694E71 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -828,6 +936,62 @@
 			};
 			name = Release;
 		};
+		7D6F00012FA7000000694E71 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CraftPresenceLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.minepacu.CraftPresence.CraftPresenceLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7D6F00022FA7000000694E71 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = CraftPresenceLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.minepacu.CraftPresence.CraftPresenceLiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -863,6 +1027,15 @@
 			buildConfigurations = (
 				7D3CEDC82FA349C200694E71 /* Debug */,
 				7D3CEDC92FA349C200694E71 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7D6F00032FA7000000694E71 /* Build configuration list for PBXNativeTarget "CraftPresenceLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7D6F00012FA7000000694E71 /* Debug */,
+				7D6F00022FA7000000694E71 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

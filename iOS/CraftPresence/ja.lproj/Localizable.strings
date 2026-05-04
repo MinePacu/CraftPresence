@@ -46,6 +46,9 @@
 "settings.presence_priority.title" = "このアプリの Presence を維持";
 "settings.presence_priority.description" = "他のアプリや Discord クライアントが Rich Presence を変更した場合、最後に公開した CraftPresence 設定を再適用します。";
 "settings.presence_priority.help" = "有効にすると、外部変更を検知したあと CraftPresence が最後に公開した Presence を定期的に復元します。";
+"settings.live_activity.title" = "Live Activity を表示";
+"settings.live_activity.description" = "対応端末で現在の Presence をロック画面と Dynamic Island に表示します。";
+"settings.live_activity.help" = "無効にすると、Presence の公開は Discord のみ更新し、Live Activity は開始または更新しません。";
 "settings.debug_logging.title" = "デバッグログを有効化";
 "settings.debug_logging.description" = "開発またはテスト時のみ使用します。リリースビルドでは無視されます。";
 "settings.debug_logging.footer" = "この設定はデバッグビルドでのみ表示されます。リリースビルドでは常に無効です。";

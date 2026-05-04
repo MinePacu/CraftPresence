@@ -46,6 +46,9 @@
 "settings.presence_priority.title" = "이 앱의 Presence 유지";
 "settings.presence_priority.description" = "다른 앱이나 Discord 클라이언트가 Rich Presence를 바꾸면 마지막으로 게시한 CraftPresence 설정을 다시 적용합니다.";
 "settings.presence_priority.help" = "켜두면 외부 변경이 감지될 때 CraftPresence가 마지막으로 게시한 Presence를 주기적으로 복원합니다.";
+"settings.live_activity.title" = "Live Activity 표시";
+"settings.live_activity.description" = "지원되는 기기에서 현재 Presence를 잠금 화면과 Dynamic Island에 함께 표시합니다.";
+"settings.live_activity.help" = "끄면 Presence 게시 시 Discord는 업데이트하지만 Live Activity는 시작하거나 갱신하지 않습니다.";
 "settings.debug_logging.title" = "디버그 로그 사용";
 "settings.debug_logging.description" = "개발 또는 테스트 중에만 사용됩니다. 릴리즈 빌드에서는 무시됩니다.";
 "settings.debug_logging.footer" = "이 설정은 디버그 빌드에서만 노출됩니다. 릴리즈 빌드에서는 항상 비활성화됩니다.";
