@@ -1,0 +1,52 @@
+CraftPresence migration dry run
+Repository root: /Users/nohyunsoo/Desktop/projects/CraftPresence-Test
+Migration workspace: /Users/nohyunsoo/Desktop/projects/CraftPresence-migration-workspace
+
+== GitHub authentication ==
+github.com
+  Logged in to github.com account MinePacu
+
+== Repository access preview ==
+{"nameWithOwner":"MinePacu/CraftPresence-Android","isPrivate":true}
+{"nameWithOwner":"MinePacu/CraftPresence-iOS","isPrivate":true}
+{"nameWithOwner":"MinePacu/CraftPresence","isPrivate":true}
+{"nameWithOwner":"MinePacu/CraftPresence-Test","isPrivate":true}
+
+Clone source repositories
+- MinePacu/CraftPresence-Android -> ../CraftPresence-migration-workspace/sources/CraftPresence-Android -> Android/
+- MinePacu/CraftPresence-iOS -> ../CraftPresence-migration-workspace/sources/CraftPresence-iOS -> iOS/
+- MinePacu/CraftPresence -> ../CraftPresence-migration-workspace/sources/CraftPresence -> macOS/
+
+Issue export workspace: ../CraftPresence-migration-workspace
+Dry run: True
+- Reading MinePacu/CraftPresence-Android
+  issues: 0, comments: 0, PRs skipped: 0
+- Reading MinePacu/CraftPresence-iOS
+  issues: 0, comments: 0, PRs skipped: 0
+- Reading MinePacu/CraftPresence
+  issues: 0, comments: 0, PRs skipped: 0
+
+Platform labels:
+- platform: Android
+- platform: iOS
+- platform: macOS
+
+History rewrite plan
+- sources/CraftPresence-Android -> rewritten/CraftPresence-Android, moved under Android/
+- sources/CraftPresence-iOS -> rewritten/CraftPresence-iOS, moved under iOS/
+- sources/CraftPresence -> rewritten/CraftPresence, moved under macOS/
+
+Issue reference rewrite report: ../CraftPresence-migration-workspace/reports/issue-ref-rewrite-report.md
+No commit messages were changed.
+
+.gitignore merge preview
+# Global
+
+# Android
+
+# iOS
+
+# macOS
+
+Dry run complete. No issues, comments, labels, pushes, or force-pushes were created.
+
