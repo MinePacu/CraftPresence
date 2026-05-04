@@ -100,6 +100,11 @@
 "overview.presence_live" = "Live";
 "overview.presence_idle" = "Idle";
 "overview.current_presence_info" = "Current Presence";
+"overview.presence_source" = "Presence source";
+"overview.presence_source.live" = "Live Discord activity";
+"overview.presence_source.unavailable" = "External Presence not readable";
+"overview.presence_unreadable" = "Not readable";
+"overview.external_presence_unreadable_detail" = "Discord may be showing an activity from another app, but this SDK only exposes activity associated with CraftPresence.";
 "overview.elapsed_time" = "Elapsed time";
 "overview.elapsed_time_unavailable" = "No start time";
 "presets.title" = "Presence Presets";

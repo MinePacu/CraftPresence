@@ -100,6 +100,11 @@
 "overview.presence_live" = "게시 중";
 "overview.presence_idle" = "대기 중";
 "overview.current_presence_info" = "현재 Presence 정보";
+"overview.presence_source" = "Presence 출처";
+"overview.presence_source.live" = "실시간 Discord activity";
+"overview.presence_source.unavailable" = "외부 앱 Presence는 읽을 수 없음";
+"overview.presence_unreadable" = "읽을 수 없음";
+"overview.external_presence_unreadable_detail" = "Discord에는 다른 앱의 activity가 보일 수 있지만, 이 SDK는 CraftPresence와 연결된 activity만 읽을 수 있습니다.";
 "overview.elapsed_time" = "경과 시간";
 "overview.elapsed_time_unavailable" = "시작 시간 없음";
 "presets.title" = "Presence 프리셋";

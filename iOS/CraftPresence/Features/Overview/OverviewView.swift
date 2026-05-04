@@ -13,7 +13,7 @@ struct OverviewView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showingDiscordConnection: Bool = false
-    @State private var currentPresence: CustomPresencePreset?
+    @State private var presenceSummary: OverviewPresenceSummary = .unavailable
     @State private var presetCount = 0
     @State private var now = Date()
 
@@ -132,11 +132,11 @@ struct OverviewView: View {
 
     private var activePresetCard: some View {
         metricCard(
-            title: t("overview.active_preset"),
+            title: t("overview.current_presence_info"),
             systemImage: "paperplane.fill",
             accent: .orange,
-            value: currentPresence?.title ?? t("common.none"),
-            detail: currentPresence?.details.nilIfEmpty ?? t("overview.no_active_preset")
+            value: presenceTitleText,
+            detail: presenceDetailText
         )
     }
 
@@ -148,7 +148,7 @@ struct OverviewView: View {
             value: String(format: t("overview.preset_count_format"), presetCount),
             detail: t("overview.preset_library_detail")
         ) {
-            if currentPresence != nil {
+            if presenceSummary.isLive {
                 Label(t("overview.presence_live"), systemImage: "checkmark.circle.fill")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.green)
@@ -167,23 +167,30 @@ struct OverviewView: View {
 
             overviewRow(
                 title: t("presets.editor.title"),
-                value: currentPresence?.title ?? t("common.none"),
+                value: presenceTitleText,
                 systemImage: "tag",
                 valueAccessibilityIdentifier: "overview.appName"
             )
 
             overviewRow(
                 title: t("programs.sheet.details"),
-                value: currentPresence?.details.nilIfEmpty ?? t("common.none"),
+                value: presenceSummary.details ?? unavailablePresenceText,
                 systemImage: "text.alignleft",
                 valueAccessibilityIdentifier: "overview.windowTitle"
             )
 
             overviewRow(
                 title: t("programs.sheet.state_message"),
-                value: currentPresence?.state.nilIfEmpty ?? t("common.none"),
+                value: presenceSummary.state ?? unavailablePresenceText,
                 systemImage: "bubble.left",
                 valueAccessibilityIdentifier: "overview.bundleID"
+            )
+
+            overviewRow(
+                title: t("overview.presence_source"),
+                value: t(presenceSummary.sourceLocalizationKey),
+                systemImage: presenceSummary.sourceSystemImage,
+                valueAccessibilityIdentifier: "overview.presenceSource"
             )
 
             overviewRow(
@@ -292,11 +299,29 @@ struct OverviewView: View {
         }
     }
 
+    private var presenceTitleText: String {
+        presenceSummary.title ?? unavailablePresenceText
+    }
+
+    private var presenceDetailText: String {
+        if let details = presenceSummary.details {
+            return details
+        }
+        if !presenceSummary.isLive {
+            return t("overview.external_presence_unreadable_detail")
+        }
+        return t("overview.no_active_preset")
+    }
+
+    private var unavailablePresenceText: String {
+        t("overview.presence_unreadable")
+    }
+
     private var elapsedTimeText: String {
-        guard let currentPresence, currentPresence.usesElapsedTime else {
+        guard presenceSummary.usesElapsedTime else {
             return t("common.none")
         }
-        guard let elapsedStartDate = currentPresence.elapsedStartDate else {
+        guard let elapsedStartDate = presenceSummary.elapsedStartDate else {
             return t("overview.elapsed_time_unavailable")
         }
         let elapsed = now.timeIntervalSince(elapsedStartDate)
@@ -419,16 +444,134 @@ struct OverviewView: View {
         let settings = await ConfigUtility.shared.currentSettings()
         presetCount = settings.customPresencePresets.count
 
-        if let liveActivity = try? await DiscordSDKManager.shared.currentPresenceActivity(),
-           let livePresence = CustomPresencePreset(discordActivity: liveActivity) {
-            currentPresence = livePresence.preservingElapsedTime(from: settings.appliedCustomPresence)
+        if let liveActivity = try? await DiscordSDKManager.shared.currentPresenceActivity() {
+            presenceSummary = .live(
+                liveActivity.preservingElapsedTime(from: settings.appliedCustomPresence)
+            )
             return
         }
 
-        if let storedPresence = settings.appliedCustomPresence ?? settings.customPresenceDraft {
-            currentPresence = storedPresence
-        } else {
-            currentPresence = await ConfigUtility.shared.currentCustomPresenceDraft()
+        presenceSummary = .unavailable
+    }
+}
+
+private enum OverviewPresenceSummary: Equatable {
+    case live(DiscordActivity)
+    case unavailable
+
+    var title: String? {
+        switch self {
+        case .live(let activity):
+            return activity.name?.nilIfEmpty
+        case .unavailable:
+            return nil
+        }
+    }
+
+    var details: String? {
+        switch self {
+        case .live(let activity):
+            return activity.details?.nilIfEmpty
+        case .unavailable:
+            return nil
+        }
+    }
+
+    var state: String? {
+        switch self {
+        case .live(let activity):
+            return activity.state?.nilIfEmpty
+        case .unavailable:
+            return nil
+        }
+    }
+
+    var usesElapsedTime: Bool {
+        switch self {
+        case .live(let activity):
+            return activity.timestamps.start != nil
+        case .unavailable:
+            return false
+        }
+    }
+
+    var elapsedStartDate: Date? {
+        switch self {
+        case .live(let activity):
+            return activity.timestamps.start
+        case .unavailable:
+            return nil
+        }
+    }
+
+    var isLive: Bool {
+        if case .live = self { return true }
+        return false
+    }
+
+    var sourceLocalizationKey: String {
+        switch self {
+        case .live:
+            return "overview.presence_source.live"
+        case .unavailable:
+            return "overview.presence_source.unavailable"
+        }
+    }
+
+    var sourceSystemImage: String {
+        switch self {
+        case .live:
+            return "dot.radiowaves.left.and.right"
+        case .unavailable:
+            return "questionmark.circle"
+        }
+    }
+}
+
+private extension DiscordActivity {
+    func preservingElapsedTime(from fallback: CustomPresencePreset?) -> DiscordActivity {
+        guard timestamps.start == nil,
+              let fallback,
+              fallback.usesElapsedTime,
+              let fallbackStartDate = fallback.elapsedStartDate,
+              matchesPresencePayload(of: fallback) else {
+            return self
+        }
+
+        var copy = self
+        copy.timestamps.start = fallbackStartDate
+        return copy
+    }
+
+    private func matchesPresencePayload(of preset: CustomPresencePreset) -> Bool {
+        normalizedString(name) == normalizedString(preset.title)
+            && type == preset.activityType.overviewDiscordActivityType
+            && normalizedString(details) == normalizedString(preset.details)
+            && normalizedString(state) == normalizedString(preset.state)
+            && normalizedString(assets.largeImage) == normalizedString(preset.largeImageKey)
+            && normalizedString(assets.largeText) == normalizedString(preset.largeImageText)
+            && normalizedString(assets.smallImage) == normalizedString(preset.smallImageKey)
+            && normalizedString(assets.smallText) == normalizedString(preset.smallImageText)
+    }
+
+    private func normalizedString(_ value: String?) -> String? {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+}
+
+private extension ProgramPresenceSettings.ActivityType {
+    var overviewDiscordActivityType: DiscordActivity.ActivityType {
+        switch self {
+        case .playing:
+            return .playing
+        case .streaming:
+            return .streaming
+        case .listening:
+            return .listening
+        case .watching:
+            return .watching
+        case .competing:
+            return .competing
         }
     }
 }

@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Manual Rich Presence preset manager. Users choose exactly what Discord should display.
@@ -474,6 +475,7 @@ struct CustomPresenceView: View {
     @State private var draft = CustomPresencePreset.makeDraft()
     @State private var statusMessage = ""
     @State private var hasLoadedInitialDraft = false
+    @State private var previewNow = Date()
 
     var body: some View {
         CPSettingsPage {
@@ -515,6 +517,9 @@ struct CustomPresenceView: View {
                 await persistDraft(currentDraft)
             }
         }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
+            previewNow = date
+        }
     }
 
     private var header: some View {
@@ -542,42 +547,95 @@ struct CustomPresenceView: View {
     }
 
     private var previewPanel: some View {
-        HStack(alignment: .top, spacing: 14) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.accentColor.opacity(0.12))
-                .frame(width: 48, height: 48)
-                .overlay(
-                    Image(systemName: draft.activityType.systemImage)
-                        .imageScale(.large)
-                        .foregroundStyle(Color.accentColor)
-                )
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(previewActivityHeaderText)
+                    .font(.caption.weight(.bold))
+                    .lineLimit(1)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(t("custom_presence.preview"))
-                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 8)
+
+                Image(systemName: "ellipsis")
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.secondary)
-                Text(draft.normalized.title.nilIfEmpty ?? t("presets.new_default_title"))
-                    .font(.headline)
-                Text(draft.normalized.details.nilIfEmpty ?? t("presets.no_details"))
-                    .font(.subheadline)
-                Text(draft.normalized.state.nilIfEmpty ?? t("presets.no_state"))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
 
-            Spacer(minLength: 12)
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.primary)
 
-            Text(t(discordManager.dashboardStatus.localizationKey))
-                .font(.footnote.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(statusColor.opacity(0.14), in: Capsule())
-                .foregroundStyle(statusColor)
+                    Image(systemName: previewAssetSymbol)
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundStyle(CPStyle.cardBackground)
+                        .imageScale(.large)
+                }
+                .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(previewDetailsText)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+
+                    Text(previewStateText)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+
+                    if draft.normalized.usesElapsedTime {
+                        HStack(spacing: 4) {
+                            Image(systemName: "desktopcomputer")
+                                .font(.caption2.weight(.bold))
+                            Text(previewElapsedText)
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                        }
+                        .foregroundStyle(.green)
+                        .lineLimit(1)
+                        .padding(.top, 1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
+
+    private var previewActivityHeaderText: String {
+        "\(draft.normalized.activityType.rawValue) \(previewTitleText)"
+    }
+
+    private var previewTitleText: String {
+        draft.normalized.title.nilIfEmpty ?? t("presets.new_default_title")
+    }
+
+    private var previewDetailsText: String {
+        draft.normalized.details.nilIfEmpty ?? previewTitleText
+    }
+
+    private var previewStateText: String {
+        draft.normalized.state.nilIfEmpty ?? t("presets.no_state")
+    }
+
+    private var previewAssetSymbol: String {
+        draft.normalized.largeImageKey.nilIfEmpty == nil ? "questionmark" : draft.activityType.systemImage
+    }
+
+    private var previewElapsedText: String {
+        let startDate = draft.normalized.elapsedStartDate ?? previewNow
+        let elapsed = max(1, previewNow.timeIntervalSince(startDate))
+        return Self.previewElapsedFormatter.string(from: elapsed) ?? "00:00:01"
+    }
+
+    private static let previewElapsedFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .positional
+        formatter.zeroFormattingBehavior = [.pad]
+        return formatter
+    }()
 
     private var actionPanel: some View {
         LazyVGrid(columns: actionColumns, alignment: .leading, spacing: 10) {

@@ -100,6 +100,11 @@
 "overview.presence_live" = "公開中";
 "overview.presence_idle" = "待機中";
 "overview.current_presence_info" = "現在の Presence";
+"overview.presence_source" = "Presence の取得元";
+"overview.presence_source.live" = "ライブ Discord activity";
+"overview.presence_source.unavailable" = "外部アプリの Presence は読み取れません";
+"overview.presence_unreadable" = "読み取れません";
+"overview.external_presence_unreadable_detail" = "Discord には別アプリの activity が表示される場合がありますが、この SDK は CraftPresence に関連付けられた activity だけを読み取れます。";
 "overview.elapsed_time" = "経過時間";
 "overview.elapsed_time_unavailable" = "開始時刻なし";
 "presets.title" = "Presence プリセット";
