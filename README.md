@@ -58,6 +58,64 @@ CraftPresence-migration-workspace/
 
 These files are intentionally not stored in this repository.
 
+## Import issues into the monorepo test repository
+
+Only run this section after explicitly deciding to create issues in the test target repository. These commands must target `MinePacu/CraftPresence-Monorepo-Test`, not the source repositories.
+
+The source repositories are read only. The importer creates issues and comments only in the repository named by `CRAFTPRESENCE_TARGET_REPO`.
+
+First, confirm authentication and repository access:
+
+```bash
+gh auth status
+gh repo view MinePacu/CraftPresence-Android --json nameWithOwner,isPrivate
+gh repo view MinePacu/CraftPresence-iOS --json nameWithOwner,isPrivate
+gh repo view MinePacu/CraftPresence --json nameWithOwner,isPrivate
+gh repo view MinePacu/CraftPresence-Monorepo-Test --json nameWithOwner,isPrivate
+```
+
+Export the source issues and comments into the external migration workspace:
+
+```bash
+./scripts/export_issues.py --execute
+```
+
+This reads normal issues and issue comments from the three source repositories, skips PRs returned by the Issues API, and writes export JSON under `../CraftPresence-migration-workspace/exports/`. It does not modify source repositories.
+
+Before importing, print the exact import summary for the monorepo test repository:
+
+```bash
+CRAFTPRESENCE_TARGET_REPO=MinePacu/CraftPresence-Monorepo-Test \
+  ./scripts/import_issues.py --dry-run
+```
+
+Review:
+
+```bash
+jq . ../CraftPresence-migration-workspace/reports/issue-import-preview.json
+```
+
+The dry run shows the target repository, issue count, comment count, platform labels, each planned imported issue, and any `skipped_reasons` from resume state.
+
+When the dry-run summary is correct, run the actual issue and comment import:
+
+```bash
+CRAFTPRESENCE_TARGET_REPO=MinePacu/CraftPresence-Monorepo-Test \
+  ./scripts/import_issues.py --execute
+```
+
+The importer uses resume state in `../CraftPresence-migration-workspace/state/`:
+
+- `issue-map.json` records source issue keys to target issue numbers.
+- `comment-import-state.json` records imported source comment IDs so re-running the command does not duplicate comments already recorded there.
+
+After import, inspect the generated state:
+
+```bash
+jq . ../CraftPresence-migration-workspace/state/issue-map.json
+jq . ../CraftPresence-migration-workspace/state/comment-import-state.json
+```
+
 ## Validation commands
 
 Check GitHub authentication:
