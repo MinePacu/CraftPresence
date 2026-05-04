@@ -4,7 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,9 +18,9 @@ MERGED_DIR = WORKSPACE / "merged"
 REPORT_DIR = WORKSPACE / "reports"
 
 SOURCES = [
-    ("CraftPresence-Android", "Android"),
-    ("CraftPresence-iOS", "iOS"),
-    ("CraftPresence", "macOS"),
+    ("MinePacu/CraftPresence-Android", "CraftPresence-Android", "Android"),
+    ("MinePacu/CraftPresence-iOS", "CraftPresence-iOS", "iOS"),
+    ("MinePacu/CraftPresence", "CraftPresence", "macOS"),
 ]
 
 GLOBAL_PATTERNS = {
@@ -54,6 +58,52 @@ def read_rules(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8", errors="replace").splitlines()
 
 
+def gh_default_branch(repo: str) -> str | None:
+    if shutil.which("gh") is None:
+        return None
+    result = subprocess.run(
+        ["gh", "repo", "view", repo, "--json", "defaultBranchRef"],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    data = json.loads(result.stdout)
+    return data.get("defaultBranchRef", {}).get("name")
+
+
+def read_gh_gitignore(repo: str) -> tuple[list[str], str | None]:
+    branch = gh_default_branch(repo)
+    if not branch:
+        return [], None
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/contents/.gitignore?ref={branch}"],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return [], None
+    data = json.loads(result.stdout)
+    content = data.get("content")
+    if not content:
+        return [], None
+    decoded = base64.b64decode(content).decode("utf-8", errors="replace")
+    return decoded.splitlines(), f"github:{repo}@{branch}:.gitignore"
+
+
+def read_source_gitignore(repo: str, local_name: str, prefix: str) -> tuple[list[str], str | None]:
+    candidates = [
+        SOURCES_DIR / local_name / ".gitignore",
+        WORKSPACE / "rewritten" / local_name / prefix / ".gitignore",
+        WORKSPACE / "rewritten" / local_name / ".gitignore",
+    ]
+    for path in candidates:
+        rules = read_rules(path)
+        if rules:
+            return rules, str(path)
+    return read_gh_gitignore(repo)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="Preview merged .gitignore only.")
@@ -69,15 +119,18 @@ def main() -> int:
     report: list[str] = ["# .gitignore Merge Report", "", f"Dry run: {dry_run}", ""]
     seen_global: set[str] = set()
 
-    for local_name, prefix in SOURCES:
-        path = SOURCES_DIR / local_name / ".gitignore"
+    found_any_gitignore = False
+
+    for repo, local_name, prefix in SOURCES:
         report.append(f"## {prefix}")
-        rules = read_rules(path)
+        rules, source = read_source_gitignore(repo, local_name, prefix)
         if not rules:
-            report.append(f"- No .gitignore found at `{path}`.")
+            report.append(f"- No .gitignore found in source repositories for `{repo}`.")
             sections[prefix] = []
             report.append("")
             continue
+        found_any_gitignore = True
+        report.append(f"- source: `{source}`")
         platform_rules: list[str] = []
         seen_platform: set[str] = set()
         for rule in rules:
@@ -102,11 +155,15 @@ def main() -> int:
         sections[prefix] = platform_rules
         report.append("")
 
-    lines: list[str] = ["# Global"]
-    lines.extend(sorted(global_rules))
-    for _, prefix in SOURCES:
-        lines.extend(["", f"# {prefix}"])
-        lines.extend(sorted(sections.get(prefix, [])))
+    if found_any_gitignore:
+        lines: list[str] = ["# Global"]
+        lines.extend(sorted(global_rules))
+        for _, _, prefix in SOURCES:
+            lines.extend(["", f"# {prefix}"])
+            lines.extend(sorted(sections.get(prefix, [])))
+    else:
+        lines = ["No .gitignore found in source repositories"]
+        report.extend(["", "No .gitignore found in source repositories"])
 
     preview = "\n".join(lines).rstrip() + "\n"
     (REPORT_DIR / "gitignore-merge-report.md").write_text("\n".join(report) + "\n", encoding="utf-8")
@@ -124,4 +181,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

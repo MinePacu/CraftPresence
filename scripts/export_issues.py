@@ -46,10 +46,11 @@ def gh_api(path: str, paginate: bool = True) -> list[dict[str, Any]]:
     return values
 
 
-def issue_payload(issue: dict[str, Any], comments: list[dict[str, Any]], repo: str, platform: str) -> dict[str, Any]:
+def issue_payload(issue: dict[str, Any], comments: list[dict[str, Any]], repo: str, platform: str, preview_only: bool) -> dict[str, Any]:
     return {
         "source_repo": repo,
         "platform": platform,
+        "preview_only": preview_only,
         "number": issue["number"],
         "title": issue["title"],
         "body": issue.get("body") or "",
@@ -60,6 +61,7 @@ def issue_payload(issue: dict[str, Any], comments: list[dict[str, Any]], repo: s
         "closed_at": issue.get("closed_at"),
         "html_url": issue.get("html_url"),
         "labels": [label["name"] for label in issue.get("labels", [])],
+        "comments_count": int(issue.get("comments") or 0),
         "comments": [
             {
                 "id": comment["id"],
@@ -76,7 +78,7 @@ def issue_payload(issue: dict[str, Any], comments: list[dict[str, Any]], repo: s
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true", help="Preview export counts without writing issue JSON.")
+    parser.add_argument("--dry-run", action="store_true", help="Preview export counts and write preview issue JSON for downstream dry runs.")
     parser.add_argument("--execute", action="store_true", help="Write issue export JSON files.")
     args = parser.parse_args()
 
@@ -101,23 +103,23 @@ def main() -> int:
         path = f"repos/{repo}/issues?state=all&per_page=100"
         print(f"- Reading {repo}")
         issues = gh_api(path)
-        normal_issues = [issue for issue in issues if "pull_request" not in issue]
+        normal_issues = [issue for issue in issues if not issue.get("pull_request")]
         pr_count = len(issues) - len(normal_issues)
         comment_count = sum(int(issue.get("comments") or 0) for issue in normal_issues)
         totals[repo] = {"issues": len(normal_issues), "comments": comment_count, "prs_skipped": pr_count}
         print(f"  issues: {len(normal_issues)}, comments: {comment_count}, PRs skipped: {pr_count}")
 
-        if dry_run:
-            continue
-
         exported = []
         for issue in normal_issues:
-            comments = gh_api(f"repos/{repo}/issues/{issue['number']}/comments?per_page=100")
-            exported.append(issue_payload(issue, comments, repo, platform))
+            comments = [] if dry_run else gh_api(f"repos/{repo}/issues/{issue['number']}/comments?per_page=100")
+            exported.append(issue_payload(issue, comments, repo, platform, preview_only=dry_run))
 
         out = EXPORT_DIR / f"{repo.replace('/', '__')}.issues.json"
         out.write_text(json.dumps(exported, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        print(f"  wrote {out}")
+        if dry_run:
+            print(f"  wrote preview export {out}")
+        else:
+            print(f"  wrote {out}")
 
     report = REPORT_DIR / "issue-export-summary.json"
     report.write_text(json.dumps(totals, indent=2) + "\n", encoding="utf-8")

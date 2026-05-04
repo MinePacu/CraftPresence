@@ -35,7 +35,7 @@ This prints the planned workspace, source repositories, clone targets, issue exp
 | Script | Purpose | Real changes by default |
 | --- | --- | --- |
 | `scripts/clone_sources.sh` | Shows or performs source clone/update into the external workspace | No |
-| `scripts/export_issues.py` | Exports non-PR GitHub issues and issue comments | No |
+| `scripts/export_issues.py` | Exports non-PR GitHub issues and issue comments; dry-run writes preview issue JSON for downstream reports | No |
 | `scripts/import_issues.py` | Imports exported issues/comments into the test repo with platform labels and resume support | No |
 | `scripts/rewrite_history.sh` | Rewrites each source history under `Android/`, `iOS/`, or `macOS/` in external working clones | No |
 | `scripts/rewrite_issue_refs.py` | Rewrites issue references in commit messages using `issue-map.json`, with a review report | No |
@@ -111,4 +111,3 @@ See also:
 - `docs/migration-plan.md`
 - `docs/safety-rules.md`
 - `docs/verification-checklist.md`
-

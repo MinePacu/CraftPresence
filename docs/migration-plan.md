@@ -37,7 +37,7 @@ This clones source repositories into the external workspace only.
 
 ## Phase 3: issue and comment export
 
-`scripts/export_issues.py --dry-run` reads private source issue counts and skips PRs returned by the Issues API.
+`scripts/export_issues.py --dry-run` reads private source issue counts, skips PRs returned by the Issues API, and writes preview-only issue JSON so import previews can show the actual issue list without creating target issues.
 
 Later, after explicit approval:
 
@@ -128,4 +128,3 @@ Reports are written to:
 ## Phase 8: final merge into test monorepo
 
 This phase is intentionally not automated in the first scope. It should happen only after explicit approval to import and push.
-

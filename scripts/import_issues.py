@@ -33,7 +33,10 @@ def run_gh(args: list[str], input_text: str | None = None) -> str:
 def load_exports() -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     for path in sorted(EXPORT_DIR.glob("*.issues.json")):
-        issues.extend(json.loads(path.read_text(encoding="utf-8")))
+        for issue in json.loads(path.read_text(encoding="utf-8")):
+            if issue.get("pull_request"):
+                continue
+            issues.append(issue)
     return sorted(issues, key=lambda i: (i["source_repo"], i["number"]))
 
 
@@ -107,18 +110,44 @@ def main() -> int:
     print(f"Import workspace: {WORKSPACE}")
     print(f"Dry run: {dry_run}")
     print(f"Exported issues found: {len(issues)}")
-    print(f"Exported comments found: {sum(len(i.get('comments', [])) for i in issues)}")
+    print(f"Exported comments found: {sum(int(i.get('comments_count', len(i.get('comments', [])))) for i in issues)}")
     ensure_labels(dry_run)
 
     preview: list[dict[str, Any]] = []
     for issue in issues:
         source_key = f"{issue['source_repo']}#{issue['number']}"
         label = PLATFORM_LABELS[issue["platform"]]["name"]
-        preview.append({"source": source_key, "title": issue["title"], "state": issue["state"], "label": label, "comments": len(issue.get("comments", []))})
-        print(f"- {source_key}: {issue['title']} [{issue['state']}] comments={len(issue.get('comments', []))}")
+        comments_count = int(issue.get("comments_count", len(issue.get("comments", []))))
+        skipped_reasons = []
+        if source_key in issue_map:
+            skipped_reasons.append(f"issue already mapped in {issue_map_path.name} to target issue #{issue_map[source_key]}")
+        imported_comment_ids = set(comment_state.get(source_key, []))
+        if imported_comment_ids:
+            skipped_reasons.append(f"{len(imported_comment_ids)} comments already recorded in {comment_state_path.name}")
+        if issue.get("preview_only") and not dry_run:
+            skipped_reasons.append("preview-only export cannot be used for execute mode")
+
+        preview.append(
+            {
+                "source_repo": issue["source_repo"],
+                "source_issue_number": issue["number"],
+                "title": issue["title"],
+                "state": issue["state"],
+                "labels": issue.get("labels", []),
+                "platform_label": label,
+                "comments_count": comments_count,
+                "original_url": issue.get("html_url"),
+                "skipped_reasons": skipped_reasons,
+            }
+        )
+        suffix = f" skipped={'; '.join(skipped_reasons)}" if skipped_reasons else ""
+        print(f"- {source_key}: {issue['title']} [{issue['state']}] comments={comments_count}{suffix}")
 
         if dry_run:
             continue
+
+        if issue.get("preview_only"):
+            raise RuntimeError(f"{source_key} was exported in preview-only mode. Run export_issues.py --execute before importing.")
 
         if source_key in issue_map:
             target_number = issue_map[source_key]
@@ -155,4 +184,3 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError as exc:
         print(exc.stderr or str(exc), file=sys.stderr)
         raise SystemExit(exc.returncode)
-
