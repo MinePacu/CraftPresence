@@ -60,7 +60,7 @@ These files are intentionally not stored in this repository.
 
 ## Import issues into the monorepo test repository
 
-Only run this section after explicitly deciding to create issues in the test target repository. These commands must target `MinePacu/CraftPresence-Monorepo-Test`, not the source repositories.
+Only run this section after explicitly deciding to create issues in the test target repository. These commands must target `MinePacu/CraftPresence-Test`, not the source repositories.
 
 The source repositories are read only. The importer creates issues and comments only in the repository named by `CRAFTPRESENCE_TARGET_REPO`.
 
@@ -71,7 +71,7 @@ gh auth status
 gh repo view MinePacu/CraftPresence-Android --json nameWithOwner,isPrivate
 gh repo view MinePacu/CraftPresence-iOS --json nameWithOwner,isPrivate
 gh repo view MinePacu/CraftPresence --json nameWithOwner,isPrivate
-gh repo view MinePacu/CraftPresence-Monorepo-Test --json nameWithOwner,isPrivate
+gh repo view MinePacu/CraftPresence-Test --json nameWithOwner,isPrivate
 ```
 
 Export the source issues and comments into the external migration workspace:
@@ -85,7 +85,7 @@ This reads normal issues and issue comments from the three source repositories, 
 Before importing, print the exact import summary for the monorepo test repository:
 
 ```bash
-CRAFTPRESENCE_TARGET_REPO=MinePacu/CraftPresence-Monorepo-Test \
+CRAFTPRESENCE_TARGET_REPO=MinePacu/CraftPresence-Test \
   ./scripts/import_issues.py --dry-run
 ```
 
@@ -100,7 +100,7 @@ The dry run shows the target repository, issue count, comment count, platform la
 When the dry-run summary is correct, run the actual issue and comment import:
 
 ```bash
-CRAFTPRESENCE_TARGET_REPO=MinePacu/CraftPresence-Monorepo-Test \
+CRAFTPRESENCE_TARGET_REPO=MinePacu/CraftPresence-Test \
   ./scripts/import_issues.py --execute
 ```
 
