@@ -115,13 +115,21 @@ def gh_commit_log(repo: str) -> tuple[list[tuple[str, str, str]], str]:
 def load_commit_log(local_name: str, source_repo: str, prefer_rewritten: bool) -> tuple[list[tuple[str, str, str]], str]:
     rewritten_dir = REWRITTEN_DIR / local_name
     source_dir = SOURCES_DIR / local_name
-    if prefer_rewritten and rewritten_dir.exists():
+    if prefer_rewritten and (rewritten_dir / ".git").exists():
         return local_log(rewritten_dir), f"rewritten repo `{rewritten_dir}`"
-    if source_dir.exists():
+    if (source_dir / ".git").exists():
         return local_log(source_dir), f"source repo clone `{source_dir}`"
-    if rewritten_dir.exists():
+    if (rewritten_dir / ".git").exists():
         return local_log(rewritten_dir), f"rewritten repo `{rewritten_dir}`"
-    return gh_commit_log(source_repo)
+    commits, source = gh_commit_log(source_repo)
+    notes = []
+    if source_dir.exists():
+        notes.append(f"`{source_dir}` exists but is not a git clone")
+    if rewritten_dir.exists():
+        notes.append(f"`{rewritten_dir}` exists but is not a git clone")
+    if notes:
+        source = f"{source}; fallback used because {', '.join(notes)}"
+    return commits, source
 
 
 def rewrite_message(message: str, source_repo: str, issue_map: dict[str, int]) -> tuple[str, list[str]]:
@@ -250,7 +258,7 @@ def main() -> int:
             "    keyword = (match.group(1) or b'')\n"
             "    prefix = keyword + b' ' if keyword else b''\n"
             "    return prefix + b'#' + str(issue_map[key]).encode()\n"
-            "message = ref_re.sub(repl, message)\n",
+            "return ref_re.sub(repl, message)\n",
             encoding="utf-8",
         )
         run_git(repo_dir, ["filter-repo", "--message-callback", callback.read_text(encoding="utf-8"), "--force"])

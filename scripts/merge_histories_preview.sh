@@ -80,7 +80,7 @@ Path(callback_file).write_text(
     "    keyword = match.group(1) or b''\n"
     "    prefix = keyword + b' ' if keyword else b''\n"
     "    return prefix + b'#' + str(issue_map[key]).encode()\n"
-    "message = ref_re.sub(repl, message)\n",
+    "return ref_re.sub(repl, message)\n",
     encoding="utf-8",
 )
 PY
@@ -130,7 +130,17 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     IFS='|' read -r local_name source_repo prefix _remote_name <<<"$entry"
     source="$SOURCES_DIR/$local_name"
     target="$REWRITTEN_DIR/$local_name-history-preview"
-    echo "- Would clone local source copy $source to $target"
+    if [[ -d "$source/.git" ]]; then
+      echo "- Would clone local source copy $source to $target"
+    elif [[ -d "$source" ]]; then
+      echo "- Local source path exists but is not a git clone: $source"
+      echo "  Dry-run commit-message scan falls back to gh for $source_repo."
+      echo "  Execute mode requires a real source clone. Run ./scripts/clone_sources.sh --execute after moving or deleting this non-git directory."
+    else
+      echo "- Local source clone is missing: $source"
+      echo "  Dry-run commit-message scan falls back to gh for $source_repo."
+      echo "  Execute mode requires ./scripts/clone_sources.sh --execute first."
+    fi
     echo "  Would rewrite commit message issue refs using $source_repo and issue-map.json"
     echo "  Would move repository root under $prefix/"
   done
