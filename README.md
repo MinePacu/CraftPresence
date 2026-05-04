@@ -40,6 +40,7 @@ This prints the planned workspace, source repositories, clone targets, issue exp
 | `scripts/rewrite_history.sh` | Rewrites each source history under `Android/`, `iOS/`, or `macOS/` in external working clones | No |
 | `scripts/rewrite_issue_refs.py` | Rewrites issue references in commit messages using `issue-map.json`, with a review report | No |
 | `scripts/merge_histories_preview.sh` | Uses `issue-map.json` to preview or create a local merged history repo under the external workspace | No |
+| `scripts/push_merged_history_branch.sh` | Pushes the local merged history preview to a new test-repo branch named `migration/repo` | No |
 | `scripts/merge_gitignore.py` | Merges source `.gitignore` files into a monorepo root `.gitignore` preview or output | No |
 | `scripts/run_migration_dry_run.sh` | Runs the safe preview flow | No |
 
@@ -149,6 +150,41 @@ This command:
 - Writes before/after commit message rewrite details to `reports/issue-ref-rewrite-report.md`.
 - Writes merged history and tree reports under `../CraftPresence-migration-workspace/reports/`.
 - Does not push to `MinePacu/CraftPresence-Test`.
+
+## Push the merged history preview to a test branch
+
+After the local merged history preview exists, preview the push to the test repository branch `migration/repo`:
+
+```bash
+./scripts/push_merged_history_branch.sh --dry-run
+```
+
+To push the merged preview to a new branch in `MinePacu/CraftPresence-Test`:
+
+```bash
+./scripts/push_merged_history_branch.sh --execute
+```
+
+This command:
+
+- Reads only `../CraftPresence-migration-workspace/merged/history-preview`.
+- Pushes to `MinePacu/CraftPresence-Test:migration/repo`.
+- Refuses to push to `main` or `master`.
+- Refuses to update `migration/repo` if it already exists on the remote.
+- Uses regular `git push` without `--force`.
+- Does not modify any source repository.
+
+After a successful push, create a draft PR:
+
+```bash
+gh pr create \
+  --repo MinePacu/CraftPresence-Test \
+  --base main \
+  --head migration/repo \
+  --draft \
+  --title "Merge CraftPresence histories" \
+  --body "Merges Android, iOS, and macOS histories into the monorepo layout."
+```
 
 ## Validation commands
 

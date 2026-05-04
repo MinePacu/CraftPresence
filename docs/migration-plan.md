@@ -143,4 +143,16 @@ This previews commit message rewrites and the local history merge plan. To creat
 
 This rewrites local workspace copies, moves histories under `Android/`, `iOS/`, and `macOS/`, and merges them into the local preview repo. It does not push to the test repository.
 
-Pushing the merged history to the test repository should happen only after explicit approval.
+After the local preview is reviewed, preview the branch push:
+
+```bash
+./scripts/push_merged_history_branch.sh --dry-run
+```
+
+To push to a new `migration/repo` branch in `MinePacu/CraftPresence-Test`, run:
+
+```bash
+./scripts/push_merged_history_branch.sh --execute
+```
+
+The push script refuses to push `main`, refuses to force-push, and refuses to update `migration/repo` if that remote branch already exists. After the push, create a draft PR from `migration/repo` to `main`.
