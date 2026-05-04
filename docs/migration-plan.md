@@ -129,4 +129,18 @@ Reports are written to:
 
 ## Phase 8: final merge into test monorepo
 
-This phase is intentionally not automated in the first scope. It should happen only after explicit approval to import and push.
+After issue import creates `state/issue-map.json`, use:
+
+```bash
+./scripts/merge_histories_preview.sh --dry-run
+```
+
+This previews commit message rewrites and the local history merge plan. To create a local merged history preview under `../CraftPresence-migration-workspace/merged/history-preview` only, run:
+
+```bash
+./scripts/merge_histories_preview.sh --execute
+```
+
+This rewrites local workspace copies, moves histories under `Android/`, `iOS/`, and `macOS/`, and merges them into the local preview repo. It does not push to the test repository.
+
+Pushing the merged history to the test repository should happen only after explicit approval.

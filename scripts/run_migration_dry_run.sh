@@ -44,8 +44,10 @@ echo
 "$ROOT_DIR/scripts/rewrite_issue_refs.py" --dry-run
 echo
 
+"$ROOT_DIR/scripts/merge_histories_preview.sh" --dry-run
+echo
+
 "$ROOT_DIR/scripts/merge_gitignore.py" --dry-run
 
 echo
 echo "Dry run complete. No issues, comments, labels, pushes, or force-pushes were created."
-

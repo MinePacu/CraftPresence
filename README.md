@@ -39,6 +39,7 @@ This prints the planned workspace, source repositories, clone targets, issue exp
 | `scripts/import_issues.py` | Imports exported issues/comments into the test repo with platform labels and resume support | No |
 | `scripts/rewrite_history.sh` | Rewrites each source history under `Android/`, `iOS/`, or `macOS/` in external working clones | No |
 | `scripts/rewrite_issue_refs.py` | Rewrites issue references in commit messages using `issue-map.json`, with a review report | No |
+| `scripts/merge_histories_preview.sh` | Uses `issue-map.json` to preview or create a local merged history repo under the external workspace | No |
 | `scripts/merge_gitignore.py` | Merges source `.gitignore` files into a monorepo root `.gitignore` preview or output | No |
 | `scripts/run_migration_dry_run.sh` | Runs the safe preview flow | No |
 
@@ -115,6 +116,39 @@ After import, inspect the generated state:
 jq . ../CraftPresence-migration-workspace/state/issue-map.json
 jq . ../CraftPresence-migration-workspace/state/comment-import-state.json
 ```
+
+## Preview rewritten and merged history after issue import
+
+After `../CraftPresence-migration-workspace/state/issue-map.json` exists, preview commit-message issue reference rewrites and the local history merge plan:
+
+```bash
+./scripts/merge_histories_preview.sh --dry-run
+```
+
+This writes:
+
+```text
+../CraftPresence-migration-workspace/reports/issue-ref-rewrite-report.md
+../CraftPresence-migration-workspace/reports/history-merge-preview-plan.md
+```
+
+To create the local merged history preview repository only under the migration workspace, run:
+
+```bash
+./scripts/clone_sources.sh --execute
+./scripts/merge_histories_preview.sh --execute
+```
+
+This command:
+
+- Reads source clones from `../CraftPresence-migration-workspace/sources/`.
+- Rewrites local cloned copies only, not the source repositories.
+- Rewrites commit message issue references using `state/issue-map.json`.
+- Moves repository roots under `Android/`, `iOS/`, and `macOS/`.
+- Creates the final local preview repo at `../CraftPresence-migration-workspace/merged/history-preview`.
+- Writes before/after commit message rewrite details to `reports/issue-ref-rewrite-report.md`.
+- Writes merged history and tree reports under `../CraftPresence-migration-workspace/reports/`.
+- Does not push to `MinePacu/CraftPresence-Test`.
 
 ## Validation commands
 
