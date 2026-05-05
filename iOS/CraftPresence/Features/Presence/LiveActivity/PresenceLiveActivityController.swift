@@ -10,6 +10,14 @@ final class PresenceLiveActivityController {
 
     private init() {}
 
+    func restoreAppliedPresence(connectionStatus: String) async {
+        guard let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() else {
+            return
+        }
+
+        await publish(appliedPresence, connectionStatus: connectionStatus)
+    }
+
     func publish(_ preset: CustomPresencePreset, connectionStatus: String) async {
         guard await ConfigUtility.shared.isPresenceLiveActivityEnabled() else {
             await end()

@@ -6,10 +6,19 @@ import UIKit
 
 struct CPSettingsPage<Content: View>: View {
     let horizontalPadding: CGFloat
+    let maximumContentWidth: CGFloat?
     @ViewBuilder var content: () -> Content
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
 
-    init(horizontalPadding: CGFloat = 20, @ViewBuilder content: @escaping () -> Content) {
+    init(
+        horizontalPadding: CGFloat = 20,
+        maximumContentWidth: CGFloat? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
         self.horizontalPadding = horizontalPadding
+        self.maximumContentWidth = maximumContentWidth
         self.content = content
     }
 
@@ -18,11 +27,29 @@ struct CPSettingsPage<Content: View>: View {
             VStack(alignment: .leading, spacing: 34) {
                 content()
             }
-            .padding(.horizontal, horizontalPadding)
+            .frame(maxWidth: resolvedMaximumContentWidth, alignment: .leading)
+            .padding(.horizontal, resolvedHorizontalPadding)
             .padding(.top, 24)
             .padding(.bottom, 40)
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .background(CPStyle.pageBackground.ignoresSafeArea())
+    }
+
+    private var resolvedHorizontalPadding: CGFloat {
+#if os(iOS)
+        horizontalSizeClass == .compact ? horizontalPadding : max(horizontalPadding, 32)
+#else
+        horizontalPadding
+#endif
+    }
+
+    private var resolvedMaximumContentWidth: CGFloat? {
+#if os(iOS)
+        maximumContentWidth ?? (horizontalSizeClass == .compact ? nil : 760)
+#else
+        maximumContentWidth
+#endif
     }
 }
 

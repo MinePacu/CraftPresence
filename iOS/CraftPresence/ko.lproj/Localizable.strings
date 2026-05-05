@@ -18,6 +18,7 @@
 "common.cancel" = "취소";
 "common.save" = "저장";
 "common.loading" = "불러오는 중...";
+"common.search" = "검색";
 "common.none" = "없음";
 "common.unknown" = "알 수 없음";
 "common.authorized" = "인증됨";

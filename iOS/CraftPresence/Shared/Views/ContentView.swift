@@ -3,6 +3,9 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 #if os(macOS)
 import AppKit
 import ApplicationServices
@@ -87,19 +90,16 @@ struct ContentView: View {
     @State private var showingSettings: Bool = false
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
-#if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-#endif
 
     // MARK: Body
 
     var body: some View {
         Group {
 #if os(iOS)
-            if horizontalSizeClass == .compact {
-                compactNavigation
+            if isPad {
+                ipadSettingsNavigation
             } else {
-                regularNavigation
+                compactNavigation
             }
 #else
             regularNavigation
@@ -276,6 +276,10 @@ struct ContentView: View {
     }
 
 #if os(iOS)
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
     private var compactNavigation: some View {
         NavigationStack {
             CPSettingsPage {
@@ -395,6 +399,154 @@ struct ContentView: View {
             SettingView()
         }
     }
+
+    private var ipadSettingsNavigation: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 18) {
+                ipadSidebar
+                    .frame(width: min(max(proxy.size.width * 0.34, 320), 380))
+
+                VStack(spacing: 0) {
+                    ZStack {
+                        Text(title(for: selection))
+                            .font(.headline)
+
+                        HStack {
+                            Spacer()
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .imageScale(.large)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.primary)
+                            .accessibilityLabel(t("toolbar.settings"))
+                            .accessibilityIdentifier("toolbar.settings")
+                        }
+                    }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 13)
+                        .padding(.bottom, 14)
+                        .padding(.horizontal, 8)
+
+                    detailContent(for: selection)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 28)
+            .background(CPStyle.pageBackground.ignoresSafeArea())
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingView()
+        }
+    }
+
+    private var ipadSidebar: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            ipadSearchField
+
+            VStack(alignment: .leading, spacing: 14) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("CraftPresence")
+                            .font(.headline.weight(.semibold))
+                        Text(t("overview.subtitle"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                } icon: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22, weight: .semibold))
+                        .frame(width: 42, height: 42)
+                        .background(.pink.gradient, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            VStack(spacing: 14) {
+                CPGroupedSection {
+                    ipadSidebarButton(.overview, title: t("sidebar.overview"), systemImage: "rectangle.and.text.magnifyingglass", tint: .pink)
+                    CPSectionDivider()
+                    ipadSidebarButton(.customPresence, title: t("sidebar.custom_presence"), systemImage: "slider.horizontal.3", tint: .blue)
+                    CPSectionDivider()
+                    ipadSidebarButton(.programs, title: t("sidebar.programs"), systemImage: "list.bullet.rectangle", tint: .orange)
+                    CPSectionDivider()
+                    ipadSidebarButton(.about, title: t("sidebar.about"), systemImage: "info.circle", tint: .gray)
+                }
+
+                CPGroupedSection {
+                    ipadSidebarButton(.discordTest, title: t("sidebar.discord_test"), systemImage: "gamecontroller", tint: .purple)
+                    CPSectionDivider()
+                    ipadSidebarButton(.nowPlayingTest, title: t("sidebar.now_playing_test"), systemImage: "music.note", tint: .green)
+
+                    ForEach(items) { item in
+                        CPSectionDivider()
+                        ipadSidebarButton(.item(item), title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", tint: .gray)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 54)
+        .padding(.bottom, 18)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var ipadSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            Text(t("common.search"))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Image(systemName: "mic")
+                .foregroundStyle(.secondary)
+        }
+        .font(.body)
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(Color.secondary.opacity(0.11), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+
+    private func ipadSidebarButton(
+        _ target: DetailSelection,
+        title: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        Button {
+            selection = target
+        } label: {
+            HStack(spacing: 12) {
+                CPRowIcon(systemImage: systemImage, tint: tint)
+                Text(title)
+                    .font(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if selection == target {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.secondary.opacity(0.22))
+                }
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityIdentifier(for: target))
+    }
 #endif
 
     @ViewBuilder
@@ -462,6 +614,29 @@ struct ContentView: View {
             return item.timestamp.formatted(date: .numeric, time: .standard)
         case .none:
             return ""
+        }
+    }
+
+    private func accessibilityIdentifier(for selection: DetailSelection) -> String {
+        switch selection {
+        case .overview:
+            return "sidebar.overview"
+        case .customPresence:
+            return "sidebar.customPresence"
+        case .programs:
+            return "sidebar.programs"
+        case .builtin:
+            return "sidebar.builtin"
+        case .about:
+            return "sidebar.about"
+        case .discordTest:
+            return "sidebar.discordTest"
+        case .nowPlayingTest:
+            return "sidebar.nowPlayingTest"
+        case .item(let item):
+            return "sidebar.item.\(item.id)"
+        case .none:
+            return "sidebar.none"
         }
     }
 

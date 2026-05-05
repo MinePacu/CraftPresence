@@ -53,6 +53,9 @@ struct CraftPresenceApp: App {
                 #endif
                 configureDiscordSDK()
                 PresencePriorityController.shared.start()
+                Task {
+                    await restoreAppliedPresenceLiveActivity()
+                }
                 hideTitleBarOnCatalyst()
                 updateDiscordOnboardingPresentation()
             }
@@ -63,6 +66,7 @@ struct CraftPresenceApp: App {
                 #endif
                 Task {
                     await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
+                    await restoreAppliedPresenceLiveActivity()
                 }
             }
             .onChange(of: permissionsService.isTrusted) { _, _ in
@@ -119,6 +123,13 @@ struct CraftPresenceApp: App {
         showingDiscordOnboarding = permissionsService.isTrusted
             && !discordOnboardingCompleted
             && !AutomationLaunchOptions.isUITesting
+    }
+
+    @MainActor
+    private func restoreAppliedPresenceLiveActivity() async {
+        await PresenceLiveActivityController.shared.restoreAppliedPresence(
+            connectionStatus: localizationManager.string(discordManager.dashboardStatus.localizationKey)
+        )
     }
 }
 
