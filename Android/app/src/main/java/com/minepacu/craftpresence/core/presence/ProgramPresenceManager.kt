@@ -2,6 +2,7 @@ package com.minepacu.craftpresence.core.presence
 
 import android.content.Context
 import com.minepacu.craftpresence.core.config.ConfigUtility
+import com.minepacu.craftpresence.core.config.ProgramPresenceSettings
 import com.minepacu.craftpresence.core.discord.DiscordActivity
 import com.minepacu.craftpresence.core.discord.DiscordSdkManager
 import com.minepacu.craftpresence.core.programs.ProgramDetector
@@ -24,6 +25,34 @@ data class ProgramPresenceState(
     val lastErrorMessage: String? = null,
 )
 
+internal data class ProgramPresenceSession(
+    val packageName: String,
+    val payloadKey: String,
+    val startEpochSeconds: Long,
+)
+
+internal fun resolveProgramPresenceSession(
+    previous: ProgramPresenceSession?,
+    packageName: String,
+    payloadKey: String,
+    resetElapsedTimeOnPresenceChange: Boolean,
+    nowEpochSeconds: Long,
+): ProgramPresenceSession {
+    val shouldStartNewSession = previous == null ||
+        previous.packageName != packageName ||
+        (resetElapsedTimeOnPresenceChange && previous.payloadKey != payloadKey)
+
+    return if (shouldStartNewSession) {
+        ProgramPresenceSession(
+            packageName = packageName,
+            payloadKey = payloadKey,
+            startEpochSeconds = nowEpochSeconds,
+        )
+    } else {
+        previous.copy(payloadKey = payloadKey)
+    }
+}
+
 class ProgramPresenceManager private constructor(context: Context) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -32,8 +61,7 @@ class ProgramPresenceManager private constructor(context: Context) {
     private val discord = DiscordSdkManager.getInstance(appContext)
 
     private var collectJob: Job? = null
-    private var currentSessionIdentifier: String? = null
-    private var currentSessionStartEpochSeconds: Long? = null
+    private var currentSession: ProgramPresenceSession? = null
     private var lastAppliedActivityKey: String? = null
 
     private val _state = MutableStateFlow(ProgramPresenceState())
@@ -66,8 +94,7 @@ class ProgramPresenceManager private constructor(context: Context) {
         collectJob?.cancel()
         collectJob = null
         detector.stop()
-        currentSessionIdentifier = null
-        currentSessionStartEpochSeconds = null
+        currentSession = null
         lastAppliedActivityKey = null
         discord.releaseActivityPriority(PRIORITY_OWNER)
         scope.launch { discord.clearActivity() }
@@ -82,6 +109,7 @@ class ProgramPresenceManager private constructor(context: Context) {
                 runCatching { discord.clearActivity() }
                 lastAppliedActivityKey = null
             }
+            currentSession = null
             _state.value = _state.value.copy(
                 activeAppName = update.appName.orEmpty(),
                 activePackageName = packageName,
@@ -91,7 +119,6 @@ class ProgramPresenceManager private constructor(context: Context) {
             return
         }
 
-        updateSession(packageName)
         val settings = config.programSettings(packageName)
         val appName = config.appDisplayName(packageName).ifBlank { update.appName ?: packageName }
         val detail = renderPresenceText(
@@ -106,6 +133,21 @@ class ProgramPresenceManager private constructor(context: Context) {
             packageName = packageName,
             windowTitle = update.windowTitle,
         )
+        val payloadKey = programPresencePayloadKey(
+            packageName = packageName,
+            appName = appName,
+            state = state,
+            details = detail,
+            settings = settings,
+        )
+        val session = resolveProgramPresenceSession(
+            previous = currentSession,
+            packageName = packageName,
+            payloadKey = payloadKey,
+            resetElapsedTimeOnPresenceChange = settings.resetElapsedTimeOnPresenceChange,
+            nowEpochSeconds = System.currentTimeMillis() / 1000L,
+        )
+        currentSession = session
         val activity = DiscordActivity(
             name = appName,
             state = state,
@@ -114,7 +156,7 @@ class ProgramPresenceManager private constructor(context: Context) {
             largeImageText = settings.largeImageText,
             smallImageKey = settings.smallImageKey,
             smallImageText = settings.smallImageText,
-            startEpochSeconds = currentSessionStartEpochSeconds,
+            startEpochSeconds = session.startEpochSeconds,
             activityType = settings.activityType,
         )
         val activityKey = activity.toUpdateKey()
@@ -138,12 +180,6 @@ class ProgramPresenceManager private constructor(context: Context) {
         }
     }
 
-    private fun updateSession(packageName: String) {
-        if (currentSessionIdentifier == packageName) return
-        currentSessionIdentifier = packageName
-        currentSessionStartEpochSeconds = System.currentTimeMillis() / 1000L
-    }
-
     private fun renderPresenceText(
         template: String,
         appName: String,
@@ -156,6 +192,26 @@ class ProgramPresenceManager private constructor(context: Context) {
             .replace("{title}", windowTitle.orEmpty())
             .trim()
     }
+
+    private fun programPresencePayloadKey(
+        packageName: String,
+        appName: String,
+        state: String,
+        details: String,
+        settings: ProgramPresenceSettings,
+    ): String = listOf(
+        packageName,
+        appName,
+        state,
+        details,
+        settings.largeImageKey,
+        settings.largeImageText,
+        settings.smallImageKey,
+        settings.smallImageText,
+        settings.partyCurrent,
+        settings.partyMax,
+        settings.activityType,
+    ).joinToString("|") { it.toString() }
 
     private fun DiscordActivity.toUpdateKey(): String = listOf(
         name,

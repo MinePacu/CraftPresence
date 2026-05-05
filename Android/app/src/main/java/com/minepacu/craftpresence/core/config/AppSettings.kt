@@ -93,6 +93,7 @@ data class ProgramPresenceSettings(
     val largeImageText: String = "",
     val smallImageKey: String = "",
     val smallImageText: String = "",
+    val resetElapsedTimeOnPresenceChange: Boolean = true,
     val partyCurrent: Int = 1,
     val partyMax: Int = 1,
 ) {
@@ -105,6 +106,7 @@ data class ProgramPresenceSettings(
         .put("largeImageText", largeImageText)
         .put("smallImageKey", smallImageKey)
         .put("smallImageText", smallImageText)
+        .put("resetElapsedTimeOnPresenceChange", resetElapsedTimeOnPresenceChange)
         .put("partyCurrent", partyCurrent)
         .put("partyMax", partyMax)
 
@@ -120,6 +122,7 @@ data class ProgramPresenceSettings(
             largeImageText = json.optString("largeImageText"),
             smallImageKey = json.optString("smallImageKey"),
             smallImageText = json.optString("smallImageText"),
+            resetElapsedTimeOnPresenceChange = json.optBoolean("resetElapsedTimeOnPresenceChange", true),
             partyCurrent = json.optInt("partyCurrent", 1),
             partyMax = json.optInt("partyMax", 1),
         )

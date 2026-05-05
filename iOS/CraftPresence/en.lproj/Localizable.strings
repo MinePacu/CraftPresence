@@ -132,6 +132,7 @@
 "presets.editor.title" = "Preset name";
 "presets.editor.text" = "Display text";
 "presets.editor.elapsed_time" = "Show elapsed time";
+"presets.editor.reset_elapsed_time_on_publish" = "Reset elapsed time on publish";
 "presets.editor.assets" = "Image assets";
 "presets.editor.assets_help" = "For large and small image keys, enter a Rich Presence asset key from the Discord Developer Portal or a public HTTPS image URL. Local image file paths on this device cannot be loaded by Discord.";
 "presets.editor.party" = "Party";

@@ -1111,6 +1111,17 @@ private fun ProgramSettingsDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    Text(text.resetElapsedTimeOnPresenceChange)
+                    Switch(
+                        checked = draft.resetElapsedTimeOnPresenceChange,
+                        onCheckedChange = { draft = draft.copy(resetElapsedTimeOnPresenceChange = it) },
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(text.useAppIconForLargeImage)
                     Switch(
                         checked = draft.useAppIconForLargeImage,
@@ -1246,6 +1257,17 @@ private fun PresenceScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text.resetElapsedTimeOnPresenceChange)
+                Switch(
+                    checked = draft.resetElapsedTimeOnPresenceChange,
+                    onCheckedChange = { draft = draft.copy(resetElapsedTimeOnPresenceChange = it) },
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

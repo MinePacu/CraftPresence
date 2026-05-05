@@ -9,30 +9,78 @@ import XCTest
 @testable import CraftPresence
 
 final class CraftPresenceTests: XCTestCase {
+    func testElapsedStartDateResetsToPublishTimeWhenToggleIsEnabled() {
+        let previousStart = Date(timeIntervalSince1970: 1_000)
+        let publishTime = Date(timeIntervalSince1970: 2_000)
+        let preset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: previousStart,
+            resetsElapsedTimeOnPublish: true
+        )
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+        XCTAssertEqual(preset.elapsedStartDateForPublish(now: publishTime), publishTime)
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    func testElapsedStartDatePreservesExistingTimeWhenToggleIsDisabled() {
+        let previousStart = Date(timeIntervalSince1970: 1_000)
+        let publishTime = Date(timeIntervalSince1970: 2_000)
+        let preset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: previousStart,
+            resetsElapsedTimeOnPublish: false
+        )
+
+        XCTAssertEqual(preset.elapsedStartDateForPublish(now: publishTime), previousStart)
     }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
-        // XCTest Documentation
-        // https://developer.apple.com/documentation/xctest
+    func testElapsedStartDateIsNilWhenElapsedTimeIsDisabled() {
+        let publishTime = Date(timeIntervalSince1970: 2_000)
+        let preset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: false,
+            elapsedStartDate: Date(timeIntervalSince1970: 1_000),
+            resetsElapsedTimeOnPublish: true
+        )
+
+        XCTAssertNil(preset.elapsedStartDateForPublish(now: publishTime))
     }
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
-    }
+    func testElapsedStartDateCanPreserveMatchingAppliedPresenceWhenToggleIsDisabled() {
+        let previousStart = Date(timeIntervalSince1970: 1_000)
+        let publishTime = Date(timeIntervalSince1970: 2_000)
+        let appliedPresence = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: previousStart,
+            resetsElapsedTimeOnPublish: false
+        )
+        let draft = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: nil,
+            resetsElapsedTimeOnPublish: false
+        )
 
+        XCTAssertEqual(
+            draft.elapsedStartDateForPublish(now: publishTime, preserving: appliedPresence),
+            previousStart
+        )
+    }
 }

@@ -129,6 +129,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var smallImageText: String = ""
     public var usesElapsedTime: Bool = true
     public var elapsedStartDate: Date?
+    public var resetsElapsedTimeOnPublish: Bool = true
     public var usesParty: Bool = false
     public var partyCurrent: Int = 1
     public var partyMax: Int = 1
@@ -147,6 +148,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         case smallImageText
         case usesElapsedTime
         case elapsedStartDate
+        case resetsElapsedTimeOnPublish
         case usesParty
         case partyCurrent
         case partyMax
@@ -165,6 +167,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.smallImageText = try container.decodeIfPresent(String.self, forKey: .smallImageText) ?? ""
         self.usesElapsedTime = try container.decodeIfPresent(Bool.self, forKey: .usesElapsedTime) ?? true
         self.elapsedStartDate = try container.decodeIfPresent(Date.self, forKey: .elapsedStartDate)
+        self.resetsElapsedTimeOnPublish = try container.decodeIfPresent(Bool.self, forKey: .resetsElapsedTimeOnPublish) ?? true
         self.usesParty = try container.decodeIfPresent(Bool.self, forKey: .usesParty) ?? false
         self.partyCurrent = try container.decodeIfPresent(Int.self, forKey: .partyCurrent) ?? 1
         self.partyMax = try container.decodeIfPresent(Int.self, forKey: .partyMax) ?? 1
@@ -183,6 +186,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         try container.encode(smallImageText, forKey: .smallImageText)
         try container.encode(usesElapsedTime, forKey: .usesElapsedTime)
         try container.encodeIfPresent(elapsedStartDate, forKey: .elapsedStartDate)
+        try container.encode(resetsElapsedTimeOnPublish, forKey: .resetsElapsedTimeOnPublish)
         try container.encode(usesParty, forKey: .usesParty)
         try container.encode(partyCurrent, forKey: .partyCurrent)
         try container.encode(partyMax, forKey: .partyMax)
@@ -200,6 +204,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         smallImageText: String = "",
         usesElapsedTime: Bool = true,
         elapsedStartDate: Date? = nil,
+        resetsElapsedTimeOnPublish: Bool = true,
         usesParty: Bool = false,
         partyCurrent: Int = 1,
         partyMax: Int = 1
@@ -215,6 +220,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.smallImageText = smallImageText
         self.usesElapsedTime = usesElapsedTime
         self.elapsedStartDate = elapsedStartDate
+        self.resetsElapsedTimeOnPublish = resetsElapsedTimeOnPublish
         self.usesParty = usesParty
         self.partyCurrent = partyCurrent
         self.partyMax = partyMax

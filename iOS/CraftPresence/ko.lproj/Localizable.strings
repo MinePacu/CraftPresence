@@ -132,6 +132,7 @@
 "presets.editor.title" = "프리셋 이름";
 "presets.editor.text" = "표시 문구";
 "presets.editor.elapsed_time" = "경과 시간 표시";
+"presets.editor.reset_elapsed_time_on_publish" = "게시 시 경과 시간 초기화";
 "presets.editor.assets" = "이미지 에셋";
 "presets.editor.assets_help" = "큰 이미지 키와 작은 이미지 키에는 Discord 개발자 포털의 Rich Presence 에셋 키 또는 공개 HTTPS 이미지 URL을 입력하세요. 기기 내부 이미지 파일 경로는 Discord에서 가져올 수 없습니다.";
 "presets.editor.party" = "파티 정보";

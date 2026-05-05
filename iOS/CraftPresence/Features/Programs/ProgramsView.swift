@@ -217,7 +217,8 @@ struct ProgramsView: View {
     private func publish(_ preset: CustomPresencePreset) async {
         do {
             var publishedPreset = preset.normalized
-            let startDate = publishedPreset.elapsedStartDateForPublish()
+            let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
+            let startDate = publishedPreset.elapsedStartDateForPublish(preserving: appliedPresence)
             publishedPreset.elapsedStartDate = startDate
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
@@ -433,6 +434,9 @@ private struct PresencePresetForm: View {
                 .accessibilityIdentifier("presenceForm.state")
             Toggle(t("presets.editor.elapsed_time"), isOn: $preset.usesElapsedTime)
                 .accessibilityIdentifier("presenceForm.elapsedTime")
+            Toggle(t("presets.editor.reset_elapsed_time_on_publish"), isOn: $preset.resetsElapsedTimeOnPublish)
+                .disabled(!preset.usesElapsedTime)
+                .accessibilityIdentifier("presenceForm.resetElapsedTimeOnPublish")
         }
 
         Section {
@@ -730,7 +734,8 @@ struct CustomPresenceView: View {
     private func publishDraft() async {
         do {
             var preset = draft.normalized
-            let startDate = preset.elapsedStartDateForPublish()
+            let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
+            let startDate = preset.elapsedStartDateForPublish(preserving: appliedPresence)
             preset.elapsedStartDate = startDate
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
@@ -855,6 +860,10 @@ private struct PresencePresetInlineForm: View {
 
                 Toggle(t("presets.editor.elapsed_time"), isOn: $preset.usesElapsedTime)
                     .accessibilityIdentifier("presenceForm.elapsedTime")
+
+                Toggle(t("presets.editor.reset_elapsed_time_on_publish"), isOn: $preset.resetsElapsedTimeOnPublish)
+                    .disabled(!preset.usesElapsedTime)
+                    .accessibilityIdentifier("presenceForm.resetElapsedTimeOnPublish")
             }
 
             formSection(
@@ -983,6 +992,7 @@ extension CustomPresencePreset {
             smallImageText: discordActivity.assets.smallText ?? "",
             usesElapsedTime: discordActivity.timestamps.start != nil,
             elapsedStartDate: discordActivity.timestamps.start,
+            resetsElapsedTimeOnPublish: true,
             usesParty: discordActivity.party.currentSize != nil && discordActivity.party.maxSize != nil,
             partyCurrent: partyCurrent,
             partyMax: partyMax
@@ -1004,9 +1014,22 @@ extension CustomPresencePreset {
         return copy
     }
 
-    func elapsedStartDateForPublish(now: Date = Date()) -> Date? {
+    func elapsedStartDateForPublish(
+        now: Date = Date(),
+        preserving fallback: CustomPresencePreset? = nil
+    ) -> Date? {
         guard usesElapsedTime else { return nil }
-        return elapsedStartDate ?? now
+        guard !resetsElapsedTimeOnPublish else { return now }
+        if let elapsedStartDate {
+            return elapsedStartDate
+        }
+        if let fallback,
+           fallback.usesElapsedTime,
+           let fallbackStartDate = fallback.elapsedStartDate,
+           matchesPresencePayload(of: fallback) {
+            return fallbackStartDate
+        }
+        return now
     }
 
     func preservingElapsedTime(from fallback: CustomPresencePreset?) -> CustomPresencePreset {

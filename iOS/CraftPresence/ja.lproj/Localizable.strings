@@ -132,6 +132,7 @@
 "presets.editor.title" = "プリセット名";
 "presets.editor.text" = "表示テキスト";
 "presets.editor.elapsed_time" = "経過時間を表示";
+"presets.editor.reset_elapsed_time_on_publish" = "公開時に経過時間をリセット";
 "presets.editor.assets" = "画像アセット";
 "presets.editor.assets_help" = "大きい画像キーと小さい画像キーには、Discord Developer Portal の Rich Presence アセットキー、または公開 HTTPS 画像 URL を入力してください。この端末内の画像ファイルパスは Discord から読み込めません。";
 "presets.editor.party" = "パーティー";
