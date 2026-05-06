@@ -14,9 +14,12 @@ struct ProgramsView: View {
 
     @State private var presets: [CustomPresencePreset] = []
     @State private var activePresetID: UUID?
+    @State private var scheduleRules: [PresenceScheduleRule] = []
     @State private var editingPreset: CustomPresencePreset?
+    @State private var schedulingPreset: CustomPresencePreset?
     @State private var isPresentingEditor = false
-    @State private var statusMessage = ""
+    @State private var toastMessage: CPToastMessage?
+    @State private var errorMessage = ""
 
     var body: some View {
         CPSettingsPage {
@@ -29,8 +32,8 @@ struct ProgramsView: View {
 
             controlPanel
 
-            if !statusMessage.isEmpty {
-                messagePanel(statusMessage)
+            if !errorMessage.isEmpty {
+                messagePanel(errorMessage)
             }
 
             presetList
@@ -51,6 +54,21 @@ struct ProgramsView: View {
                     Task {
                         await savePreset(preset)
                     }
+                }
+            )
+            .environmentObject(localizationManager)
+            .cpToast($toastMessage)
+        }
+        .cpToast($toastMessage)
+        .sheet(item: $schedulingPreset) { preset in
+            PresenceScheduleSheet(
+                preset: preset,
+                initialRules: scheduleRulesByPresetID[preset.id] ?? [],
+                onSave: { rule in
+                    Task { await saveScheduleRule(rule) }
+                },
+                onDelete: { rule in
+                    Task { await deleteScheduleRule(rule) }
                 }
             )
             .environmentObject(localizationManager)
@@ -143,10 +161,14 @@ struct ProgramsView: View {
                         PresencePresetRow(
                             preset: preset,
                             isActive: preset.id == activePresetID,
+                            scheduleRules: scheduleRulesByPresetID[preset.id] ?? [],
                             onPublish: { Task { await publish(preset) } },
                             onEdit: {
                                 editingPreset = preset
                                 isPresentingEditor = true
+                            },
+                            onSchedule: {
+                                schedulingPreset = preset
                             },
                             onDelete: { Task { await deletePreset(preset) } }
                         )
@@ -183,11 +205,16 @@ struct ProgramsView: View {
             .background(cardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
+    private var scheduleRulesByPresetID: [UUID: [PresenceScheduleRule]] {
+        Dictionary(grouping: scheduleRules, by: \.presetID)
+    }
+
     @MainActor
     private func reloadPresets() async {
         let settings = await ConfigUtility.shared.currentSettings()
         presets = settings.customPresencePresets
         activePresetID = settings.activeCustomPresencePresetID
+        scheduleRules = settings.presenceScheduleRules
         programIDs = settings.bundleIDs
     }
 
@@ -196,9 +223,9 @@ struct ProgramsView: View {
         do {
             _ = try await ConfigUtility.shared.upsertCustomPresencePreset(preset)
             await reloadPresets()
-            statusMessage = t("presets.saved")
+            showToast(t("presets.saved"))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
     }
 
@@ -207,9 +234,9 @@ struct ProgramsView: View {
         do {
             _ = try await ConfigUtility.shared.removeCustomPresencePreset(id: preset.id)
             await reloadPresets()
-            statusMessage = t("presets.deleted")
+            showToast(t("presets.deleted"))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
     }
 
@@ -223,7 +250,7 @@ struct ProgramsView: View {
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
             }
-            try await DiscordSDKManager.shared.updateActivity(
+            let payload = AppliedPresencePayload(
                 name: publishedPreset.title.nilIfEmpty ?? "CraftPresence",
                 state: publishedPreset.state.nilIfEmpty,
                 details: publishedPreset.details.nilIfEmpty,
@@ -235,36 +262,71 @@ struct ProgramsView: View {
                 partyCurrent: partyCurrent(for: publishedPreset),
                 partyMax: partyMax(for: publishedPreset),
                 start: startDate,
-                activityType: publishedPreset.activityType.discordActivityType
+                activityType: publishedPreset.activityType
             )
+            try await DiscordSDKManager.shared.updateActivity(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(publishedPreset)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(publishedPreset)
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(publishedPreset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: publishedPreset.id)
+            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
             await PresenceLiveActivityController.shared.publish(
                 publishedPreset,
                 connectionStatus: t(discordManager.dashboardStatus.localizationKey)
             )
             await reloadPresets()
-            statusMessage = String(format: t("presets.published_format"), publishedPreset.title)
+            showToast(String(format: t("presets.published_format"), publishedPreset.title))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
     }
 
     @MainActor
     private func clearPresence() async {
         do {
-            try await DiscordSDKManager.shared.clearActivity()
+            try await DiscordSDKManager.shared.clearAppliedPresence()
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
             _ = try await ConfigUtility.shared.setLastCustomPresence(nil)
-            _ = try await ConfigUtility.shared.setAppliedCustomPresence(nil)
+            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
             await PresenceLiveActivityController.shared.end()
             await reloadPresets()
-            statusMessage = t("presets.cleared")
+            showToast(t("presets.cleared"))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
+    }
+
+    @MainActor
+    private func saveScheduleRule(_ rule: PresenceScheduleRule) async {
+        do {
+            _ = try await ConfigUtility.shared.upsertPresenceScheduleRule(rule)
+            await reloadPresets()
+            await PresenceScheduleManager.shared.evaluate()
+            showToast(t("presets.schedule.saved"))
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func deleteScheduleRule(_ rule: PresenceScheduleRule) async {
+        do {
+            _ = try await ConfigUtility.shared.removePresenceScheduleRule(id: rule.id)
+            await reloadPresets()
+            await PresenceScheduleManager.shared.evaluate()
+            showToast(t("presets.schedule.deleted"))
+        } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    private func showToast(_ message: String) {
+        errorMessage = ""
+        toastMessage = CPToastMessage(text: message)
+    }
+
+    private func showError(_ message: String) {
+        errorMessage = message
     }
 
     private func partyID(for preset: CustomPresencePreset) -> String? {
@@ -287,47 +349,276 @@ struct ProgramsView: View {
 private struct PresencePresetRow: View {
     let preset: CustomPresencePreset
     let isActive: Bool
+    let scheduleRules: [PresenceScheduleRule]
     let onPublish: () -> Void
+    let onEdit: () -> Void
+    let onSchedule: () -> Void
+    let onDelete: () -> Void
+
+    @EnvironmentObject private var localizationManager: LocalizationManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    var body: some View {
+        Group {
+            if horizontalSizeClass == .compact {
+                compactLayout
+            } else {
+                regularLayout
+            }
+        }
+        .padding(16)
+        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private var compactLayout: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                icon
+                textBlock
+            }
+
+            actionRow
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private var regularLayout: some View {
+        HStack(alignment: .top, spacing: 14) {
+            icon
+            textBlock
+            Spacer(minLength: 16)
+            actionRow
+        }
+    }
+
+    private var textBlock: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(preset.title)
+                    .font(.headline)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if isActive {
+                    Text(t("presets.active"))
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.green.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.green)
+                }
+            }
+
+            Text(preset.details.nilIfEmpty ?? t("presets.no_details"))
+                .font(.subheadline)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(preset.state.nilIfEmpty ?? t("presets.no_state"))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !scheduleRules.isEmpty {
+                Label(scheduleSummary, systemImage: "calendar")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                onPublish()
+            } label: {
+                Label(t("presets.publish"), systemImage: "paperplane.fill")
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                onEdit()
+            } label: {
+                Label(t("common.settings"), systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                onSchedule()
+            } label: {
+                Label(t("presets.schedule.title"), systemImage: "calendar.badge.clock")
+            }
+            .buttonStyle(.bordered)
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label(t("common.delete"), systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+        }
+        .labelStyle(.iconOnly)
+    }
+
+    private var icon: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(isActive ? Color.green.opacity(0.14) : Color.accentColor.opacity(0.12))
+            .frame(width: 44, height: 44)
+            .overlay(
+                Image(systemName: preset.activityType.systemImage)
+                    .imageScale(.large)
+                    .foregroundStyle(isActive ? .green : .accentColor)
+            )
+    }
+
+    private var scheduleSummary: String {
+        let enabledCount = scheduleRules.filter(\.isEnabled).count
+        return String(
+            format: t("presets.schedule.summary_format"),
+            scheduleRules.count,
+            enabledCount
+        )
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private struct PresenceScheduleSheet: View {
+    let preset: CustomPresencePreset
+    let onSave: (PresenceScheduleRule) -> Void
+    let onDelete: (PresenceScheduleRule) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var localizationManager: LocalizationManager
+    @State private var rules: [PresenceScheduleRule]
+    @State private var editingRule: PresenceScheduleRule?
+
+    init(
+        preset: CustomPresencePreset,
+        initialRules: [PresenceScheduleRule],
+        onSave: @escaping (PresenceScheduleRule) -> Void,
+        onDelete: @escaping (PresenceScheduleRule) -> Void
+    ) {
+        self.preset = preset
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _rules = State(initialValue: initialRules.sortedForScheduleDisplay)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    if rules.isEmpty {
+                        ContentUnavailableView(
+                            t("presets.schedule.empty_title"),
+                            systemImage: "calendar.badge.plus",
+                            description: Text(t("presets.schedule.empty_description"))
+                        )
+                    } else {
+                        ForEach(rules) { rule in
+                            PresenceScheduleRuleRow(
+                                rule: rule,
+                                onToggle: { enabled in
+                                    var updated = rule
+                                    updated.isEnabled = enabled
+                                    save(updated)
+                                },
+                                onEdit: {
+                                    editingRule = rule
+                                },
+                                onDelete: {
+                                    delete(rule)
+                                }
+                            )
+                            .environmentObject(localizationManager)
+                        }
+                    }
+                } header: {
+                    Text(preset.title)
+                } footer: {
+                    Text(t("presets.schedule.footer"))
+                }
+            }
+            .navigationTitle(t("presets.schedule.title"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(t("common.cancel")) {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        editingRule = PresenceScheduleRule(presetID: preset.id)
+                    } label: {
+                        Label(t("presets.schedule.add"), systemImage: "plus")
+                    }
+                }
+            }
+            .sheet(item: $editingRule) { rule in
+                PresenceScheduleEditor(initialRule: rule) { updated in
+                    save(updated)
+                }
+                .environmentObject(localizationManager)
+            }
+        }
+#if os(macOS) || targetEnvironment(macCatalyst)
+        .frame(minWidth: 560, minHeight: 620)
+#endif
+    }
+
+    private func save(_ rule: PresenceScheduleRule) {
+        let normalized = rule.normalizedForScheduleSave
+        if let index = rules.firstIndex(where: { $0.id == normalized.id }) {
+            rules[index] = normalized
+        } else {
+            rules.append(normalized)
+        }
+        rules = rules.sortedForScheduleDisplay
+        onSave(normalized)
+    }
+
+    private func delete(_ rule: PresenceScheduleRule) {
+        rules.removeAll { $0.id == rule.id }
+        onDelete(rule)
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private struct PresenceScheduleRuleRow: View {
+    let rule: PresenceScheduleRule
+    let onToggle: (Bool) -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
     @EnvironmentObject private var localizationManager: LocalizationManager
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            icon
+        HStack(alignment: .top, spacing: 12) {
+            Toggle("", isOn: Binding(get: { rule.isEnabled }, set: onToggle))
+                .labelsHidden()
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Text(preset.title)
-                        .font(.headline)
-                    if isActive {
-                        Text(t("presets.active"))
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.green.opacity(0.12), in: Capsule())
-                            .foregroundStyle(.green)
-                    }
-                }
-
-                Text(preset.details.nilIfEmpty ?? t("presets.no_details"))
-                    .font(.subheadline)
-                Text(preset.state.nilIfEmpty ?? t("presets.no_state"))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(rule.scheduleTitle(localizationManager))
+                    .font(.headline)
+                Text(rule.scheduleDetail(localizationManager))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 12)
+            Spacer(minLength: 8)
 
             HStack(spacing: 8) {
-                Button {
-                    onPublish()
-                } label: {
-                    Label(t("presets.publish"), systemImage: "paperplane.fill")
-                }
-                .buttonStyle(.borderedProminent)
-
                 Button {
                     onEdit()
                 } label: {
@@ -344,19 +635,173 @@ private struct PresencePresetRow: View {
             }
             .labelStyle(.iconOnly)
         }
-        .padding(16)
-        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.vertical, 4)
     }
 
-    private var icon: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(isActive ? Color.green.opacity(0.14) : Color.accentColor.opacity(0.12))
-            .frame(width: 44, height: 44)
-            .overlay(
-                Image(systemName: preset.activityType.systemImage)
-                    .imageScale(.large)
-                    .foregroundStyle(isActive ? .green : .accentColor)
-            )
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private struct PresenceScheduleEditor: View {
+    let onSave: (PresenceScheduleRule) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var localizationManager: LocalizationManager
+    @State private var rule: PresenceScheduleRule
+
+    init(initialRule: PresenceScheduleRule, onSave: @escaping (PresenceScheduleRule) -> Void) {
+        self.onSave = onSave
+        _rule = State(initialValue: initialRule.normalizedForScheduleSave)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(t("presets.schedule.editor.activation")) {
+                    Toggle(t("presets.schedule.enabled"), isOn: $rule.isEnabled)
+                    Picker(t("presets.schedule.mode"), selection: $rule.mode) {
+                        ForEach(PresenceScheduleMode.allCases) { mode in
+                            Text(mode.localizedLabel(localizationManager)).tag(mode)
+                        }
+                    }
+                    PresenceWeekdayPicker(selection: $rule.weekdays)
+                }
+
+                Section(t("presets.schedule.editor.time")) {
+                    PresenceScheduleTimePicker(title: t("presets.schedule.start_time"), time: $rule.startTime)
+                    if rule.mode == .timeRange {
+                        PresenceScheduleTimePicker(
+                            title: t("presets.schedule.end_time"),
+                            time: Binding(
+                                get: { rule.endTime ?? PresenceScheduleTime(hour: 18, minute: 0) },
+                                set: { rule.endTime = $0 }
+                            )
+                        )
+                    }
+                }
+
+                Section {
+                    Toggle(t("presets.schedule.exclude_holidays"), isOn: $rule.excludesHolidays)
+                    if rule.excludesHolidays {
+                        Picker(t("presets.schedule.holiday_region"), selection: $rule.holidayRegion) {
+                            ForEach(PresenceHolidayRegion.allCases) { region in
+                                Text(region.localizedLabel(localizationManager)).tag(region.rawValue)
+                            }
+                        }
+                    }
+                    if rule.mode == .timeRange {
+                        Picker(t("presets.schedule.restore_policy"), selection: $rule.restorePolicy) {
+                            ForEach(PresenceScheduleRestorePolicy.allCases) { policy in
+                                Text(policy.localizedLabel(localizationManager)).tag(policy)
+                            }
+                        }
+                    }
+                    Stepper(value: $rule.priority, in: 0...100) {
+                        LabeledContent(t("presets.schedule.priority"), value: "\(rule.priority)")
+                    }
+                } header: {
+                    Text(t("presets.schedule.editor.options"))
+                } footer: {
+                    Text(t("presets.schedule.priority_help"))
+                }
+            }
+            .navigationTitle(t("presets.schedule.editor.title"))
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(t("common.cancel")) {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(t("common.save")) {
+                        onSave(rule.normalizedForScheduleSave)
+                        dismiss()
+                    }
+                    .disabled(rule.weekdays.isEmpty)
+                }
+            }
+        }
+#if os(macOS) || targetEnvironment(macCatalyst)
+        .frame(minWidth: 520, minHeight: 560)
+#endif
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private struct PresenceScheduleTimePicker: View {
+    let title: String
+    @Binding var time: PresenceScheduleTime
+    @EnvironmentObject private var localizationManager: LocalizationManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Stepper(value: hour, in: 0...23) {
+                LabeledContent(t("presets.schedule.hour"), value: String(format: "%02d", time.hour))
+            }
+            Stepper(value: minute, in: 0...59, step: 5) {
+                LabeledContent(t("presets.schedule.minute"), value: String(format: "%02d", time.minute))
+            }
+        }
+    }
+
+    private var hour: Binding<Int> {
+        Binding(
+            get: { time.hour },
+            set: { time = PresenceScheduleTime(hour: $0, minute: time.minute) }
+        )
+    }
+
+    private var minute: Binding<Int> {
+        Binding(
+            get: { time.minute },
+            set: { time = PresenceScheduleTime(hour: time.hour, minute: $0) }
+        )
+    }
+
+    private func t(_ key: String) -> String {
+        localizationManager.string(key)
+    }
+}
+
+private struct PresenceWeekdayPicker: View {
+    @Binding var selection: [PresenceScheduleWeekday]
+    @EnvironmentObject private var localizationManager: LocalizationManager
+
+    private let columns = [GridItem(.adaptive(minimum: 72), spacing: 8)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(t("presets.schedule.weekdays"))
+                .font(.subheadline.weight(.semibold))
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                ForEach(PresenceScheduleWeekday.allCases) { weekday in
+                    Button {
+                        toggle(weekday)
+                    } label: {
+                        Text(weekday.shortLocalizedLabel(localizationManager))
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(selection.contains(weekday) ? .accentColor : .secondary)
+                }
+            }
+        }
+    }
+
+    private func toggle(_ weekday: PresenceScheduleWeekday) {
+        if selection.contains(weekday) {
+            selection.removeAll { $0 == weekday }
+        } else {
+            selection.append(weekday)
+            selection.sort { $0.rawValue < $1.rawValue }
+        }
     }
 
     private func t(_ key: String) -> String {
@@ -482,7 +927,8 @@ struct CustomPresenceView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var draft = CustomPresencePreset.makeDraft()
-    @State private var statusMessage = ""
+    @State private var toastMessage: CPToastMessage?
+    @State private var errorMessage = ""
     @State private var hasLoadedInitialDraft = false
     @State private var previewNow = Date()
 
@@ -498,8 +944,8 @@ struct CustomPresenceView: View {
             previewPanel
             actionPanel
 
-            if !statusMessage.isEmpty {
-                messagePanel(statusMessage)
+            if !errorMessage.isEmpty {
+                messagePanel(errorMessage)
             }
 
             editorPanel
@@ -529,6 +975,7 @@ struct CustomPresenceView: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
             previewNow = date
         }
+        .cpToast($toastMessage)
     }
 
     private var header: some View {
@@ -683,7 +1130,7 @@ struct CustomPresenceView: View {
 
             Button {
                 draft = CustomPresencePreset.makeDraft()
-                statusMessage = t("custom_presence.reset")
+                showToast(t("custom_presence.reset"))
             } label: {
                 Label(t("custom_presence.reset_button"), systemImage: "arrow.counterclockwise")
                     .frame(maxWidth: .infinity)
@@ -740,7 +1187,7 @@ struct CustomPresenceView: View {
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
             }
-            try await DiscordSDKManager.shared.updateActivity(
+            let payload = AppliedPresencePayload(
                 name: preset.title.nilIfEmpty ?? "CraftPresence",
                 state: preset.state.nilIfEmpty,
                 details: preset.details.nilIfEmpty,
@@ -752,21 +1199,23 @@ struct CustomPresenceView: View {
                 partyCurrent: preset.partyCurrentValue,
                 partyMax: preset.partyMaxValue,
                 start: startDate,
-                activityType: preset.activityType.discordActivityType
+                activityType: preset.activityType
             )
+            try await DiscordSDKManager.shared.updateActivity(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(preset)
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(preset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
+            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
             await PresenceLiveActivityController.shared.publish(
                 preset,
                 connectionStatus: t(discordManager.dashboardStatus.localizationKey)
             )
             draft = preset
             hasLoadedInitialDraft = true
-            statusMessage = String(format: t("custom_presence.published_format"), preset.title)
+            showToast(String(format: t("custom_presence.published_format"), preset.title))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
     }
 
@@ -779,24 +1228,33 @@ struct CustomPresenceView: View {
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(preset)
             draft = preset
             hasLoadedInitialDraft = true
-            statusMessage = t("presets.saved")
+            showToast(t("presets.saved"))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
     }
 
     @MainActor
     private func clearPresence() async {
         do {
-            try await DiscordSDKManager.shared.clearActivity()
+            try await DiscordSDKManager.shared.clearAppliedPresence()
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
             _ = try await ConfigUtility.shared.setLastCustomPresence(nil)
-            _ = try await ConfigUtility.shared.setAppliedCustomPresence(nil)
+            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
             await PresenceLiveActivityController.shared.end()
-            statusMessage = t("presets.cleared")
+            showToast(t("presets.cleared"))
         } catch {
-            statusMessage = error.localizedDescription
+            showError(error.localizedDescription)
         }
+    }
+
+    private func showToast(_ message: String) {
+        errorMessage = ""
+        toastMessage = CPToastMessage(text: message)
+    }
+
+    private func showError(_ message: String) {
+        errorMessage = message
     }
 
     @MainActor
@@ -1075,6 +1533,108 @@ extension CustomPresencePreset {
 
     private func normalizedString(_ value: String) -> String? {
         value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+}
+
+private extension Array where Element == PresenceScheduleRule {
+    var sortedForScheduleDisplay: [PresenceScheduleRule] {
+        sorted { lhs, rhs in
+            if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+            if lhs.startTime != rhs.startTime { return lhs.startTime < rhs.startTime }
+            return lhs.updatedAt > rhs.updatedAt
+        }
+    }
+}
+
+private extension PresenceScheduleRule {
+    var normalizedForScheduleSave: PresenceScheduleRule {
+        var copy = self
+        copy.weekdays = copy.weekdays.isEmpty
+            ? [.monday]
+            : Array(Set(copy.weekdays)).sorted { $0.rawValue < $1.rawValue }
+        copy.priority = min(max(copy.priority, 0), 100)
+        if copy.mode == .singleTime {
+            copy.endTime = nil
+            copy.restorePolicy = .previousPresence
+        } else if copy.endTime == nil {
+            copy.endTime = PresenceScheduleTime(hour: 18, minute: 0)
+        }
+        return copy
+    }
+
+    func scheduleTitle(_ localizationManager: LocalizationManager) -> String {
+        switch mode {
+        case .singleTime:
+            return String(
+                format: localizationManager.string("presets.schedule.single_title_format"),
+                startTime.displayText
+            )
+        case .timeRange:
+            return String(
+                format: localizationManager.string("presets.schedule.range_title_format"),
+                startTime.displayText,
+                (endTime ?? PresenceScheduleTime(hour: 18, minute: 0)).displayText
+            )
+        }
+    }
+
+    func scheduleDetail(_ localizationManager: LocalizationManager) -> String {
+        let weekdayText = weekdays
+            .sorted { $0.rawValue < $1.rawValue }
+            .map { $0.shortLocalizedLabel(localizationManager) }
+            .joined(separator: ", ")
+        let holidayText = excludesHolidays ? localizationManager.string("presets.schedule.holidays_excluded") : localizationManager.string("presets.schedule.holidays_included")
+        let enabledText = isEnabled ? localizationManager.string("builtin.status.enabled") : localizationManager.string("builtin.status.disabled")
+        return "\(weekdayText) · \(holidayText) · \(enabledText)"
+    }
+}
+
+private extension PresenceScheduleTime {
+    var displayText: String {
+        String(format: "%02d:%02d", hour, minute)
+    }
+}
+
+private extension PresenceScheduleWeekday {
+    func shortLocalizedLabel(_ localizationManager: LocalizationManager) -> String {
+        localizationManager.string("presets.schedule.weekday.\(rawValue).short")
+    }
+}
+
+private extension PresenceScheduleMode {
+    func localizedLabel(_ localizationManager: LocalizationManager) -> String {
+        switch self {
+        case .singleTime:
+            return localizationManager.string("presets.schedule.mode.single")
+        case .timeRange:
+            return localizationManager.string("presets.schedule.mode.range")
+        }
+    }
+}
+
+private extension PresenceScheduleRestorePolicy {
+    func localizedLabel(_ localizationManager: LocalizationManager) -> String {
+        switch self {
+        case .previousPresence:
+            return localizationManager.string("presets.schedule.restore.previous")
+        case .clearPresence:
+            return localizationManager.string("presets.schedule.restore.clear")
+        }
+    }
+}
+
+private extension PresenceHolidayRegion {
+    func localizedLabel(_ localizationManager: LocalizationManager) -> String {
+        switch self {
+        case .system:
+            return localizationManager.string("presets.schedule.region.system")
+        case .kr:
+            return localizationManager.string("presets.schedule.region.kr")
+        case .us:
+            return localizationManager.string("presets.schedule.region.us")
+        case .jp:
+            return localizationManager.string("presets.schedule.region.jp")
+        }
     }
 }
 

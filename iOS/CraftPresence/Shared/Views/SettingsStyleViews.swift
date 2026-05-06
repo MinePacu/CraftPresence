@@ -190,6 +190,185 @@ struct CPRowIcon: View {
     }
 }
 
+struct CPToastMessage: Identifiable, Equatable {
+    enum Style: Equatable {
+        case success
+        case info
+    }
+
+    let id = UUID()
+    let text: String
+    var style: Style = .success
+}
+
+private struct CPToastModifier: ViewModifier {
+    @Binding var message: CPToastMessage?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .task(id: message?.id) {
+                guard let current = message else {
+                    await CPToastWindowPresenter.shared.dismiss()
+                    return
+                }
+                await CPToastWindowPresenter.shared.show(current)
+                try? await Task.sleep(nanoseconds: 2_600_000_000)
+                await MainActor.run {
+                    if message?.id == current.id {
+                        message = nil
+                    }
+                }
+                await CPToastWindowPresenter.shared.dismiss(id: current.id)
+            }
+        #else
+        ZStack(alignment: .bottom) {
+            content
+
+            if let message {
+                CPToastView(message: message)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(1)
+            }
+        }
+        .animation(.snappy(duration: 0.24), value: message?.id)
+        .task(id: message?.id) {
+            guard let current = message else { return }
+            try? await Task.sleep(nanoseconds: 2_600_000_000)
+            await MainActor.run {
+                if message?.id == current.id {
+                    message = nil
+                }
+            }
+        }
+        #endif
+    }
+}
+
+private struct CPToastView: View {
+    let message: CPToastMessage
+
+    var body: some View {
+        Label(message.text, systemImage: systemImage)
+            .font(.callout.weight(.semibold))
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(tint.opacity(0.24), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.16), radius: 18, y: 10)
+            .symbolRenderingMode(.hierarchical)
+            .tint(tint)
+    }
+
+    private var systemImage: String {
+        switch message.style {
+        case .success:
+            return "checkmark.circle.fill"
+        case .info:
+            return "info.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch message.style {
+        case .success:
+            return .green
+        case .info:
+            return .blue
+        }
+    }
+}
+
+extension View {
+    func cpToast(_ message: Binding<CPToastMessage?>) -> some View {
+        modifier(CPToastModifier(message: message))
+    }
+}
+
+#if os(iOS)
+@MainActor
+private final class CPToastWindowPresenter {
+    static let shared = CPToastWindowPresenter()
+
+    private var window: UIWindow?
+    private var currentID: UUID?
+
+    private init() {}
+
+    func show(_ message: CPToastMessage) {
+        if currentID == message.id {
+            return
+        }
+
+        guard let windowScene = activeWindowScene else { return }
+        let toastWindow = window ?? CPToastPassThroughWindow(windowScene: windowScene)
+        toastWindow.windowLevel = .alert + 1
+        toastWindow.backgroundColor = .clear
+        toastWindow.rootViewController = UIHostingController(rootView: CPToastWindowRoot(message: message))
+        toastWindow.rootViewController?.view.backgroundColor = .clear
+        toastWindow.isHidden = false
+        window = toastWindow
+        currentID = message.id
+    }
+
+    func dismiss(id: UUID? = nil) {
+        if let id, currentID != id {
+            return
+        }
+
+        window?.isHidden = true
+        window?.rootViewController = nil
+        window = nil
+        currentID = nil
+    }
+
+    private var activeWindowScene: UIWindowScene? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+            ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+    }
+}
+
+private final class CPToastPassThroughWindow: UIWindow {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        false
+    }
+}
+
+private struct CPToastWindowRoot: View {
+    let message: CPToastMessage
+    @State private var isVisible = false
+
+    var body: some View {
+        VStack {
+            Spacer()
+            CPToastView(message: message)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20)
+                .opacity(isVisible ? 1 : 0)
+                .offset(y: isVisible ? 0 : 14)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.snappy(duration: 0.24)) {
+                isVisible = true
+            }
+        }
+    }
+}
+#endif
+
 enum CPStyle {
     static var pageBackground: Color {
 #if os(iOS)

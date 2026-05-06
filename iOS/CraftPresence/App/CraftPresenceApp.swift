@@ -53,6 +53,7 @@ struct CraftPresenceApp: App {
                 #endif
                 configureDiscordSDK()
                 PresencePriorityController.shared.start()
+                PresenceScheduleManager.shared.start()
                 Task {
                     await restoreAppliedPresenceLiveActivity()
                 }
@@ -65,6 +66,7 @@ struct CraftPresenceApp: App {
                 permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: false)
                 #endif
                 Task {
+                    await PresenceScheduleManager.shared.evaluate()
                     await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
                     await restoreAppliedPresenceLiveActivity()
                 }

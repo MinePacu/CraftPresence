@@ -597,6 +597,41 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Publishes a previously built Presence payload.
+    ///
+    /// - Parameter payload: App-owned Rich Presence payload to send to Discord.
+    func updateActivity(_ payload: AppliedPresencePayload) async throws {
+        try await updateActivity(
+            name: payload.name,
+            state: payload.state,
+            details: payload.details,
+            largeImageKey: payload.largeImageKey,
+            largeImageText: payload.largeImageText,
+            smallImageKey: payload.smallImageKey,
+            smallImageText: payload.smallImageText,
+            partyID: payload.partyID,
+            partyCurrent: payload.partyCurrent,
+            partyMax: payload.partyMax,
+            start: payload.start,
+            end: payload.end,
+            activityType: payload.activityType.discordActivityType
+        )
+    }
+
+    /// Publishes and records the last app-owned Presence payload after Discord accepts it.
+    ///
+    /// - Parameter payload: App-owned Rich Presence payload to persist for priority restoration.
+    func publishAppliedPresence(_ payload: AppliedPresencePayload) async throws {
+        try await updateActivity(payload)
+        _ = try await ConfigUtility.shared.setAppliedPresence(payload)
+    }
+
+    /// Clears Discord Rich Presence and removes the priority restoration target.
+    func clearAppliedPresence() async throws {
+        try await clearActivity()
+        _ = try await ConfigUtility.shared.setAppliedPresence(nil)
+    }
+
     /// Async wrapper around `clearActivity(completion:)`.
     func clearActivity() async throws {
         try await withCheckedThrowingContinuation { continuation in
@@ -1354,11 +1389,11 @@ final class PresencePriorityController {
         enforcementTask = nil
     }
 
-    /// Reapplies the selected custom presence when Discord currently shows a different activity.
+    /// Reapplies the last app-owned Presence when Discord currently shows a different activity.
     func enforceAppliedPresenceIfNeeded() async {
         guard !isReapplying else { return }
         guard await ConfigUtility.shared.isPresencePriorityEnabled() else { return }
-        guard let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() else { return }
+        guard let appliedPresence = await ConfigUtility.shared.currentAppliedPresence() else { return }
 
         do {
             let currentActivity = try await DiscordSDKManager.shared.currentPresenceActivity()
@@ -1367,20 +1402,7 @@ final class PresencePriorityController {
             isReapplying = true
             defer { isReapplying = false }
 
-            try await DiscordSDKManager.shared.updateActivity(
-                name: appliedPresence.title.nilIfEmpty ?? "CraftPresence",
-                state: appliedPresence.state.nilIfEmpty,
-                details: appliedPresence.details.nilIfEmpty,
-                largeImageKey: appliedPresence.largeImageKey.nilIfEmpty,
-                largeImageText: appliedPresence.largeImageText.nilIfEmpty,
-                smallImageKey: appliedPresence.smallImageKey.nilIfEmpty,
-                smallImageText: appliedPresence.smallImageText.nilIfEmpty,
-                partyID: appliedPresence.partyID,
-                partyCurrent: appliedPresence.partyCurrentValue,
-                partyMax: appliedPresence.partyMaxValue,
-                start: appliedPresence.usesElapsedTime ? appliedPresence.elapsedStartDate : nil,
-                activityType: appliedPresence.activityType.discordActivityType
-            )
+            try await DiscordSDKManager.shared.updateActivity(appliedPresence)
         } catch {
             #if DEBUG
             print("Failed to enforce applied Presence priority: \(error)")
@@ -1423,47 +1445,56 @@ enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
     }
 }
 
-/// Matching helpers for comparing Discord activity payloads with saved presets.
+/// Matching helpers for comparing Discord activity payloads with saved app-owned payloads.
 private extension DiscordActivity {
-    /// Returns whether this activity already matches a saved custom presence preset.
+    /// Returns whether this activity already matches a saved app-owned Presence payload.
     ///
-    /// - Parameter preset: Saved custom presence preset to compare against this activity.
-    func matches(_ preset: CustomPresencePreset) -> Bool {
-        stringValue(name) == stringValue(preset.title)
-            && stringValue(details) == stringValue(preset.details)
-            && stringValue(state) == stringValue(preset.state)
-            && stringValue(assets.largeImage) == stringValue(preset.largeImageKey)
-            && stringValue(assets.largeText) == stringValue(preset.largeImageText)
-            && stringValue(assets.smallImage) == stringValue(preset.smallImageKey)
-            && stringValue(assets.smallText) == stringValue(preset.smallImageText)
-            && type == preset.activityType.discordActivityType
-            && timestampsMatch(preset)
-            && partyMatches(preset)
+    /// - Parameter payload: Saved Presence payload to compare against this activity.
+    func matches(_ payload: AppliedPresencePayload) -> Bool {
+        stringValue(name) == stringValue(payload.name)
+            && stringValue(details) == stringValue(payload.details)
+            && stringValue(state) == stringValue(payload.state)
+            && stringValue(assets.largeImage) == stringValue(payload.largeImageKey)
+            && stringValue(assets.largeText) == stringValue(payload.largeImageText)
+            && stringValue(assets.smallImage) == stringValue(payload.smallImageKey)
+            && stringValue(assets.smallText) == stringValue(payload.smallImageText)
+            && type == payload.activityType.discordActivityType
+            && timestampsMatch(payload)
+            && partyMatches(payload)
     }
 
-    /// Compares timestamp fields while allowing small elapsed-time drift.
+    /// Compares timestamp fields while allowing small SDK timestamp precision drift.
     ///
-    /// - Parameter preset: Saved custom presence preset whose elapsed-time settings are expected.
-    private func timestampsMatch(_ preset: CustomPresencePreset) -> Bool {
-        guard preset.usesElapsedTime else {
-            return timestamps.start == nil
-        }
-        guard let expectedStart = preset.elapsedStartDate,
-              let actualStart = timestamps.start else {
-            return false
-        }
-        return abs(actualStart.timeIntervalSince(expectedStart)) < 2
+    /// - Parameter payload: Saved Presence payload whose timestamp fields are expected.
+    private func timestampsMatch(_ payload: AppliedPresencePayload) -> Bool {
+        datesMatch(actual: timestamps.start, expected: payload.start)
+            && datesMatch(actual: timestamps.end, expected: payload.end)
     }
 
-    /// Compares party metadata against a saved custom presence preset.
+    /// Compares party metadata against a saved Presence payload.
     ///
-    /// - Parameter preset: Saved custom presence preset whose party fields are expected.
-    private func partyMatches(_ preset: CustomPresencePreset) -> Bool {
-        if preset.partyID == nil {
+    /// - Parameter payload: Saved Presence payload whose party fields are expected.
+    private func partyMatches(_ payload: AppliedPresencePayload) -> Bool {
+        guard let expectedPartyID = stringValue(payload.partyID) else {
             return party.currentSize == nil && party.maxSize == nil
         }
-        return party.currentSize == preset.partyCurrentValue
-            && party.maxSize == preset.partyMaxValue
+        if let actualPartyID = stringValue(party.id), actualPartyID != expectedPartyID {
+            return false
+        }
+        return party.currentSize == payload.partyCurrent
+            && party.maxSize == payload.partyMax
+    }
+
+    /// Compares optional timestamps while allowing a small difference from SDK rounding.
+    private func datesMatch(actual: Date?, expected: Date?) -> Bool {
+        switch (actual, expected) {
+        case (nil, nil):
+            return true
+        case let (actual?, expected?):
+            return abs(actual.timeIntervalSince(expected)) < 2
+        default:
+            return false
+        }
     }
 
     /// Normalizes blank strings to nil before comparing activity fields.

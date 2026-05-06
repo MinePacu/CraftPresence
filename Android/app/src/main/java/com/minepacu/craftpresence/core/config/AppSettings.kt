@@ -13,6 +13,7 @@ data class AppSettings(
     val showForegroundAppIndicator: Boolean = true,
     val showForegroundAppNotification: Boolean = false,
     val hasCompletedDiscordOnboarding: Boolean = false,
+    val resetElapsedTimeOnScheduledPresetRestore: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("packageNames", JSONArray(packageNames))
@@ -21,6 +22,7 @@ data class AppSettings(
         .put("showForegroundAppIndicator", showForegroundAppIndicator)
         .put("showForegroundAppNotification", showForegroundAppNotification)
         .put("hasCompletedDiscordOnboarding", hasCompletedDiscordOnboarding)
+        .put("resetElapsedTimeOnScheduledPresetRestore", resetElapsedTimeOnScheduledPresetRestore)
         .put(
             "appDisplayNames",
             JSONObject().also { root ->
@@ -68,6 +70,7 @@ data class AppSettings(
                 showForegroundAppIndicator = json.optBoolean("showForegroundAppIndicator", true),
                 showForegroundAppNotification = json.optBoolean("showForegroundAppNotification", false),
                 hasCompletedDiscordOnboarding = json.optBoolean("hasCompletedDiscordOnboarding", false),
+                resetElapsedTimeOnScheduledPresetRestore = json.optBoolean("resetElapsedTimeOnScheduledPresetRestore", false),
             )
         }
     }

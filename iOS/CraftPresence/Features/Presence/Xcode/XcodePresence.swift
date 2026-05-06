@@ -78,7 +78,7 @@ class XcodePresenceManager: ObservableObject {
         
         // Discord presence 제거
         Task {
-            try? await DiscordSDKManager.shared.clearActivity()
+            try? await DiscordSDKManager.shared.clearAppliedPresence()
         }
         
         currentProject = ""
@@ -334,7 +334,7 @@ class XcodePresenceManager: ObservableObject {
         }
         
         do {
-            try await DiscordSDKManager.shared.updateActivity(
+            let payload = AppliedPresencePayload(
                 name: "Xcode",
                 state: currentFile.isEmpty || currentFile == "No file" ? "Editing..." : "Editing \(currentFile)",
                 details: currentProject.isEmpty ? "Working on a project" : "Working on \(currentProject)",
@@ -344,6 +344,7 @@ class XcodePresenceManager: ObservableObject {
                 end: nil,
                 activityType: .playing
             )
+            try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             
             lastUpdateTime = Date()
             discordStatus = "Active"

@@ -11,10 +11,14 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var customPresenceDraft: CustomPresencePreset?
     public var lastCustomPresence: CustomPresencePreset?
     public var appliedCustomPresence: CustomPresencePreset?
+    public var appliedPresence: AppliedPresencePayload?
     public var activeCustomPresencePresetID: UUID?
+    public var presenceScheduleRules: [PresenceScheduleRule] = []
+    public var activePresenceScheduleState: ActivePresenceScheduleState?
     public var preferredLanguage: AppLanguage = .system
     public var presencePriorityEnabled: Bool = true
     public var presenceLiveActivityEnabled: Bool = true
+    public var resetElapsedTimeOnScheduledPresetRestore: Bool = false
     
     nonisolated init() { }
 
@@ -30,10 +34,14 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case customPresenceDraft
         case lastCustomPresence
         case appliedCustomPresence
+        case appliedPresence
         case activeCustomPresencePresetID
+        case presenceScheduleRules
+        case activePresenceScheduleState
         case preferredLanguage
         case presencePriorityEnabled
         case presenceLiveActivityEnabled
+        case resetElapsedTimeOnScheduledPresetRestore
     }
 
     nonisolated public init(from decoder: Decoder) throws {
@@ -44,10 +52,14 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.customPresenceDraft = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .customPresenceDraft)
         self.lastCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .lastCustomPresence)
         self.appliedCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .appliedCustomPresence)
+        self.appliedPresence = try container.decodeIfPresent(AppliedPresencePayload.self, forKey: .appliedPresence)
         self.activeCustomPresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
+        self.presenceScheduleRules = try container.decodeIfPresent([PresenceScheduleRule].self, forKey: .presenceScheduleRules) ?? []
+        self.activePresenceScheduleState = try container.decodeIfPresent(ActivePresenceScheduleState.self, forKey: .activePresenceScheduleState)
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
         self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
         self.presenceLiveActivityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presenceLiveActivityEnabled) ?? true
+        self.resetElapsedTimeOnScheduledPresetRestore = try container.decodeIfPresent(Bool.self, forKey: .resetElapsedTimeOnScheduledPresetRestore) ?? false
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -58,10 +70,96 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encodeIfPresent(customPresenceDraft, forKey: .customPresenceDraft)
         try container.encodeIfPresent(lastCustomPresence, forKey: .lastCustomPresence)
         try container.encodeIfPresent(appliedCustomPresence, forKey: .appliedCustomPresence)
+        try container.encodeIfPresent(appliedPresence, forKey: .appliedPresence)
         try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activeCustomPresencePresetID)
+        try container.encode(presenceScheduleRules, forKey: .presenceScheduleRules)
+        try container.encodeIfPresent(activePresenceScheduleState, forKey: .activePresenceScheduleState)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
         try container.encode(presencePriorityEnabled, forKey: .presencePriorityEnabled)
         try container.encode(presenceLiveActivityEnabled, forKey: .presenceLiveActivityEnabled)
+        try container.encode(resetElapsedTimeOnScheduledPresetRestore, forKey: .resetElapsedTimeOnScheduledPresetRestore)
+    }
+}
+
+/// Versioned JSON backup envelope used for importing and exporting settings.
+public struct SettingsBackupFile: Codable, Sendable, Equatable {
+    nonisolated public static let minimumSupportedSchemaVersion = 1
+    nonisolated public static let currentSchemaVersion = 1
+
+    public var schemaVersion: Int
+    public var appName: String
+    public var appVersion: String?
+    public var buildNumber: String?
+    public var exportedAt: Date
+    public var platform: String
+    public var settings: AppSettings
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case appName
+        case appVersion
+        case buildNumber
+        case exportedAt
+        case platform
+        case settings
+    }
+
+    nonisolated public init(
+        schemaVersion: Int = Self.currentSchemaVersion,
+        appName: String = "CraftPresence",
+        appVersion: String? = ConfigUtility.currentAppVersion,
+        buildNumber: String? = ConfigUtility.currentBuildNumber,
+        exportedAt: Date = Date(),
+        platform: String = ConfigUtility.currentBackupPlatform,
+        settings: AppSettings
+    ) {
+        self.schemaVersion = schemaVersion
+        self.appName = appName
+        self.appVersion = appVersion
+        self.buildNumber = buildNumber
+        self.exportedAt = exportedAt
+        self.platform = platform
+        self.settings = settings
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        self.appName = try container.decodeIfPresent(String.self, forKey: .appName) ?? "CraftPresence"
+        self.appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion)
+        self.buildNumber = try container.decodeIfPresent(String.self, forKey: .buildNumber)
+        self.exportedAt = try container.decode(Date.self, forKey: .exportedAt)
+        self.platform = try container.decodeIfPresent(String.self, forKey: .platform) ?? "unknown"
+        self.settings = try container.decode(AppSettings.self, forKey: .settings)
+    }
+
+    nonisolated public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(appName, forKey: .appName)
+        try container.encodeIfPresent(appVersion, forKey: .appVersion)
+        try container.encodeIfPresent(buildNumber, forKey: .buildNumber)
+        try container.encode(exportedAt, forKey: .exportedAt)
+        try container.encode(platform, forKey: .platform)
+        try container.encode(settings, forKey: .settings)
+    }
+}
+
+/// Validation failures that can happen before a settings backup is imported.
+public enum SettingsBackupError: Error, LocalizedError, Equatable {
+    case unsupportedSchemaVersion(Int)
+    case duplicatePresetID(UUID)
+    case scheduleReferencesMissingPreset(UUID)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedSchemaVersion(let version):
+            return "Unsupported settings backup schema version: \(version)."
+        case .duplicatePresetID(let id):
+            return "The settings backup contains a duplicate preset ID: \(id.uuidString)."
+        case .scheduleReferencesMissingPreset(let id):
+            return "The settings backup contains a schedule for a missing preset ID: \(id.uuidString)."
+        }
     }
 }
 
@@ -254,6 +352,213 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
     ]
 }
 
+/// Discord Rich Presence payload last successfully applied by CraftPresence.
+public struct AppliedPresencePayload: Codable, Sendable, Equatable {
+    public var name: String = ""
+    public var state: String?
+    public var details: String?
+    public var largeImageKey: String?
+    public var largeImageText: String?
+    public var smallImageKey: String?
+    public var smallImageText: String?
+    public var partyID: String?
+    public var partyCurrent: Int?
+    public var partyMax: Int?
+    public var start: Date?
+    public var end: Date?
+    public var activityType: ProgramPresenceSettings.ActivityType = .playing
+
+    nonisolated public init(
+        name: String,
+        state: String? = nil,
+        details: String? = nil,
+        largeImageKey: String? = nil,
+        largeImageText: String? = nil,
+        smallImageKey: String? = nil,
+        smallImageText: String? = nil,
+        partyID: String? = nil,
+        partyCurrent: Int? = nil,
+        partyMax: Int? = nil,
+        start: Date? = nil,
+        end: Date? = nil,
+        activityType: ProgramPresenceSettings.ActivityType = .playing
+    ) {
+        self.name = Self.trimmed(name) ?? "CraftPresence"
+        self.state = Self.trimmed(state)
+        self.details = Self.trimmed(details)
+        self.largeImageKey = Self.trimmed(largeImageKey)
+        self.largeImageText = Self.trimmed(largeImageText)
+        self.smallImageKey = Self.trimmed(smallImageKey)
+        self.smallImageText = Self.trimmed(smallImageText)
+        self.partyID = Self.trimmed(partyID)
+        self.partyCurrent = partyCurrent
+        self.partyMax = partyMax
+        self.start = start
+        self.end = end
+        self.activityType = activityType
+    }
+
+    nonisolated public init(customPresencePreset preset: CustomPresencePreset) {
+        let partyID = preset.usesParty && preset.partyCurrent > 0 && preset.partyMax >= preset.partyCurrent
+            ? "preset:\(preset.id.uuidString)"
+            : nil
+
+        self.init(
+            name: preset.title,
+            state: preset.state,
+            details: preset.details,
+            largeImageKey: preset.largeImageKey,
+            largeImageText: preset.largeImageText,
+            smallImageKey: preset.smallImageKey,
+            smallImageText: preset.smallImageText,
+            partyID: partyID,
+            partyCurrent: partyID == nil ? nil : preset.partyCurrent,
+            partyMax: partyID == nil ? nil : preset.partyMax,
+            start: preset.usesElapsedTime ? preset.elapsedStartDate : nil,
+            activityType: preset.activityType
+        )
+    }
+
+    nonisolated private static func trimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == true ? nil : trimmed
+    }
+}
+
+/// Time-of-day value used by schedule rules without binding it to a specific date.
+public struct PresenceScheduleTime: Codable, Sendable, Equatable, Comparable {
+    public var hour: Int = 9
+    public var minute: Int = 0
+
+    nonisolated public init(hour: Int = 9, minute: Int = 0) {
+        self.hour = min(max(hour, 0), 23)
+        self.minute = min(max(minute, 0), 59)
+    }
+
+    public static func < (lhs: PresenceScheduleTime, rhs: PresenceScheduleTime) -> Bool {
+        (lhs.hour, lhs.minute) < (rhs.hour, rhs.minute)
+    }
+
+    public var minutesFromStartOfDay: Int {
+        hour * 60 + minute
+    }
+}
+
+/// Calendar weekday values matching `Calendar.Component.weekday` where Sunday is 1.
+public enum PresenceScheduleWeekday: Int, Codable, CaseIterable, Identifiable, Sendable {
+    case sunday = 1
+    case monday = 2
+    case tuesday = 3
+    case wednesday = 4
+    case thursday = 5
+    case friday = 6
+    case saturday = 7
+
+    public var id: Int { rawValue }
+}
+
+/// Scheduled activation mode for a Presence preset.
+public enum PresenceScheduleMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case singleTime
+    case timeRange
+
+    public var id: String { rawValue }
+}
+
+/// Behavior to run after a scheduled time range no longer matches.
+public enum PresenceScheduleRestorePolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case previousPresence
+    case clearPresence
+
+    public var id: String { rawValue }
+}
+
+/// User-authored schedule rule that applies one preset on matching weekdays and times.
+public struct PresenceScheduleRule: Codable, Identifiable, Sendable, Equatable {
+    public var id: UUID = UUID()
+    public var presetID: UUID
+    public var isEnabled: Bool = true
+    public var mode: PresenceScheduleMode = .timeRange
+    public var weekdays: [PresenceScheduleWeekday] = [.monday, .tuesday, .wednesday, .thursday, .friday]
+    public var startTime: PresenceScheduleTime = PresenceScheduleTime(hour: 9, minute: 0)
+    public var endTime: PresenceScheduleTime? = PresenceScheduleTime(hour: 18, minute: 0)
+    public var excludesHolidays: Bool = false
+    public var holidayRegion: String = PresenceHolidayRegion.system.rawValue
+    public var restorePolicy: PresenceScheduleRestorePolicy = .previousPresence
+    public var priority: Int = 0
+    public var updatedAt: Date = Date()
+
+    nonisolated public init(
+        id: UUID = UUID(),
+        presetID: UUID,
+        isEnabled: Bool = true,
+        mode: PresenceScheduleMode = .timeRange,
+        weekdays: [PresenceScheduleWeekday] = [.monday, .tuesday, .wednesday, .thursday, .friday],
+        startTime: PresenceScheduleTime = PresenceScheduleTime(hour: 9, minute: 0),
+        endTime: PresenceScheduleTime? = PresenceScheduleTime(hour: 18, minute: 0),
+        excludesHolidays: Bool = false,
+        holidayRegion: String = PresenceHolidayRegion.system.rawValue,
+        restorePolicy: PresenceScheduleRestorePolicy = .previousPresence,
+        priority: Int = 0,
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.presetID = presetID
+        self.isEnabled = isEnabled
+        self.mode = mode
+        self.weekdays = weekdays.isEmpty ? [.monday] : Array(Set(weekdays)).sorted { $0.rawValue < $1.rawValue }
+        self.startTime = startTime
+        self.endTime = endTime
+        self.excludesHolidays = excludesHolidays
+        self.holidayRegion = holidayRegion
+        self.restorePolicy = restorePolicy
+        self.priority = min(max(priority, 0), 100)
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Region basis used by offline holiday exclusion.
+public enum PresenceHolidayRegion: String, Codable, CaseIterable, Identifiable, Sendable {
+    case system
+    case kr = "KR"
+    case us = "US"
+    case jp = "JP"
+
+    public var id: String { rawValue }
+}
+
+/// Tracks the currently applied schedule so ranges can restore the previous Presence when they end.
+public struct ActivePresenceScheduleState: Codable, Sendable, Equatable {
+    public var ruleID: UUID
+    public var presetID: UUID
+    public var activationKey: String
+    public var mode: PresenceScheduleMode
+    public var previousPresence: AppliedPresencePayload?
+    public var previousPresetID: UUID?
+    public var startedAt: Date
+    public var expectedEnd: Date?
+
+    nonisolated public init(
+        ruleID: UUID,
+        presetID: UUID,
+        activationKey: String,
+        mode: PresenceScheduleMode,
+        previousPresence: AppliedPresencePayload?,
+        previousPresetID: UUID?,
+        startedAt: Date,
+        expectedEnd: Date?
+    ) {
+        self.ruleID = ruleID
+        self.presetID = presetID
+        self.activationKey = activationKey
+        self.mode = mode
+        self.previousPresence = previousPresence
+        self.previousPresetID = previousPresetID
+        self.startedAt = startedAt
+        self.expectedEnd = expectedEnd
+    }
+}
+
 // MARK: - Config Utility (Actor for thread-safety)
 /// Actor-backed settings store that loads, mutates, and persists app configuration safely across tasks.
 public actor ConfigUtility {
@@ -284,6 +589,133 @@ public actor ConfigUtility {
     }
 
     // MARK: - Public API
+
+    /// Platform value written into exported settings backup metadata.
+    public nonisolated static var currentBackupPlatform: String {
+        #if os(iOS)
+        return "iOS"
+        #elseif os(macOS)
+        return "macOS"
+        #else
+        return "unknown"
+        #endif
+    }
+
+    /// App version written into exported settings backup metadata.
+    public nonisolated static var currentAppVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
+
+    /// Build number written into exported settings backup metadata.
+    public nonisolated static var currentBuildNumber: String? {
+        Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String
+    }
+
+    /// Default user-facing filename for an exported settings backup.
+    public nonisolated static func defaultSettingsBackupFilename(now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "CraftPresence-Settings-\(formatter.string(from: now)).json"
+    }
+
+    /// Encodes the supplied settings into the versioned JSON backup format.
+    public nonisolated static func encodeSettingsBackup(
+        settings: AppSettings,
+        exportedAt: Date = Date(),
+        platform: String = ConfigUtility.currentBackupPlatform,
+        appVersion: String? = ConfigUtility.currentAppVersion,
+        buildNumber: String? = ConfigUtility.currentBuildNumber
+    ) throws -> Data {
+        let backup = SettingsBackupFile(
+            appVersion: appVersion,
+            buildNumber: buildNumber,
+            exportedAt: exportedAt,
+            platform: platform,
+            settings: sanitizedSettingsForBackup(settings)
+        )
+        return try backupJSONEncoder().encode(backup)
+    }
+
+    /// Decodes and validates a versioned JSON settings backup without applying it.
+    public nonisolated static func decodeSettingsBackup(from data: Data) throws -> SettingsBackupFile {
+        let decoder = backupJSONDecoder()
+
+        do {
+            let backup = try decoder.decode(SettingsBackupFile.self, from: data)
+            try validateSettingsBackup(backup)
+            return backup
+        } catch let error as SettingsBackupError {
+            throw error
+        } catch {
+            if let legacySettings = try? JSONDecoder().decode(AppSettings.self, from: data) {
+                let backup = SettingsBackupFile(
+                    appName: "CraftPresence",
+                    appVersion: nil,
+                    buildNumber: nil,
+                    exportedAt: Date(timeIntervalSince1970: 0),
+                    platform: "legacy",
+                    settings: sanitizedSettingsForBackup(legacySettings)
+                )
+                try validateSettingsBackup(backup)
+                return backup
+            }
+
+            throw error
+        }
+    }
+
+    /// Validates settings backup structure before import.
+    public nonisolated static func validateSettingsBackup(_ backup: SettingsBackupFile) throws {
+        guard backup.schemaVersion >= SettingsBackupFile.minimumSupportedSchemaVersion,
+              backup.schemaVersion <= SettingsBackupFile.currentSchemaVersion else {
+            throw SettingsBackupError.unsupportedSchemaVersion(backup.schemaVersion)
+        }
+
+        let presetIDs = backup.settings.customPresencePresets.map(\.id)
+        let uniquePresetIDs = Set(presetIDs)
+        if presetIDs.count != uniquePresetIDs.count,
+           let duplicateID = presetIDs.first(where: { id in presetIDs.filter { $0 == id }.count > 1 }) {
+            throw SettingsBackupError.duplicatePresetID(duplicateID)
+        }
+
+        for rule in backup.settings.presenceScheduleRules where !uniquePresetIDs.contains(rule.presetID) {
+            throw SettingsBackupError.scheduleReferencesMissingPreset(rule.presetID)
+        }
+    }
+
+    /// Returns the data users can save as a `.json` settings backup file.
+    public func exportSettingsBackup(
+        exportedAt: Date = Date(),
+        platform: String = ConfigUtility.currentBackupPlatform,
+        appVersion: String? = ConfigUtility.currentAppVersion,
+        buildNumber: String? = ConfigUtility.currentBuildNumber
+    ) throws -> Data {
+        try ConfigUtility.encodeSettingsBackup(
+            settings: settings,
+            exportedAt: exportedAt,
+            platform: platform,
+            appVersion: appVersion,
+            buildNumber: buildNumber
+        )
+    }
+
+    @discardableResult
+    /// Imports a decoded settings backup after clearing runtime-only state.
+    public func importSettingsBackup(_ backup: SettingsBackupFile) async throws -> AppSettings {
+        try ConfigUtility.validateSettingsBackup(backup)
+        settings = ConfigUtility.settingsForImport(from: backup)
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Decodes, validates, and imports settings backup data.
+    public func importSettingsBackup(from data: Data) async throws -> AppSettings {
+        let backup = try ConfigUtility.decodeSettingsBackup(from: data)
+        return try await importSettingsBackup(backup)
+    }
 
     /// Returns the in-memory snapshot of the current app settings.
     public func currentSettings() -> AppSettings {
@@ -391,6 +823,11 @@ public actor ConfigUtility {
         settings.appliedCustomPresence
     }
 
+    /// Returns the Presence payload that priority enforcement should keep authoritative.
+    public func currentAppliedPresence() -> AppliedPresencePayload? {
+        settings.appliedPresence ?? settings.appliedCustomPresence.map(AppliedPresencePayload.init(customPresencePreset:))
+    }
+
     /// Returns whether CraftPresence should reapply its last published custom Presence when another client changes it.
     public func isPresencePriorityEnabled() -> Bool {
         settings.presencePriorityEnabled
@@ -399,6 +836,11 @@ public actor ConfigUtility {
     /// Returns whether current Presence should be mirrored to ActivityKit Live Activity surfaces.
     public func isPresenceLiveActivityEnabled() -> Bool {
         settings.presenceLiveActivityEnabled
+    }
+
+    /// Returns whether restoring a Presence after a scheduled preset should restart elapsed time.
+    public func isScheduledPresetRestoreElapsedTimeResetEnabled() -> Bool {
+        settings.resetElapsedTimeOnScheduledPresetRestore
     }
 
     @discardableResult
@@ -413,6 +855,14 @@ public actor ConfigUtility {
     /// Persists whether the app should show the current Presence as an ActivityKit Live Activity.
     public func setPresenceLiveActivityEnabled(_ enabled: Bool) async throws -> AppSettings {
         settings.presenceLiveActivityEnabled = enabled
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Persists whether scheduled preset restoration should restart elapsed time.
+    public func setScheduledPresetRestoreElapsedTimeResetEnabled(_ enabled: Bool) async throws -> AppSettings {
+        settings.resetElapsedTimeOnScheduledPresetRestore = enabled
         try persist()
         return settings
     }
@@ -449,6 +899,16 @@ public actor ConfigUtility {
     /// Stores the latest custom Presence that was actually published to Discord.
     public func setAppliedCustomPresence(_ preset: CustomPresencePreset?) async throws -> AppSettings {
         settings.appliedCustomPresence = preset
+        settings.appliedPresence = preset.map(AppliedPresencePayload.init(customPresencePreset:))
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Stores the latest app-owned Presence payload that was actually published to Discord.
+    public func setAppliedPresence(_ payload: AppliedPresencePayload?) async throws -> AppSettings {
+        settings.appliedPresence = payload
+        settings.appliedCustomPresence = nil
         try persist()
         return settings
     }
@@ -457,11 +917,16 @@ public actor ConfigUtility {
     /// Removes a custom preset and clears active state if that preset was published.
     public func removeCustomPresencePreset(id: UUID) async throws -> AppSettings {
         settings.customPresencePresets.removeAll { $0.id == id }
+        settings.presenceScheduleRules.removeAll { $0.presetID == id }
         if settings.activeCustomPresencePresetID == id {
             settings.activeCustomPresencePresetID = nil
         }
         if settings.appliedCustomPresence?.id == id {
             settings.appliedCustomPresence = nil
+            settings.appliedPresence = nil
+        }
+        if settings.activePresenceScheduleState?.presetID == id {
+            settings.activePresenceScheduleState = nil
         }
         try persist()
         return settings
@@ -471,6 +936,61 @@ public actor ConfigUtility {
     /// Stores which preset is currently published.
     public func setActiveCustomPresencePreset(id: UUID?) async throws -> AppSettings {
         settings.activeCustomPresencePresetID = id
+        try persist()
+        return settings
+    }
+
+    // MARK: Presence Schedules
+
+    /// Returns all saved schedule rules.
+    public func presenceScheduleRules() -> [PresenceScheduleRule] {
+        settings.presenceScheduleRules
+    }
+
+    /// Returns schedule rules attached to a specific preset.
+    public func presenceScheduleRules(for presetID: UUID) -> [PresenceScheduleRule] {
+        settings.presenceScheduleRules
+            .filter { $0.presetID == presetID }
+            .sorted { lhs, rhs in
+                if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+                return lhs.updatedAt > rhs.updatedAt
+            }
+    }
+
+    @discardableResult
+    /// Updates an existing schedule rule or appends it when it is new.
+    public func upsertPresenceScheduleRule(_ rule: PresenceScheduleRule) async throws -> PresenceScheduleRule {
+        var next = rule
+        next.updatedAt = Date()
+        if let index = settings.presenceScheduleRules.firstIndex(where: { $0.id == rule.id }) {
+            settings.presenceScheduleRules[index] = next
+        } else {
+            settings.presenceScheduleRules.append(next)
+        }
+        try persist()
+        return next
+    }
+
+    @discardableResult
+    /// Deletes a schedule rule and clears active schedule state if that rule is running.
+    public func removePresenceScheduleRule(id: UUID) async throws -> AppSettings {
+        settings.presenceScheduleRules.removeAll { $0.id == id }
+        if settings.activePresenceScheduleState?.ruleID == id {
+            settings.activePresenceScheduleState = nil
+        }
+        try persist()
+        return settings
+    }
+
+    /// Returns the schedule state currently owned by the automatic scheduler.
+    public func activePresenceScheduleState() -> ActivePresenceScheduleState? {
+        settings.activePresenceScheduleState
+    }
+
+    @discardableResult
+    /// Stores or clears the schedule state currently owned by the automatic scheduler.
+    public func setActivePresenceScheduleState(_ state: ActivePresenceScheduleState?) async throws -> AppSettings {
+        settings.activePresenceScheduleState = state
         try persist()
         return settings
     }
@@ -509,5 +1029,357 @@ public actor ConfigUtility {
         let bundleID = (Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String) ?? "CraftPresence"
         return base.appendingPathComponent(bundleID, isDirectory: true)
                    .appendingPathComponent("settings.json")
+    }
+
+    private nonisolated static func settingsForImport(from backup: SettingsBackupFile) -> AppSettings {
+        switch backup.schemaVersion {
+        case 1:
+            return sanitizedSettingsForBackup(backup.settings)
+        default:
+            return sanitizedSettingsForBackup(backup.settings)
+        }
+    }
+
+    private nonisolated static func sanitizedSettingsForBackup(_ settings: AppSettings) -> AppSettings {
+        var sanitized = settings
+        sanitized.appliedCustomPresence = nil
+        sanitized.appliedPresence = nil
+        sanitized.activeCustomPresencePresetID = nil
+        sanitized.activePresenceScheduleState = nil
+        return sanitized
+    }
+
+    private nonisolated static func backupJSONEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }
+
+    private nonisolated static func backupJSONDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }
+}
+
+/// Pure schedule evaluation helpers separated from Discord publishing side effects.
+public enum PresenceScheduleEvaluator {
+    public struct Match: Sendable, Equatable {
+        public var rule: PresenceScheduleRule
+        public var preset: CustomPresencePreset
+        public var activationKey: String
+        public var expectedEnd: Date?
+    }
+
+    public static func activeMatch(
+        in settings: AppSettings,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Match? {
+        let presetsByID = Dictionary(uniqueKeysWithValues: settings.customPresencePresets.map { ($0.id, $0) })
+        return settings.presenceScheduleRules
+            .compactMap { rule -> Match? in
+                guard rule.isEnabled,
+                      let preset = presetsByID[rule.presetID],
+                      !isExcludedHoliday(rule: rule, now: now, calendar: calendar),
+                      let interval = activeInterval(for: rule, now: now, calendar: calendar) else {
+                    return nil
+                }
+
+                return Match(
+                    rule: rule,
+                    preset: preset,
+                    activationKey: activationKey(for: rule, intervalStart: interval.start, calendar: calendar),
+                    expectedEnd: interval.end
+                )
+            }
+            .sorted { lhs, rhs in
+                if lhs.rule.priority != rhs.rule.priority { return lhs.rule.priority > rhs.rule.priority }
+                if lhs.rule.updatedAt != rhs.rule.updatedAt { return lhs.rule.updatedAt > rhs.rule.updatedAt }
+                return lhs.rule.id.uuidString < rhs.rule.id.uuidString
+            }
+            .first
+    }
+
+    private static func activeInterval(
+        for rule: PresenceScheduleRule,
+        now: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date?)? {
+        switch rule.mode {
+        case .singleTime:
+            return singleTimeInterval(for: rule, now: now, calendar: calendar)
+        case .timeRange:
+            return timeRangeInterval(for: rule, now: now, calendar: calendar)
+        }
+    }
+
+    private static func singleTimeInterval(
+        for rule: PresenceScheduleRule,
+        now: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date?)? {
+        let weekday = calendar.component(.weekday, from: now)
+        guard rule.weekdays.contains(where: { $0.rawValue == weekday }) else { return nil }
+        let components = calendar.dateComponents([.hour, .minute], from: now)
+        guard components.hour == rule.startTime.hour, components.minute == rule.startTime.minute else {
+            return nil
+        }
+        return (start: date(onSameDayAs: now, time: rule.startTime, calendar: calendar), end: nil)
+    }
+
+    private static func timeRangeInterval(
+        for rule: PresenceScheduleRule,
+        now: Date,
+        calendar: Calendar
+    ) -> (start: Date, end: Date?)? {
+        guard let endTime = rule.endTime else { return nil }
+        let currentMinutes = minutesFromStartOfDay(for: now, calendar: calendar)
+        let startMinutes = rule.startTime.minutesFromStartOfDay
+        let endMinutes = endTime.minutesFromStartOfDay
+        let weekday = calendar.component(.weekday, from: now)
+
+        if startMinutes < endMinutes {
+            guard rule.weekdays.contains(where: { $0.rawValue == weekday }),
+                  currentMinutes >= startMinutes,
+                  currentMinutes < endMinutes else {
+                return nil
+            }
+            return (
+                start: date(onSameDayAs: now, time: rule.startTime, calendar: calendar),
+                end: date(onSameDayAs: now, time: endTime, calendar: calendar)
+            )
+        }
+
+        if currentMinutes >= startMinutes,
+           rule.weekdays.contains(where: { $0.rawValue == weekday }) {
+            let start = date(onSameDayAs: now, time: rule.startTime, calendar: calendar)
+            return (start: start, end: calendar.date(byAdding: .day, value: 1, to: date(onSameDayAs: now, time: endTime, calendar: calendar)))
+        }
+
+        let previousDay = calendar.date(byAdding: .day, value: -1, to: now) ?? now
+        let previousWeekday = calendar.component(.weekday, from: previousDay)
+        guard currentMinutes < endMinutes,
+              rule.weekdays.contains(where: { $0.rawValue == previousWeekday }) else {
+            return nil
+        }
+        return (
+            start: date(onSameDayAs: previousDay, time: rule.startTime, calendar: calendar),
+            end: date(onSameDayAs: now, time: endTime, calendar: calendar)
+        )
+    }
+
+    private static func isExcludedHoliday(
+        rule: PresenceScheduleRule,
+        now: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard rule.excludesHolidays else { return false }
+        return PresenceHolidayCalendar.isHoliday(
+            now,
+            region: PresenceHolidayRegion(rawValue: rule.holidayRegion) ?? .system,
+            calendar: calendar
+        )
+    }
+
+    private static func activationKey(
+        for rule: PresenceScheduleRule,
+        intervalStart: Date,
+        calendar: Calendar
+    ) -> String {
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: intervalStart)
+        let year = String(components.year ?? 0)
+        let month = String(components.month ?? 0)
+        let day = String(components.day ?? 0)
+        let hour = String(components.hour ?? 0)
+        let minute = String(components.minute ?? 0)
+        return [rule.id.uuidString, year, month, day, hour, minute].joined(separator: "-")
+    }
+
+    private static func date(
+        onSameDayAs date: Date,
+        time: PresenceScheduleTime,
+        calendar: Calendar
+    ) -> Date {
+        calendar.date(
+            bySettingHour: time.hour,
+            minute: time.minute,
+            second: 0,
+            of: date
+        ) ?? date
+    }
+
+    private static func minutesFromStartOfDay(for date: Date, calendar: Calendar) -> Int {
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        return (components.hour ?? 0) * 60 + (components.minute ?? 0)
+    }
+}
+
+/// Offline holiday detector for the schedule exclusion option.
+public enum PresenceHolidayCalendar {
+    public static func isHoliday(
+        _ date: Date,
+        region: PresenceHolidayRegion,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Bool {
+        let resolvedRegion = resolve(region)
+        let components = calendar.dateComponents([.month, .day], from: date)
+        guard let month = components.month, let day = components.day else { return false }
+
+        switch resolvedRegion {
+        case .kr:
+            return [(1, 1), (3, 1), (5, 5), (6, 6), (8, 15), (10, 3), (10, 9), (12, 25)].contains { $0 == (month, day) }
+        case .us:
+            return [(1, 1), (6, 19), (7, 4), (11, 11), (12, 25)].contains { $0 == (month, day) }
+        case .jp:
+            return [(1, 1), (2, 11), (2, 23), (4, 29), (5, 3), (5, 4), (5, 5), (8, 11), (11, 3), (11, 23)].contains { $0 == (month, day) }
+        case .system:
+            return false
+        }
+    }
+
+    private static func resolve(_ region: PresenceHolidayRegion) -> PresenceHolidayRegion {
+        guard region == .system else { return region }
+        let identifier: String?
+        if #available(iOS 16.0, macOS 13.0, *) {
+            identifier = Locale.autoupdatingCurrent.region?.identifier
+        } else {
+            identifier = Locale.autoupdatingCurrent.regionCode
+        }
+
+        switch identifier?.uppercased() {
+        case PresenceHolidayRegion.kr.rawValue:
+            return .kr
+        case PresenceHolidayRegion.us.rawValue:
+            return .us
+        case PresenceHolidayRegion.jp.rawValue:
+            return .jp
+        default:
+            return .system
+        }
+    }
+}
+
+/// Periodically evaluates Presence schedules and publishes or restores Presence when rules change state.
+@MainActor
+public final class PresenceScheduleManager {
+    public static let shared = PresenceScheduleManager()
+
+    private var scheduleTask: Task<Void, Never>?
+    private let intervalNanoseconds: UInt64 = 30_000_000_000
+
+    private init() {}
+
+    public func start() {
+        guard scheduleTask == nil, !AutomationLaunchOptions.isUITesting else { return }
+        scheduleTask = Task { [weak self] in
+            guard let self else { return }
+            await evaluate()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: intervalNanoseconds)
+                await evaluate()
+            }
+        }
+    }
+
+    public func stop() {
+        scheduleTask?.cancel()
+        scheduleTask = nil
+    }
+
+    public func evaluate(now: Date = Date()) async {
+        let settings = await ConfigUtility.shared.currentSettings()
+        let match = PresenceScheduleEvaluator.activeMatch(in: settings, now: now)
+
+        if let match {
+            guard settings.activePresenceScheduleState?.ruleID != match.rule.id ||
+                    settings.activePresenceScheduleState?.activationKey != match.activationKey else {
+                return
+            }
+            await apply(match, previousSettings: settings, now: now)
+            return
+        }
+
+        if let active = settings.activePresenceScheduleState {
+            await end(active, now: now)
+        }
+    }
+
+    private func apply(
+        _ match: PresenceScheduleEvaluator.Match,
+        previousSettings settings: AppSettings,
+        now: Date
+    ) async {
+        var preset = match.preset
+        if preset.usesElapsedTime {
+            preset.elapsedStartDate = preset.resetsElapsedTimeOnPublish ? now : (preset.elapsedStartDate ?? now)
+        } else {
+            preset.elapsedStartDate = nil
+        }
+
+        let payload = AppliedPresencePayload(customPresencePreset: preset)
+        let previousPresence = settings.activePresenceScheduleState?.previousPresence ?? settings.currentAppliedPresencePayload
+        let previousPresetID = settings.activePresenceScheduleState?.previousPresetID ?? settings.activeCustomPresencePresetID
+
+        do {
+            try await DiscordSDKManager.shared.publishAppliedPresence(payload)
+            _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
+            _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: preset.id)
+            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(
+                ActivePresenceScheduleState(
+                    ruleID: match.rule.id,
+                    presetID: preset.id,
+                    activationKey: match.activationKey,
+                    mode: match.rule.mode,
+                    previousPresence: previousPresence,
+                    previousPresetID: previousPresetID,
+                    startedAt: now,
+                    expectedEnd: match.expectedEnd
+                )
+            )
+            await PresenceLiveActivityController.shared.publish(
+                preset,
+                connectionStatus: LocalizationManager.shared.string(DiscordSDKManager.shared.dashboardStatus.localizationKey)
+            )
+        } catch {
+            #if DEBUG
+            print("Failed to apply scheduled Presence: \(error)")
+            #endif
+        }
+    }
+
+    private func end(_ active: ActivePresenceScheduleState, now: Date) async {
+        if active.mode == .singleTime {
+            _ = try? await ConfigUtility.shared.setActivePresenceScheduleState(nil)
+            return
+        }
+
+        do {
+            if let previousPresence = active.previousPresence {
+                var restoredPresence = previousPresence
+                if await ConfigUtility.shared.isScheduledPresetRestoreElapsedTimeResetEnabled(),
+                   restoredPresence.start != nil {
+                    restoredPresence.start = now
+                }
+                try await DiscordSDKManager.shared.publishAppliedPresence(restoredPresence)
+                _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: active.previousPresetID)
+            } else {
+                try await DiscordSDKManager.shared.clearAppliedPresence()
+                _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
+                await PresenceLiveActivityController.shared.end()
+            }
+            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
+        } catch {
+            #if DEBUG
+            print("Failed to restore scheduled Presence: \(error)")
+            #endif
+        }
+    }
+}
+
+private extension AppSettings {
+    var currentAppliedPresencePayload: AppliedPresencePayload? {
+        appliedPresence ?? appliedCustomPresence.map(AppliedPresencePayload.init(customPresencePreset:))
     }
 }

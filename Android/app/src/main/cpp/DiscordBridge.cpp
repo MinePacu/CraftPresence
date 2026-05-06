@@ -3,6 +3,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -24,7 +25,16 @@ constexpr auto kReadyTimeout = std::chrono::seconds(10);
 std::mutex g_mutex;
 std::shared_ptr<discordpp::Client> g_client;
 std::string g_application_id;
-std::string g_last_refresh_token;
+
+struct PendingDiscordOperation {
+    std::mutex mutex;
+    bool completed = false;
+    bool timedOut = false;
+    std::string error;
+    std::string refreshToken;
+};
+
+using PendingDiscordOperationPtr = std::shared_ptr<PendingDiscordOperation>;
 
 std::string resultMessage(const discordpp::ClientResult& result) {
     auto message = result.Error();
@@ -65,6 +75,55 @@ bool waitUntil(
     }
     pumpCallbacks();
     return true;
+}
+
+PendingDiscordOperationPtr makePendingOperation() {
+    return std::make_shared<PendingDiscordOperation>();
+}
+
+bool isOperationCompleted(const PendingDiscordOperationPtr& operation) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    return operation->completed;
+}
+
+bool isOperationFinished(const PendingDiscordOperationPtr& operation) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    return operation->completed || operation->timedOut;
+}
+
+void markOperationTimedOut(const PendingDiscordOperationPtr& operation) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    if (!operation->completed) operation->timedOut = true;
+}
+
+bool storeRefreshTokenIfActive(
+    const PendingDiscordOperationPtr& operation,
+    const std::string& refreshToken
+) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    if (operation->completed || operation->timedOut) return false;
+    operation->refreshToken = refreshToken;
+    return true;
+}
+
+void completeOperation(
+    const PendingDiscordOperationPtr& operation,
+    const std::string& error = ""
+) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    if (operation->completed || operation->timedOut) return;
+    operation->error = error;
+    operation->completed = true;
+}
+
+std::string operationError(const PendingDiscordOperationPtr& operation) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    return operation->error;
+}
+
+std::string operationRefreshToken(const PendingDiscordOperationPtr& operation) {
+    std::lock_guard<std::mutex> lock(operation->mutex);
+    return operation->refreshToken;
 }
 
 /** Returns a thread-safe snapshot of the active Discord client. */
@@ -148,20 +207,22 @@ std::optional<std::string> updateRichPresence(discordpp::Activity activity) {
 
     if (auto readyError = waitForReady(client.get())) return readyError;
 
-    bool completed = false;
-    std::string error;
+    auto operation = makePendingOperation();
 
     try {
-        client->UpdateRichPresence(std::move(activity), [&](discordpp::ClientResult result) {
-            if (!result.Successful()) error = resultMessage(result);
-            completed = true;
+        client->UpdateRichPresence(std::move(activity), [operation](discordpp::ClientResult result) {
+            completeOperation(operation, result.Successful() ? "" : resultMessage(result));
         });
     } catch (const std::exception& exception) {
         return exception.what();
     }
 
-    const bool finished = waitUntil([&] { return completed; }, kOperationTimeout);
-    if (!finished) return "Discord activity update timed out.";
+    const bool finished = waitUntil([operation] { return isOperationCompleted(operation); }, kOperationTimeout);
+    if (!finished) {
+        markOperationTimedOut(operation);
+        return "Discord activity update timed out.";
+    }
+    const auto error = operationError(operation);
     if (!error.empty()) return error;
     return std::nullopt;
 }
@@ -184,7 +245,6 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_configure(
         std::lock_guard<std::mutex> lock(g_mutex);
         g_application_id = appId;
         g_client = std::move(client);
-        g_last_refresh_token.clear();
         return nullptr;
     } catch (const std::exception& error) {
         return stringToJstring(env, error.what());
@@ -209,8 +269,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
         }
     }
 
-    bool completed = false;
-    std::string error;
+    auto operation = makePendingOperation();
 
     try {
         discordpp::AuthorizationArgs args;
@@ -221,18 +280,18 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
         const std::string verifierValue = verifier.Verifier();
         args.SetCodeChallenge(verifier.Challenge());
 
-        client->Authorize(std::move(args), [client, clientId, verifierValue, &completed, &error](
+        client->Authorize(std::move(args), [client, clientId, verifierValue, operation](
             discordpp::ClientResult result,
             std::string code,
             std::string redirectUri
         ) {
+            if (isOperationFinished(operation)) return;
             if (!result.Successful()) {
-                error = resultMessage(result);
-                completed = true;
+                completeOperation(operation, resultMessage(result));
                 return;
             }
 
-            client->GetToken(clientId, code, verifierValue, redirectUri, [client, &completed, &error](
+            client->GetToken(clientId, code, verifierValue, redirectUri, [client, operation](
                 discordpp::ClientResult tokenResult,
                 std::string accessToken,
                 std::string refreshToken,
@@ -240,28 +299,26 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
                 int32_t,
                 std::string
             ) {
+                if (isOperationFinished(operation)) return;
                 if (!tokenResult.Successful()) {
-                    error = resultMessage(tokenResult);
-                    completed = true;
+                    completeOperation(operation, resultMessage(tokenResult));
                     return;
                 }
 
-                {
-                    std::lock_guard<std::mutex> lock(g_mutex);
-                    g_last_refresh_token = refreshToken;
-                }
-                client->UpdateToken(tokenType, accessToken, [client, &completed, &error](discordpp::ClientResult updateResult) {
+                if (!storeRefreshTokenIfActive(operation, refreshToken)) return;
+                client->UpdateToken(tokenType, accessToken, [client, operation](discordpp::ClientResult updateResult) {
+                    if (isOperationFinished(operation)) return;
                     if (!updateResult.Successful()) {
-                        error = resultMessage(updateResult);
-                        completed = true;
+                        completeOperation(operation, resultMessage(updateResult));
                         return;
                     }
+                    std::string error;
                     try {
                         client->Connect();
                     } catch (const std::exception& exception) {
                         error = exception.what();
                     }
-                    completed = true;
+                    completeOperation(operation, error);
                 });
             });
         });
@@ -269,8 +326,12 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
         return userResult(env, false, "", "", exception.what());
     }
 
-    const bool finished = waitUntil([&] { return completed; }, kAuthTimeout);
-    if (!finished) return userResult(env, false, "", "", "Discord authorization timed out.");
+    const bool finished = waitUntil([operation] { return isOperationCompleted(operation); }, kAuthTimeout);
+    if (!finished) {
+        markOperationTimedOut(operation);
+        return userResult(env, false, "", "", "Discord authorization timed out.");
+    }
+    const auto error = operationError(operation);
     if (!error.empty()) return userResult(env, false, "", "", error);
 
     if (auto readyError = waitForReady(client.get())) {
@@ -280,11 +341,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
     auto user = client->GetCurrentUserV2();
     if (!user.has_value()) return userResult(env, false, "", "", "Discord user is unavailable.");
 
-    std::string refreshToken;
-    {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        refreshToken = g_last_refresh_token;
-    }
+    const auto refreshToken = operationRefreshToken(operation);
     return userResult(env, true, std::to_string(user->Id()), user->Username(), "", refreshToken);
 }
 
@@ -304,12 +361,10 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_refreshAuthoriz
     const auto previousRefreshToken = jstringToString(env, refreshToken);
     if (previousRefreshToken.empty()) return userResult(env, false, "", "", "Discord refresh token is missing.");
 
-    bool completed = false;
-    std::string error;
-    std::string nextRefreshToken;
+    auto operation = makePendingOperation();
 
     try {
-        client->RefreshToken(clientId, previousRefreshToken, [client, &completed, &error, &nextRefreshToken](
+        client->RefreshToken(clientId, previousRefreshToken, [client, operation](
             discordpp::ClientResult tokenResult,
             std::string accessToken,
             std::string refreshedToken,
@@ -317,37 +372,38 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_refreshAuthoriz
             int32_t,
             std::string
         ) {
+            if (isOperationFinished(operation)) return;
             if (!tokenResult.Successful()) {
-                error = resultMessage(tokenResult);
-                completed = true;
+                completeOperation(operation, resultMessage(tokenResult));
                 return;
             }
 
-            nextRefreshToken = refreshedToken;
-            {
-                std::lock_guard<std::mutex> lock(g_mutex);
-                g_last_refresh_token = refreshedToken;
-            }
-            client->UpdateToken(tokenType, accessToken, [client, &completed, &error](discordpp::ClientResult updateResult) {
+            if (!storeRefreshTokenIfActive(operation, refreshedToken)) return;
+            client->UpdateToken(tokenType, accessToken, [client, operation](discordpp::ClientResult updateResult) {
+                if (isOperationFinished(operation)) return;
                 if (!updateResult.Successful()) {
-                    error = resultMessage(updateResult);
-                    completed = true;
+                    completeOperation(operation, resultMessage(updateResult));
                     return;
                 }
+                std::string error;
                 try {
                     client->Connect();
                 } catch (const std::exception& exception) {
                     error = exception.what();
                 }
-                completed = true;
+                completeOperation(operation, error);
             });
         });
     } catch (const std::exception& exception) {
         return userResult(env, false, "", "", exception.what());
     }
 
-    const bool finished = waitUntil([&] { return completed; }, kAuthTimeout);
-    if (!finished) return userResult(env, false, "", "", "Discord token refresh timed out.");
+    const bool finished = waitUntil([operation] { return isOperationCompleted(operation); }, kAuthTimeout);
+    if (!finished) {
+        markOperationTimedOut(operation);
+        return userResult(env, false, "", "", "Discord token refresh timed out.");
+    }
+    const auto error = operationError(operation);
     if (!error.empty()) return userResult(env, false, "", "", error);
 
     if (auto readyError = waitForReady(client.get())) {
@@ -357,7 +413,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_refreshAuthoriz
     auto user = client->GetCurrentUserV2();
     if (!user.has_value()) return userResult(env, false, "", "", "Discord user is unavailable.");
 
-    return userResult(env, true, std::to_string(user->Id()), user->Username(), "", nextRefreshToken);
+    return userResult(env, true, std::to_string(user->Id()), user->Username(), "", operationRefreshToken(operation));
 }
 
 /** Returns the current Discord user from the native SDK session. */

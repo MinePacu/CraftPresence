@@ -192,7 +192,7 @@ class AppleMusicPresenceManager: ObservableObject {
         
         // Clear Discord presence
         Task {
-            try? await DiscordSDKManager.shared.clearActivity()
+            try? await DiscordSDKManager.shared.clearAppliedPresence()
         }
         resetLocalNowPlayingState()
         discordStatus = "Not Connected"
@@ -308,7 +308,7 @@ class AppleMusicPresenceManager: ObservableObject {
             
             if output == "NOT_RUNNING" || output == "NOT_PLAYING" {
                 if isPlaying {
-                    Task { try? await DiscordSDKManager.shared.clearActivity() }
+                    Task { try? await DiscordSDKManager.shared.clearAppliedPresence() }
                 }
                 resetLocalNowPlayingState()
                 discordStatus = (output == "NOT_RUNNING") ? "Not Connected" : "Idle"
@@ -468,7 +468,7 @@ class AppleMusicPresenceManager: ObservableObject {
         let endDate = now.addingTimeInterval(totalDuration - currentPosition)
         
         do {
-            try await DiscordSDKManager.shared.updateActivity(
+            let payload = AppliedPresencePayload(
                 name: "Apple Music",
                 state: currentArtist.isEmpty ? "Unknown Artist" : currentArtist,
                 details: currentTrack.isEmpty ? "Unknown Track" : currentTrack,
@@ -478,6 +478,7 @@ class AppleMusicPresenceManager: ObservableObject {
                 end: endDate,
                 activityType: .listening
             )
+            try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             
             lastUpdateTime = Date()
             discordStatus = "Active"

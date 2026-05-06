@@ -768,10 +768,9 @@ struct ContentView: View {
         if url.host == "presence", url.path == "/stop" {
             selection = .overview
             Task {
-                try? await DiscordSDKManager.shared.clearActivity()
+                try? await DiscordSDKManager.shared.clearAppliedPresence()
                 _ = try? await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
                 _ = try? await ConfigUtility.shared.setLastCustomPresence(nil)
-                _ = try? await ConfigUtility.shared.setAppliedCustomPresence(nil)
                 await PresenceLiveActivityController.shared.end()
             }
         }
@@ -788,7 +787,7 @@ struct ContentView: View {
             if lastProgramPresenceBundleID != nil {
                 lastProgramPresenceBundleID = nil
                 lastProgramPresenceSignature = nil
-                try? await DiscordSDKManager.shared.clearActivity()
+                try? await DiscordSDKManager.shared.clearAppliedPresence()
             }
             return
         }
@@ -843,7 +842,7 @@ struct ContentView: View {
         guard signature != lastProgramPresenceSignature else { return }
 
         do {
-            try await DiscordSDKManager.shared.updateActivity(
+            let payload = AppliedPresencePayload(
                 name: appName ?? bundleID,
                 state: renderedState,
                 details: renderedDetails,
@@ -856,8 +855,9 @@ struct ContentView: View {
                 partyMax: resolvedParty.maxSize,
                 start: nil,
                 end: nil,
-                activityType: settings.activityType.discordActivityType
+                activityType: settings.activityType
             )
+            try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             lastProgramPresenceBundleID = bundleID
             lastProgramPresenceSignature = signature
         } catch {

@@ -1,9 +1,13 @@
 package com.minepacu.craftpresence
 
+import com.minepacu.craftpresence.core.config.AppLanguage
+import com.minepacu.craftpresence.core.config.AppSettings
 import com.minepacu.craftpresence.core.config.ProgramPresenceSettings
+import com.minepacu.craftpresence.core.config.SettingsBackupFile
 import com.minepacu.craftpresence.core.presence.ProgramPresenceSession
 import com.minepacu.craftpresence.core.presence.resolveProgramPresenceSession
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -90,5 +94,90 @@ class ExampleUnitTest {
         val settings = ProgramPresenceSettings()
 
         assertTrue(settings.resetElapsedTimeOnPresenceChange)
+    }
+
+    @Test
+    fun appSettingsDefaultsScheduledRestoreElapsedTimeResetToFalse() {
+        val settings = AppSettings()
+
+        assertEquals(false, settings.resetElapsedTimeOnScheduledPresetRestore)
+    }
+
+    @Test
+    fun settingsBackupRoundTripPreservesUserSettingsAcrossAppVersions() {
+        val settings = AppSettings(
+            packageNames = listOf("com.example.app"),
+            appDisplayNames = mapOf("com.example.app" to "Example"),
+            programSettings = mapOf(
+                "com.example.app" to ProgramPresenceSettings(detailText = "Using {app}"),
+            ),
+            preferredLanguage = AppLanguage.ENGLISH,
+            programPresenceEnabled = false,
+            resetElapsedTimeOnScheduledPresetRestore = true,
+        )
+        val backup = SettingsBackupFile(
+            schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
+            appName = "CraftPresence",
+            appVersion = "9.9.9",
+            buildNumber = "999",
+            exportedAt = "2026-05-06T00:00:00.000Z",
+            platform = "Android",
+            settings = settings,
+        )
+
+        val decoded = SettingsBackupFile.decode(backup.toJson().toString())
+
+        assertEquals("9.9.9", decoded.appVersion)
+        assertEquals("999", decoded.buildNumber)
+        assertEquals(settings, decoded.settingsForImport())
+        assertTrue(decoded.settingsForImport().resetElapsedTimeOnScheduledPresetRestore)
+    }
+
+    @Test
+    fun settingsBackupAcceptsLegacyRawAppSettingsJson() {
+        val settings = AppSettings(
+            packageNames = listOf("com.example.legacy"),
+            preferredLanguage = AppLanguage.KOREAN,
+        )
+
+        val decoded = SettingsBackupFile.decode(settings.toJson().toString())
+
+        assertEquals("legacy", decoded.platform)
+        assertEquals(SettingsBackupFile.CURRENT_SCHEMA_VERSION, decoded.schemaVersion)
+        assertEquals(settings, decoded.settingsForImport())
+    }
+
+    @Test
+    fun settingsBackupRejectsUnsupportedSchemaVersion() {
+        val backup = SettingsBackupFile(
+            schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION + 1,
+            appName = "CraftPresence",
+            appVersion = "1.0",
+            buildNumber = "1",
+            exportedAt = "2026-05-06T00:00:00.000Z",
+            platform = "Android",
+            settings = AppSettings(),
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            SettingsBackupFile.decode(backup.toJson().toString())
+        }
+    }
+
+    @Test
+    fun settingsBackupRejectsUnsupportedPlatform() {
+        val backup = SettingsBackupFile(
+            schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
+            appName = "CraftPresence",
+            appVersion = "1.0",
+            buildNumber = "1",
+            exportedAt = "2026-05-06T00:00:00.000Z",
+            platform = "iOS",
+            settings = AppSettings(),
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            SettingsBackupFile.decode(backup.toJson().toString())
+        }
     }
 }

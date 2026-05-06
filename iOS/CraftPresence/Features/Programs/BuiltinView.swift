@@ -162,7 +162,7 @@ struct AppleMusicDetailView: View {
                 Section {
                     Button(role: .destructive) {
                         Task {
-                            try? await DiscordSDKManager.shared.clearActivity()
+                            try? await DiscordSDKManager.shared.clearAppliedPresence()
                         }
                     } label: {
                         Label("Discord 상태 초기화", systemImage: "trash")
@@ -256,7 +256,7 @@ struct XcodeDetailView: View {
                 Section {
                     Button(role: .destructive) {
                         Task {
-                            try? await DiscordSDKManager.shared.clearActivity()
+                            try? await DiscordSDKManager.shared.clearAppliedPresence()
                         }
                     } label: {
                         Label("Discord 상태 초기화", systemImage: "trash")

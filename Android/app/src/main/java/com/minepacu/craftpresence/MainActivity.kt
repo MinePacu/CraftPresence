@@ -87,6 +87,8 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MusicNote
@@ -120,6 +122,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
+import java.nio.charset.Charset
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1947,9 +1950,50 @@ private fun SettingsScreen(settings: AppSettings, config: ConfigUtility) {
     val context = LocalContext.current
     val text = LocalizedTextProvider.current
     val scope = rememberCoroutineScope()
+    var pendingSettingsImport by remember { mutableStateOf<String?>(null) }
+    var showingImportConfirmation by remember { mutableStateOf(false) }
+    var settingsTransferMessage by remember { mutableStateOf("") }
     val permissions = remember { PermissionService(context) }
     val notificationPermissionGranted = remember(settings.showForegroundAppNotification) {
         permissions.hasPostNotificationsAccess()
+    }
+    val settingsExporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val backup = config.exportSettingsBackup()
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(backup.toByteArray(Charsets.UTF_8))
+                    } ?: throw IllegalStateException(text.settingsExportOpenFailed)
+                }
+            }.onSuccess {
+                settingsTransferMessage = text.settingsExportSuccess
+            }.onFailure {
+                settingsTransferMessage = it.message ?: text.settingsTransferError
+            }
+        }
+    }
+    val settingsImporter = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val raw = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        input.readBytes().toString(Charset.forName("UTF-8"))
+                    } ?: throw IllegalStateException(text.settingsImportOpenFailed)
+                }
+                ConfigUtility.decodeSettingsBackup(raw)
+                pendingSettingsImport = raw
+                showingImportConfirmation = true
+            }.onFailure {
+                settingsTransferMessage = it.message ?: text.settingsTransferError
+            }
+        }
     }
 
     InfoCard(text.appSettings) {
@@ -2033,6 +2077,29 @@ private fun SettingsScreen(settings: AppSettings, config: ConfigUtility) {
             )
         }
         HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(text.resetElapsedTimeOnScheduledPresetRestore, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text.resetElapsedTimeOnScheduledPresetRestoreDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = settings.resetElapsedTimeOnScheduledPresetRestore,
+                onCheckedChange = { enabled ->
+                    scope.launch {
+                        config.setSettings(settings.copy(resetElapsedTimeOnScheduledPresetRestore = enabled))
+                    }
+                },
+            )
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
         Text(text.language)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             AppLanguage.entries.forEach { language ->
@@ -2050,6 +2117,90 @@ private fun SettingsScreen(settings: AppSettings, config: ConfigUtility) {
         HorizontalDivider(modifier = Modifier.padding(vertical = 10.dp))
         KeyValueRow(text.registeredPackages, text.countItems(settings.packageNames.size))
         KeyValueRow(text.customPresenceSettings, text.countItems(settings.programSettings.size))
+    }
+
+    InfoCard(text.settingsImportExport) {
+        Text(
+            text.settingsImportExportDescription,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    settingsExporter.launch(ConfigUtility.defaultSettingsBackupFilename())
+                },
+            ) {
+                Icon(Icons.Filled.FileUpload, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(text.settingsExport)
+            }
+            OutlinedButton(
+                onClick = {
+                    settingsImporter.launch(arrayOf("application/json", "text/json", "application/octet-stream"))
+                },
+            ) {
+                Icon(Icons.Filled.FileDownload, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(text.settingsImport)
+            }
+        }
+    }
+
+    if (showingImportConfirmation) {
+        AlertDialog(
+            onDismissRequest = {
+                showingImportConfirmation = false
+                pendingSettingsImport = null
+            },
+            title = { Text(text.settingsImportConfirmTitle) },
+            text = { Text(text.settingsImportConfirmMessage) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val raw = pendingSettingsImport
+                        showingImportConfirmation = false
+                        pendingSettingsImport = null
+                        if (raw != null) {
+                            scope.launch {
+                                runCatching {
+                                    config.importSettingsBackup(raw)
+                                }.onSuccess {
+                                    settingsTransferMessage = text.settingsImportSuccess
+                                }.onFailure {
+                                    settingsTransferMessage = it.message ?: text.settingsTransferError
+                                }
+                            }
+                        }
+                    },
+                ) {
+                    Text(text.settingsImport)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showingImportConfirmation = false
+                        pendingSettingsImport = null
+                    },
+                ) {
+                    Text(text.cancel)
+                }
+            },
+        )
+    }
+
+    if (settingsTransferMessage.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = { settingsTransferMessage = "" },
+            title = { Text(text.settingsTransferResult) },
+            text = { Text(settingsTransferMessage) },
+            confirmButton = {
+                Button(onClick = { settingsTransferMessage = "" }) {
+                    Text(text.ok)
+                }
+            },
+        )
     }
 }
 

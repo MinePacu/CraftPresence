@@ -1,15 +1,23 @@
 package com.minepacu.craftpresence.core.config
 
 import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 class ConfigUtility private constructor(context: Context) {
-    private val preferences = context.applicationContext.getSharedPreferences(
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences(
         "craftpresence_settings",
         Context.MODE_PRIVATE,
     )
@@ -106,6 +114,26 @@ class ConfigUtility private constructor(context: Context) {
         newValue
     }
 
+    suspend fun exportSettingsBackup(platform: String = CURRENT_BACKUP_PLATFORM): String = mutex.withLock {
+        SettingsBackupFile(
+            schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
+            appName = APP_NAME,
+            appVersion = currentAppVersion(),
+            buildNumber = currentBuildNumber(),
+            exportedAt = iso8601Now(),
+            platform = platform,
+            settings = loadLatest(),
+        ).toJson().toString(2)
+    }
+
+    suspend fun importSettingsBackup(raw: String): AppSettings = mutex.withLock {
+        val backup = decodeSettingsBackup(raw)
+        val next = backup.settingsForImport()
+        persist(next)
+        _settings.value = next
+        next
+    }
+
     private fun load(): AppSettings {
         val raw = preferences.getString(KEY_SETTINGS, null) ?: return AppSettings()
         return runCatching { AppSettings.fromJson(JSONObject(raw)) }.getOrDefault(AppSettings())
@@ -123,8 +151,36 @@ class ConfigUtility private constructor(context: Context) {
         preferences.edit().putString(KEY_SETTINGS, settings.toJson().toString(2)).apply()
     }
 
+    private fun currentAppVersion(): String? = runCatching {
+        currentPackageInfo().versionName
+    }.getOrNull()
+
+    private fun currentBuildNumber(): String? = runCatching {
+        val packageInfo = currentPackageInfo()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }.toString()
+    }.getOrNull()
+
+    private fun currentPackageInfo(): PackageInfo {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            appContext.packageManager.getPackageInfo(
+                appContext.packageName,
+                PackageManager.PackageInfoFlags.of(0),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+        }
+    }
+
     companion object {
         private const val KEY_SETTINGS = "settings"
+        private const val APP_NAME = "CraftPresence"
+        private const val CURRENT_BACKUP_PLATFORM = "Android"
 
         @Volatile private var instance: ConfigUtility? = null
 
@@ -132,6 +188,24 @@ class ConfigUtility private constructor(context: Context) {
             return instance ?: synchronized(this) {
                 instance ?: ConfigUtility(context.applicationContext).also { instance = it }
             }
+        }
+
+        fun decodeSettingsBackup(raw: String): SettingsBackupFile = SettingsBackupFile.decode(raw)
+
+        fun defaultSettingsBackupFilename(): String {
+            return "CraftPresence-Settings-${timestampForFilename()}.json"
+        }
+
+        private fun iso8601Now(): String {
+            return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.format(Date())
+        }
+
+        private fun timestampForFilename(): String {
+            return SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).apply {
+                timeZone = TimeZone.getDefault()
+            }.format(Date())
         }
     }
 }
