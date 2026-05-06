@@ -14,6 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+/**
+ * Coordinates Discord SDK configuration, authorization, token persistence, and Rich Presence.
+ *
+ * Use [getInstance] to share one SDK session across the app. Public suspend functions serialize
+ * SDK state changes internally and publish UI-friendly state through [state].
+ */
 class DiscordSdkManager(
     private val appContext: Context,
     private val gateway: DiscordGateway = AndroidDiscordGateway(),
@@ -29,8 +35,17 @@ class DiscordSdkManager(
     private val priorityOwners = mutableSetOf<String>()
 
     private val _state = MutableStateFlow(DiscordState())
+
+    /** Current Discord SDK state for UI collection. */
     val state: StateFlow<DiscordState> = _state.asStateFlow()
 
+    /**
+     * Configures the Discord SDK for an application ID.
+     *
+     * @param applicationId Discord Developer Portal application ID. Defaults to manifest metadata.
+     * @param autoAuthorize When `true`, attempts authorization after configuration.
+     * @param allowInteractiveAuthorization Whether auto-authorization may open the Discord flow.
+     */
     suspend fun configure(
         applicationId: String? = DiscordAppConfig.applicationId(appContext),
         autoAuthorize: Boolean = true,
@@ -68,6 +83,12 @@ class DiscordSdkManager(
         }
     }
 
+    /**
+     * Ensures a Discord user is authorized.
+     *
+     * Saved refresh tokens are tried first. When [allowInteractiveAuthorization] is `false`, this
+     * fails with [DiscordSdkError.Unauthorized] instead of opening the Discord authorization flow.
+     */
     suspend fun authorizeIfNeeded(allowInteractiveAuthorization: Boolean = true): DiscordUser {
         mutex.withLock {
             if (gateway.isAuthorized()) {
@@ -128,6 +149,7 @@ class DiscordSdkManager(
         }
     }
 
+    /** Logs out, clears saved activity priority state, and removes persisted refresh tokens. */
     suspend fun logout() {
         mutex.withLock {
             lastActivity = null
@@ -141,6 +163,7 @@ class DiscordSdkManager(
         )
     }
 
+    /** Fetches and publishes the current Discord user from the active SDK session. */
     suspend fun fetchCurrentUser(): DiscordUser {
         val user = gateway.currentUser()
         _state.value = _state.value.copy(
@@ -152,6 +175,7 @@ class DiscordSdkManager(
         return user
     }
 
+    /** Publishes a Rich Presence activity, authorizing silently first when possible. */
     suspend fun updateActivity(activity: DiscordActivity) {
         if (!gateway.isAuthorized()) {
             authorizeIfNeeded(allowInteractiveAuthorization = false)
@@ -163,6 +187,7 @@ class DiscordSdkManager(
         _state.value = _state.value.copy(dashboardStatus = DiscordDashboardStatus.READY)
     }
 
+    /** Clears the last local activity and removes the published Rich Presence from Discord. */
     suspend fun clearActivity() {
         mutex.withLock {
             lastActivity = null
@@ -170,6 +195,7 @@ class DiscordSdkManager(
         gateway.clearActivity()
     }
 
+    /** Keeps reapplying the last activity while an owner needs Rich Presence priority. */
     fun retainActivityPriority(owner: String) {
         synchronized(priorityOwners) {
             priorityOwners += owner
@@ -186,6 +212,7 @@ class DiscordSdkManager(
         }
     }
 
+    /** Releases one owner from Rich Presence priority enforcement. */
     fun releaseActivityPriority(owner: String) {
         synchronized(priorityOwners) {
             priorityOwners -= owner
@@ -208,6 +235,7 @@ class DiscordSdkManager(
 
         @Volatile private var instance: DiscordSdkManager? = null
 
+        /** Returns the process-wide Discord SDK manager. */
         fun getInstance(context: Context): DiscordSdkManager {
             return instance ?: synchronized(this) {
                 instance ?: DiscordSdkManager(context.applicationContext).also { instance = it }

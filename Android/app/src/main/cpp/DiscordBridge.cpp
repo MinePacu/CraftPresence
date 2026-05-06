@@ -32,6 +32,7 @@ std::string resultMessage(const discordpp::ClientResult& result) {
     return result.ToString();
 }
 
+/** Parses the configured Discord application ID into the numeric form required by discordpp. */
 uint64_t parseApplicationId() {
     try {
         return std::stoull(g_application_id);
@@ -40,6 +41,7 @@ uint64_t parseApplicationId() {
     }
 }
 
+/** Runs pending Discord SDK callbacks and converts SDK exceptions into Android log entries. */
 void pumpCallbacks() {
     try {
         discordpp::RunCallbacks();
@@ -50,6 +52,7 @@ void pumpCallbacks() {
     }
 }
 
+/** Pumps callbacks until an asynchronous SDK operation finishes or times out. */
 bool waitUntil(
     const std::function<bool()>& isDone,
     std::chrono::steady_clock::duration timeout
@@ -64,11 +67,13 @@ bool waitUntil(
     return true;
 }
 
+/** Returns a thread-safe snapshot of the active Discord client. */
 std::shared_ptr<discordpp::Client> clientSnapshot() {
     std::lock_guard<std::mutex> lock(g_mutex);
     return g_client;
 }
 
+/** Converts a nullable Java string to a UTF-8 C++ string. */
 std::string jstringToString(JNIEnv* env, jstring value) {
     if (value == nullptr) return "";
     const char* chars = env->GetStringUTFChars(value, nullptr);
@@ -77,10 +82,12 @@ std::string jstringToString(JNIEnv* env, jstring value) {
     return result;
 }
 
+/** Converts a UTF-8 C++ string to a Java string. */
 jstring stringToJstring(JNIEnv* env, const std::string& value) {
     return env->NewStringUTF(value.c_str());
 }
 
+/** Builds the string-array result consumed by `AndroidDiscordGateway`. */
 jobjectArray userResult(
     JNIEnv* env,
     bool success,
@@ -99,12 +106,14 @@ jobjectArray userResult(
     return result;
 }
 
+/** Returns an error message when the Discord client has not been configured. */
 std::optional<std::string> ensureClient() {
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_client) return std::nullopt;
     return "Discord SDK is not configured.";
 }
 
+/** Waits until Discord authentication and user data are both ready. */
 std::optional<std::string> waitForReady(discordpp::Client* client) {
     const bool ready = waitUntil([client] {
         try {
@@ -118,6 +127,7 @@ std::optional<std::string> waitForReady(discordpp::Client* client) {
     return std::nullopt;
 }
 
+/** Maps Kotlin activity type values to discordpp activity types. */
 discordpp::ActivityTypes activityTypeFromInt(jint value) {
     switch (value) {
         case 1: return discordpp::ActivityTypes::Streaming;
@@ -129,6 +139,7 @@ discordpp::ActivityTypes activityTypeFromInt(jint value) {
     }
 }
 
+/** Sends a Rich Presence update through the active Discord client. */
 std::optional<std::string> updateRichPresence(discordpp::Activity activity) {
     auto client = clientSnapshot();
     if (!client) return "Discord SDK is not configured.";
@@ -157,6 +168,7 @@ std::optional<std::string> updateRichPresence(discordpp::Activity activity) {
 
 } // namespace
 
+/** Initializes the native Discord client for an Android application ID. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_configure(
     JNIEnv* env,
@@ -181,6 +193,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_configure(
     }
 }
 
+/** Runs interactive Discord authorization and returns the current user plus refresh token. */
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEnv* env, jobject) {
     auto client = clientSnapshot();
@@ -275,6 +288,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_authorize(JNIEn
     return userResult(env, true, std::to_string(user->Id()), user->Username(), "", refreshToken);
 }
 
+/** Refreshes Discord authorization using a saved refresh token. */
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_refreshAuthorization(
     JNIEnv* env,
@@ -346,6 +360,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_refreshAuthoriz
     return userResult(env, true, std::to_string(user->Id()), user->Username(), "", nextRefreshToken);
 }
 
+/** Returns the current Discord user from the native SDK session. */
 extern "C" JNIEXPORT jobjectArray JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_currentUser(JNIEnv* env, jobject) {
     auto client = clientSnapshot();
@@ -360,6 +375,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_currentUser(JNI
     }
 }
 
+/** Disconnects the native Discord client. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_logout(JNIEnv* env, jobject) {
     auto client = clientSnapshot();
@@ -372,6 +388,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_logout(JNIEnv* 
     }
 }
 
+/** Converts Java activity fields into a Discord Rich Presence update. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_updateActivity(
     JNIEnv* env,
@@ -447,6 +464,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_updateActivity(
     return nullptr;
 }
 
+/** Clears the currently published Discord Rich Presence activity. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_clearActivity(JNIEnv* env, jobject) {
     auto client = clientSnapshot();
@@ -462,6 +480,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_clearActivity(J
     return nullptr;
 }
 
+/** Returns whether the native Discord client is authenticated. */
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_isAuthorized(JNIEnv*, jobject) {
     auto client = clientSnapshot();
@@ -473,6 +492,7 @@ Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_isAuthorized(JN
     }
 }
 
+/** Returns whether the native Discord client can currently provide user data. */
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_minepacu_craftpresence_core_discord_NativeDiscordBridge_isConnected(JNIEnv*, jobject) {
     auto client = clientSnapshot();

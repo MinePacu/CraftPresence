@@ -4,9 +4,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 
+/** Reads and validates Discord SDK configuration bundled with the Android app. */
 object DiscordAppConfig {
     private const val META_APPLICATION_ID = "com.minepacu.craftpresence.DISCORD_APPLICATION_ID"
 
+    /** Returns the Discord application ID from Android manifest metadata, if configured. */
     fun applicationId(context: Context): String? {
         val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.packageManager.getApplicationInfo(
@@ -21,6 +23,7 @@ object DiscordAppConfig {
             ?.takeIf { it.isNotBlank() }
     }
 
+    /** Returns a validation error when the application ID cannot be used by the Discord SDK. */
     fun validationError(applicationId: String?): DiscordSdkError.InvalidApplicationId? {
         val normalizedId = applicationId?.trim().orEmpty()
         return when {

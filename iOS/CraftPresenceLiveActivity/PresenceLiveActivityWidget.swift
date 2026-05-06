@@ -12,19 +12,20 @@ struct PresenceLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(context.state.isLive ? "Live" : "Stopped")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(context.state.isLive ? .green : .secondary)
-                        Text(context.state.connectionStatus)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                    LiveIndicatorView(isLive: context.state.isLive)
+                        .padding(.top, 2)
+                        .padding(.leading, 6)
+                        .frame(minWidth: 44, idealWidth: 52, maxWidth: 60, alignment: .leading)
+                        .layoutPriority(2)
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
                     ElapsedTimeView(startedAt: context.state.startedAt)
                         .font(.caption.monospacedDigit().weight(.semibold))
+                        .padding(.top, 2)
+                        .padding(.trailing, 6)
+                        .frame(width: 68, alignment: .trailing)
+                        .layoutPriority(2)
                 }
 
                 DynamicIslandExpandedRegion(.center) {
@@ -32,11 +33,19 @@ struct PresenceLiveActivityWidget: Widget {
                         Text(context.state.title)
                             .font(.headline)
                             .lineLimit(1)
-                        Text(summary(for: context.state))
+                            .minimumScaleFactor(0.75)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
+                        Text(subtitle(for: context.state))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .layoutPriority(1)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
@@ -68,6 +77,32 @@ struct PresenceLiveActivityWidget: Widget {
                 return trimmed?.isEmpty == false ? trimmed : nil
             }
             .joined(separator: " - ")
+    }
+
+    private func subtitle(for state: PresenceActivityAttributes.ContentState) -> String {
+        [summary(for: state), state.connectionStatus]
+            .compactMap { value in
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            .joined(separator: " - ")
+    }
+}
+
+private struct LiveIndicatorView: View {
+    let isLive: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(isLive ? Color.green : Color.secondary)
+                .frame(width: 5, height: 5)
+            Text(isLive ? "Live" : "Off")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(isLive ? .green : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
     }
 }
 
@@ -110,10 +145,15 @@ private struct ElapsedTimeView: View {
     let startedAt: Date?
 
     var body: some View {
-        if let startedAt {
-            Text(startedAt, style: .timer)
-        } else {
-            Text("--:--")
+        Group {
+            if let startedAt {
+                Text(startedAt, style: .timer)
+            } else {
+                Text("--:--")
+            }
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .truncationMode(.tail)
     }
 }

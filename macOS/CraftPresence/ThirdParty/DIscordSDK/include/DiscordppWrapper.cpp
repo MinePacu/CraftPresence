@@ -21,7 +21,7 @@ DiscordppWrapper::DiscordppWrapper(const std::string& appId) : applicationId(app
     try {
         client = std::make_shared<discordpp::Client>();
         if (client) {
-            // 애플리케이션 ID 설정
+            // Configure the Discord application ID.
             if (!appId.empty()) {
                 try {
                     numericApplicationId = std::stoull(appId);
@@ -39,7 +39,7 @@ DiscordppWrapper::DiscordppWrapper(const std::string& appId) : applicationId(app
             }
         }
     } catch (const std::exception& e) {
-        // 에러 처리
+        // Keep initialization failures contained so Swift receives a nil client instead of a crash.
         DPW_LOG_ERROR("[DiscordppWrapper] Exception during initialization: %s", e.what());
         client.reset();
     }
@@ -61,12 +61,12 @@ bool DiscordppWrapper::isAuthorized() const {
 bool DiscordppWrapper::isConnected() const {
     if (!client) return false;
     try {
-        // IsAuthenticated()와 사용자 정보가 모두 사용 가능한지 확인
+        // The session is only ready when authentication and user data are both available.
         if (!client->IsAuthenticated()) {
             return false;
         }
         
-        // 사용자 정보를 가져올 수 있는지 확인
+        // Check whether current user data can be loaded.
         auto userOpt = client->GetCurrentUserV2();
         return userOpt.has_value();
     } catch (const std::exception& e) {
@@ -88,7 +88,7 @@ void DiscordppWrapper::authorize(void* context, AuthorizeCallback callback) {
             DPW_LOG_INFO("[DiscordppWrapper] authorize() - SetClientId: %s", applicationId.c_str());
         }
         
-        // PKCE verifier를 생성하고 즉시 저장
+        // Create and store the PKCE verifier immediately.
         currentCodeVerifier = client->CreateAuthorizationCodeVerifier();
         if (currentCodeVerifier) {
             currentCodeVerifierValue = currentCodeVerifier->Verifier();
@@ -104,7 +104,7 @@ void DiscordppWrapper::authorize(void* context, AuthorizeCallback callback) {
             DPW_LOG_ERROR("[DiscordppWrapper] authorize() - Failed to create PKCE verifier!");
         }
         
-        // Lambda에서 사용할 verifier를 명시적으로 캡처
+        // Capture the verifier explicitly for the asynchronous token exchange lambda.
         std::string capturedVerifier = currentCodeVerifierValue;
         DPW_LOG_INFO("[DiscordppWrapper] authorize() - About to call Authorize. Captured verifier: %s", capturedVerifier.c_str());
         
@@ -117,7 +117,7 @@ void DiscordppWrapper::authorize(void* context, AuthorizeCallback callback) {
                 return;
             }
             DPW_LOG_INFO("[DiscordppWrapper] Authorize callback - Verifier before exchange: %s", capturedVerifier.c_str());
-            // 캡처한 verifier를 직접 전달
+            // Pass the captured verifier directly into token exchange.
             exchangeCodeForToken(code, redirectUri, capturedVerifier, context, callback);
         });
     } catch (const std::exception& e) {
@@ -217,7 +217,7 @@ void DiscordppWrapper::applyAccessToken(discordpp::AuthorizationTokenType tokenT
             return;
         }
         
-        // PKCE verifier 정리
+        // Clear the PKCE verifier after authorization completes.
         currentCodeVerifier.reset();
         currentCodeVerifierValue.clear();
         
@@ -266,7 +266,7 @@ void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
     }
     
     try {
-        // 인증 상태 확인
+        // Check authentication state before requesting user data.
         bool isAuth = client->IsAuthenticated();
         DPW_LOG_INFO("[DiscordppWrapper] getCurrentUser - IsAuthenticated: %d", isAuth);
         
@@ -276,12 +276,12 @@ void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
             return;
         }
         
-        // 현재 사용자 가져오기
+        // Load the current authenticated user.
         auto userOpt = client->GetCurrentUserV2();
         if (userOpt.has_value()) {
             auto user = userOpt.value();
             
-            // 원본 데이터 로깅
+            // Log raw SDK values before converting them.
             auto rawId = user.Id();
             std::string rawUsername = user.Username();
             
@@ -289,18 +289,17 @@ void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {
             DPW_LOG_INFO("[DiscordppWrapper] Raw Username: %s", rawUsername.c_str());
             DPW_LOG_INFO("[DiscordppWrapper] Username length: %zu", rawUsername.length());
             
-            // 수명이 보장되는 std::string 객체 생성
+            // Create local strings whose lifetime lasts until the callback returns.
             std::string userIdStr = std::to_string(rawId);
             std::string usernameStr = rawUsername;
             
             DPW_LOG_INFO("[DiscordppWrapper] Sending User ID: %s, Username: %s", 
                         userIdStr.c_str(), usernameStr.c_str());
             
-            // 콜백 호출 - Swift가 즉시 복사한다고 가정
+            // Invoke the callback; Swift copies these C strings immediately.
             callback(context, true, userIdStr.c_str(), usernameStr.c_str(), nullptr);
             
-            // 여기서 userIdStr과 usernameStr이 소멸되지만, 
-            // Swift의 String(cString:)이 이미 복사를 완료했어야 함
+            // The local strings are destroyed after this scope, so Swift must not retain the pointers.
         } else {
             DPW_LOG_ERROR("[DiscordppWrapper] User not available (GetCurrentUserV2 returned nullopt)");
             callback(context, false, nullptr, nullptr, "User not available");
@@ -333,7 +332,7 @@ void DiscordppWrapper::updateActivity(const std::string& name,
     }
     
     try {
-        // discordpp Activity 객체 생성 및 설정
+        // Build the discordpp activity payload.
         discordpp::Activity activity;
         discordpp::ActivityTypes resolvedType = discordpp::ActivityTypes::Playing;
         if (activityType >= static_cast<int32_t>(discordpp::ActivityTypes::Playing) &&
@@ -342,13 +341,13 @@ void DiscordppWrapper::updateActivity(const std::string& name,
         }
         activity.SetType(resolvedType);
         
-        // 앱 이름 설정 (Rich Presence 타이틀)
+        // Set the Rich Presence title.
         if (!name.empty()) {
             activity.SetName(name);
             DPW_LOG_INFO("[DiscordppWrapper] Setting activity name: %s", name.c_str());
         }
         
-        // 상태 및 세부사항 설정
+        // Set optional status and details lines.
         if (!state.empty()) {
             activity.SetState(state);
         }
@@ -356,7 +355,7 @@ void DiscordppWrapper::updateActivity(const std::string& name,
             activity.SetDetails(details);
         }
         
-        // 이미지 에셋 설정
+        // Set optional image assets.
         if (!largeImageKey.empty() || !smallImageKey.empty()) {
             discordpp::ActivityAssets assets;
             if (!largeImageKey.empty()) {
@@ -382,7 +381,7 @@ void DiscordppWrapper::updateActivity(const std::string& name,
             activity.SetParty(party);
         }
         
-        // 타임스탬프 설정
+        // Set optional elapsed or remaining time values.
         if (startTimestamp > 0 || endTimestamp > 0) {
             discordpp::ActivityTimestamps timestamps;
             if (startTimestamp > 0) {
@@ -394,7 +393,7 @@ void DiscordppWrapper::updateActivity(const std::string& name,
             activity.SetTimestamps(timestamps);
         }
         
-        // 활동 업데이트
+        // Send the activity update.
         client->UpdateRichPresence(std::move(activity), [context, callback](discordpp::ClientResult result) {
             if (result.Successful()) {
                 callback(context, true, nullptr);
@@ -415,7 +414,7 @@ void DiscordppWrapper::clearActivity(void* context, ActivityCallback callback) {
     }
     
     try {
-        // 활동 클리어
+        // Clear the published activity.
         client->ClearRichPresence();
         callback(context, true, nullptr);
     } catch (const std::exception& e) {

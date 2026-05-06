@@ -5,7 +5,9 @@ import Security
 import discord_partner_sdk
 #endif
 
+/// Resolves Discord application settings from app configuration.
 enum DiscordAppConfig {
+    /// Discord Developer Portal application ID from Info.plist or the process environment.
     nonisolated static var applicationId: String? {
         if let plistValue = Bundle.main.object(forInfoDictionaryKey: "APPLICATION_ID") as? String,
            !plistValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -18,6 +20,9 @@ enum DiscordAppConfig {
         return nil
     }
 
+    /// Returns an SDK configuration error when the application ID is missing or malformed.
+    ///
+    /// - Parameter applicationId: Discord Developer Portal application ID to validate.
     nonisolated static func validationError(for applicationId: String?) -> DiscordSDKError? {
         let normalizedId = applicationId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !normalizedId.isEmpty else {
@@ -33,25 +38,48 @@ enum DiscordAppConfig {
     }
 }
 
+/// Main-actor manager for Discord authorization, token storage, and Rich Presence updates on iOS.
 @MainActor
 final class DiscordSDKManager: ObservableObject {
+    /// Shared Discord SDK manager used by app features.
     static let shared = DiscordSDKManager()
 
+    /// High-level authorization state exposed to SwiftUI.
     enum AuthorizationStatus: Sendable, Equatable {
+        /// Discord authorization is valid and user data is available or being loaded.
         case authorized
+
+        /// Discord authorization is missing, expired, revoked, or refused.
         case unauthorized
+
+        /// Authorization has not been checked yet.
         case unknown
     }
 
+    /// Dashboard-facing setup, authorization, and connection state.
     enum DashboardStatus: Sendable, Equatable {
+        /// Discord SDK has no valid application ID.
         case notConfigured
+
+        /// Discord SDK has a valid application ID but is not yet connected.
         case configured
+
+        /// Discord authorization is currently running.
         case authorizing
+
+        /// Discord SDK is connecting or reconnecting.
         case connecting
+
+        /// Discord SDK is authorized and ready for Rich Presence calls.
         case ready
+
+        /// Discord SDK is configured but not authorized.
         case unauthorized
+
+        /// Discord SDK setup, authorization, or connection failed.
         case failed
 
+        /// Localization key used for the visible dashboard status label.
         var localizationKey: String {
             switch self {
             case .notConfigured: return "discord.status.not_configured"
@@ -65,21 +93,38 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Current high-level authorization status for the Discord session.
     @Published private(set) var authorizationStatus: AuthorizationStatus = .unknown
+
+    /// Current authorized Discord user, when user data is available.
     @Published private(set) var currentUser: DiscordUser?
+
+    /// Dashboard-facing lifecycle state.
     @Published private(set) var dashboardStatus: DashboardStatus = .notConfigured
+
+    /// Last SDK or configuration error intended for UI display.
     @Published private(set) var lastErrorMessage: String?
 
+    /// Last validated Discord application ID used to configure the SDK.
     private var configuredApplicationId: String?
+
+    /// Keychain-backed OAuth token storage.
     private let tokenStore = DiscordTokenStore()
     #if canImport(discord_partner_sdk)
+    /// Opaque native Discord Social SDK client handle.
     private var client = Discord_Client(opaque: nil)
+
+    /// Whether `client` has been initialized and must be dropped before replacement.
     private var isClientInitialized = false
+
+    /// Task that regularly pumps native Discord SDK callbacks.
     private var callbackPumpTask: Task<Void, Never>?
     #endif
 
+    /// Prevents external construction so all callers share one SDK session.
     private init() {}
 
+    /// Releases native Discord SDK resources when the shared manager is torn down.
     deinit {
         #if canImport(discord_partner_sdk)
         callbackPumpTask?.cancel()
@@ -90,6 +135,11 @@ final class DiscordSDKManager: ObservableObject {
         #endif
     }
 
+    /// Configures the Discord Social SDK for an application ID.
+    ///
+    /// - Parameters:
+    ///   - applicationId: Discord Developer Portal application ID. Defaults to app configuration.
+    ///   - autoAuthorize: Whether to start authorization immediately after configuration.
     func configure(applicationId: String? = DiscordAppConfig.applicationId, autoAuthorize: Bool = true) {
         if let validationError = DiscordAppConfig.validationError(for: applicationId) {
             #if canImport(discord_partner_sdk)
@@ -120,14 +170,25 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Ensures a Discord user is authorized, using a saved token or interactive authorization.
+    ///
+    /// - Parameter completion: Completion called with the authorized user or SDK error.
     func authorizeIfNeeded(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         authorizeIfNeeded(allowInteractiveAuthorization: true, completion: completion)
     }
 
+    /// Attempts silent authorization from saved tokens without opening an interactive flow.
+    ///
+    /// - Parameter completion: Completion called with the authorized user or SDK error.
     func restoreAuthorizationIfPossible(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         authorizeIfNeeded(allowInteractiveAuthorization: false, completion: completion)
     }
 
+    /// Performs saved-token, refresh-token, or interactive authorization.
+    ///
+    /// - Parameters:
+    ///   - allowInteractiveAuthorization: Whether this call may open Discord's interactive flow.
+    ///   - completion: Completion called with the authorized user or SDK error.
     private func authorizeIfNeeded(
         allowInteractiveAuthorization: Bool,
         completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil
@@ -213,6 +274,9 @@ final class DiscordSDKManager: ObservableObject {
         #endif
     }
 
+    /// Logs out, revokes the active token when possible, and clears saved authorization.
+    ///
+    /// - Parameter completion: Completion called after logout or token revocation.
     func logout(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         #if canImport(discord_partner_sdk)
         let savedToken = tokenStore.load()
@@ -240,6 +304,9 @@ final class DiscordSDKManager: ObservableObject {
         completion?(.success(()))
     }
 
+    /// Fetches the current Discord user from the active authorization.
+    ///
+    /// - Parameter completion: Completion called with the current Discord user or SDK error.
     func fetchCurrentUser(completion: ((Result<DiscordUser, DiscordSDKError>) -> Void)? = nil) {
         #if canImport(discord_partner_sdk)
         if let token = tokenStore.load(), !token.accessToken.isEmpty {
@@ -282,6 +349,25 @@ final class DiscordSDKManager: ObservableObject {
         #endif
     }
 
+    /// Publishes a Rich Presence activity to Discord.
+    ///
+    /// Empty optional strings are omitted from the native SDK payload.
+    ///
+    /// - Parameters:
+    ///   - name: Activity title shown as the primary Rich Presence label.
+    ///   - state: Short status line, usually the current mode or context.
+    ///   - details: Longer status line, usually the item, track, or screen name.
+    ///   - largeImageKey: Discord Developer Portal key for the large image.
+    ///   - largeImageText: Tooltip text for the large image.
+    ///   - smallImageKey: Discord Developer Portal key for the small image.
+    ///   - smallImageText: Tooltip text for the small image.
+    ///   - partyID: Stable party identifier for Discord party metadata.
+    ///   - partyCurrent: Current party size.
+    ///   - partyMax: Maximum party size.
+    ///   - start: Start time used for elapsed time displays.
+    ///   - end: End time used for remaining time displays.
+    ///   - activityType: Discord Rich Presence activity category.
+    ///   - completion: Completion called after Discord accepts or rejects the update.
     func updateActivity(
         name: String?,
         state: String? = nil,
@@ -393,6 +479,9 @@ final class DiscordSDKManager: ObservableObject {
         #endif
     }
 
+    /// Clears the currently published Rich Presence activity.
+    ///
+    /// - Parameter completion: Completion called after the clear request is sent.
     func clearActivity(completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         #if canImport(discord_partner_sdk)
         guard isClientInitialized else {
@@ -404,6 +493,7 @@ final class DiscordSDKManager: ObservableObject {
         completion?(.success(()))
     }
 
+    /// Async wrapper around `authorizeIfNeeded(completion:)`.
     func authorizeIfNeeded() async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { continuation in
             authorizeIfNeeded { result in
@@ -412,6 +502,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Async wrapper around `restoreAuthorizationIfPossible(completion:)`.
     func restoreAuthorizationIfPossible() async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { continuation in
             restoreAuthorizationIfPossible { result in
@@ -420,6 +511,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Async wrapper around `fetchCurrentUser(completion:)`.
     func currentUser() async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { continuation in
             fetchCurrentUser { result in
@@ -428,6 +520,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Returns the activity currently visible on the authenticated Discord user, when available.
     func currentPresenceActivity() async throws -> DiscordActivity? {
         if authorizationStatus != .authorized {
             _ = try await restoreAuthorizationIfPossible()
@@ -439,6 +532,7 @@ final class DiscordSDKManager: ObservableObject {
         #endif
     }
 
+    /// Async wrapper around `logout(completion:)`.
     func logout() async throws {
         try await withCheckedThrowingContinuation { continuation in
             logout { result in
@@ -447,6 +541,22 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Async wrapper around the callback-based Rich Presence update API.
+    ///
+    /// - Parameters:
+    ///   - name: Activity title shown as the primary Rich Presence label.
+    ///   - state: Short status line, usually the current mode or context.
+    ///   - details: Longer status line, usually the item, track, or screen name.
+    ///   - largeImageKey: Discord Developer Portal key for the large image.
+    ///   - largeImageText: Tooltip text for the large image.
+    ///   - smallImageKey: Discord Developer Portal key for the small image.
+    ///   - smallImageText: Tooltip text for the small image.
+    ///   - partyID: Stable party identifier for Discord party metadata.
+    ///   - partyCurrent: Current party size.
+    ///   - partyMax: Maximum party size.
+    ///   - start: Start time used for elapsed time displays.
+    ///   - end: End time used for remaining time displays.
+    ///   - activityType: Discord Rich Presence activity category.
     func updateActivity(
         name: String?,
         state: String? = nil,
@@ -487,6 +597,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Async wrapper around `clearActivity(completion:)`.
     func clearActivity() async throws {
         try await withCheckedThrowingContinuation { continuation in
             clearActivity { result in
@@ -496,6 +607,9 @@ final class DiscordSDKManager: ObservableObject {
     }
 
     #if canImport(discord_partner_sdk)
+    /// Initializes the native Discord Social SDK client and starts connection callbacks.
+    ///
+    /// - Parameter applicationId: Valid Discord Developer Portal application ID string.
     private func configureSocialSDK(applicationId: String?) {
         guard let applicationId, let numericApplicationId = UInt64(applicationId) else { return }
 
@@ -531,6 +645,7 @@ final class DiscordSDKManager: ObservableObject {
         dashboardStatus = .connecting
     }
 
+    /// Disconnects and drops the native Discord Social SDK client if it is active.
     private func resetSocialSDK() {
         stopCallbackPump()
         if isClientInitialized {
@@ -541,6 +656,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Starts the callback pump required by the Discord Social SDK.
     private func startCallbackPump() {
         stopCallbackPump()
         callbackPumpTask = Task { @MainActor [weak self] in
@@ -551,11 +667,13 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Stops the Discord callback pump task.
     private func stopCallbackPump() {
         callbackPumpTask?.cancel()
         callbackPumpTask = nil
     }
 
+    /// Numeric Discord application ID used by native SDK functions.
     private var normalizedApplicationId: UInt64? {
         guard let configuredApplicationId,
               let applicationId = UInt64(configuredApplicationId) else {
@@ -564,6 +682,9 @@ final class DiscordSDKManager: ObservableObject {
         return applicationId
     }
 
+    /// Runs PKCE OAuth authorization and exchanges the returned code for tokens.
+    ///
+    /// - Parameter applicationId: Numeric Discord Developer Portal application ID.
     private func runOAuthAuthorization(applicationId: UInt64) async throws -> DiscordOAuthToken {
         let authorization = try await requestAuthorizationCode(applicationId: applicationId)
         return try await exchangeAuthorizationCode(
@@ -574,6 +695,9 @@ final class DiscordSDKManager: ObservableObject {
         )
     }
 
+    /// Requests an authorization code and redirect URI from Discord using PKCE.
+    ///
+    /// - Parameter applicationId: Numeric Discord Developer Portal application ID used as the OAuth client ID.
     private func requestAuthorizationCode(applicationId: UInt64) async throws -> DiscordAuthorizationResponse {
         try await withCheckedThrowingContinuation { continuation in
             var verifier = Discord_AuthorizationCodeVerifier(opaque: nil)
@@ -639,6 +763,13 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Exchanges an authorization code and verifier for an OAuth token bundle.
+    ///
+    /// - Parameters:
+    ///   - code: Authorization code returned by Discord.
+    ///   - codeVerifier: PKCE verifier created before authorization.
+    ///   - redirectURI: Redirect URI returned with the authorization code.
+    ///   - applicationId: Numeric Discord Developer Portal application ID used as the OAuth client ID.
     private func exchangeAuthorizationCode(
         _ code: String,
         codeVerifier: String,
@@ -674,6 +805,11 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Refreshes an expired Discord access token.
+    ///
+    /// - Parameters:
+    ///   - refreshToken: Saved refresh token used to request a new access token.
+    ///   - applicationId: Numeric Discord Developer Portal application ID used as the OAuth client ID.
     private func refreshToken(_ refreshToken: String, applicationId: UInt64) async throws -> DiscordOAuthToken {
         try await withCheckedThrowingContinuation { continuation in
             withDiscordString(refreshToken) { refreshString in
@@ -695,6 +831,9 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Updates the native Discord SDK with a valid OAuth access token.
+    ///
+    /// - Parameter token: OAuth token bundle containing the access token and token type.
     private func updateSDKToken(_ token: DiscordOAuthToken) async throws {
         try await withCheckedThrowingContinuation { continuation in
             withDiscordString(token.accessToken) { accessTokenString in
@@ -728,6 +867,9 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Fetches the authenticated user, retrying the local SDK cache before falling back to an API call.
+    ///
+    /// - Parameter token: OAuth token used when a direct SDK user lookup is not ready.
     private func fetchAuthenticatedUser(using token: DiscordOAuthToken) async throws -> DiscordUser {
         for attempt in 0..<6 {
             if let user = currentUserFromAuthenticatedClient() {
@@ -745,6 +887,9 @@ final class DiscordSDKManager: ObservableObject {
         return tokenUser
     }
 
+    /// Fetches the current Discord user using an OAuth token.
+    ///
+    /// - Parameter token: OAuth token used to call the Discord current-user endpoint through the SDK.
     private func fetchCurrentUser(using token: DiscordOAuthToken) async throws -> DiscordUser {
         try await withCheckedThrowingContinuation { continuation in
             withDiscordString(token.accessToken) { tokenString in
@@ -787,6 +932,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Reads the current user directly from the authenticated native client.
     private func currentUserFromAuthenticatedClient() -> DiscordUser? {
         guard isClientInitialized else { return nil }
 
@@ -815,6 +961,7 @@ final class DiscordSDKManager: ObservableObject {
         )
     }
 
+    /// Reads the Rich Presence activity currently attached to the authenticated user.
     private func currentPresenceActivityFromAuthenticatedClient() -> DiscordActivity? {
         guard isClientInitialized else { return nil }
 
@@ -833,6 +980,9 @@ final class DiscordSDKManager: ObservableObject {
         return DiscordActivity(nativeActivity: &nativeActivity)
     }
 
+    /// Reads a required Discord string field and returns an empty string when unavailable.
+    ///
+    /// - Parameter getter: Native Discord getter that writes into a `Discord_String` pointer.
     private func requiredUserString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Void) -> String {
         var string = Discord_String(ptr: nil, size: 0)
         getter(&string)
@@ -840,6 +990,9 @@ final class DiscordSDKManager: ObservableObject {
         return DiscordSDKManager.string(from: string) ?? ""
     }
 
+    /// Reads an optional Discord string field.
+    ///
+    /// - Parameter getter: Native Discord getter that returns whether it wrote a `Discord_String`.
     private func optionalUserString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Bool) -> String? {
         var string = Discord_String(ptr: nil, size: 0)
         guard getter(&string) else { return nil }
@@ -847,6 +1000,12 @@ final class DiscordSDKManager: ObservableObject {
         return DiscordSDKManager.string(from: string)
     }
 
+    /// Revokes an access token through Discord and reports the SDK result.
+    ///
+    /// - Parameters:
+    ///   - token: Access token to revoke.
+    ///   - applicationId: Numeric Discord Developer Portal application ID used as the OAuth client ID.
+    ///   - completion: Completion called after Discord accepts or rejects token revocation.
     private func revokeToken(_ token: String, applicationId: UInt64, completion: ((Result<Void, DiscordSDKError>) -> Void)? = nil) {
         withDiscordString(token) { tokenString in
             let box = DiscordVoidCallbackBox(completion: completion)
@@ -876,6 +1035,7 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Refreshes the saved token when Discord reports that the current token is expiring.
     private func refreshStoredTokenIfPossible() async {
         guard let savedToken = tokenStore.load(),
               let applicationId = normalizedApplicationId,
@@ -902,16 +1062,25 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Converts a Discord SDK string buffer to a Swift string without taking ownership.
+    ///
+    /// - Parameter discordString: Native Discord string buffer to decode as UTF-8.
     fileprivate static func string(from discordString: Discord_String) -> String? {
         guard let pointer = discordString.ptr, discordString.size > 0 else { return nil }
         let buffer = UnsafeBufferPointer(start: pointer, count: discordString.size)
         return String(bytes: buffer, encoding: .utf8)
     }
 
+    /// Converts a Swift date to the millisecond timestamp expected by Discord activity APIs.
+    ///
+    /// - Parameter date: Swift date to convert to a Discord timestamp.
     fileprivate static func discordTimestamp(from date: Date) -> UInt64 {
         UInt64(max(0, (date.timeIntervalSince1970 * 1_000).rounded()))
     }
 
+    /// Extracts an error message from a native Discord client result.
+    ///
+    /// - Parameter result: Native Discord client result pointer returned by an SDK callback.
     fileprivate static func resultErrorMessage(_ result: UnsafeMutablePointer<Discord_ClientResult>) -> String? {
         var error = Discord_String(ptr: nil, size: 0)
         Discord_ClientResult_Error(result, &error)
@@ -919,8 +1088,14 @@ final class DiscordSDKManager: ObservableObject {
         return string(from: error)
     }
 
+    /// OAuth scopes required for identity and Rich Presence updates.
     fileprivate static let presenceScopes = "openid identify sdk.social_layer_presence"
 
+    /// Provides a temporary immutable Discord string backed by UTF-8 bytes.
+    ///
+    /// - Parameters:
+    ///   - value: Swift string to expose as a temporary `Discord_String`.
+    ///   - body: Closure that receives the temporary Discord string while its backing bytes are valid.
     private func withDiscordString<R>(_ value: String, _ body: (Discord_String) -> R) -> R {
         var bytes = Array(value.utf8)
         return bytes.withUnsafeMutableBufferPointer { buffer in
@@ -928,6 +1103,11 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Provides a temporary mutable Discord string backed by UTF-8 bytes.
+    ///
+    /// - Parameters:
+    ///   - value: Swift string to expose as a temporary mutable `Discord_String`.
+    ///   - body: Closure that receives the temporary Discord string while its backing bytes are valid.
     private func withMutableDiscordString<R>(_ value: String, _ body: (inout Discord_String) -> R) -> R {
         var bytes = Array(value.utf8)
         return bytes.withUnsafeMutableBufferPointer { buffer in
@@ -936,6 +1116,12 @@ final class DiscordSDKManager: ObservableObject {
         }
     }
 
+    /// Applies an optional Swift string to a native Discord object and reports whether it was set.
+    ///
+    /// - Parameters:
+    ///   - value: Optional Swift string to trim and pass to the native setter.
+    ///   - target: Native Discord object that should receive the string.
+    ///   - setter: Native Discord setter that accepts the target pointer and a string pointer.
     @discardableResult
     private func setOptionalString<T>(
         _ value: String?,
@@ -950,6 +1136,12 @@ final class DiscordSDKManager: ObservableObject {
         return true
     }
 
+    /// Updates dashboard state in response to native Discord connection status callbacks.
+    ///
+    /// - Parameters:
+    ///   - status: Native Discord connection status.
+    ///   - error: Native Discord connection error value.
+    ///   - detail: Additional native Discord error detail code.
     fileprivate func handleStatusChanged(status: Discord_Client_Status, error: Discord_Client_Error, detail: Int32) {
         switch status {
         case Discord_Client_Status_Ready:
@@ -974,46 +1166,88 @@ final class DiscordSDKManager: ObservableObject {
     #endif
 }
 
+/// Discord user identity returned by the SDK.
 struct DiscordUser: Sendable, Equatable, Hashable {
+    /// Discord snowflake user ID.
     var id: String
+
+    /// Display name or username reported by Discord.
     var username: String
+
+    /// Legacy discriminator, when Discord provides one.
     var discriminator: String?
+
+    /// Avatar hash or URL string, when available.
     var avatar: String?
 }
 
+/// OAuth token bundle used to restore Discord authorization.
 struct DiscordOAuthToken: Codable, Sendable, Equatable {
+    /// Discord token kind used when sending tokens back to the SDK.
     enum TokenType: String, Codable, Sendable, Equatable {
+        /// User token returned by Discord authorization.
         case user
+
+        /// Bearer token returned by Discord authorization.
         case bearer
     }
 
+    /// Access token used by Discord API and SDK calls.
     var accessToken: String
+
+    /// Refresh token used to renew expired access tokens.
     var refreshToken: String
+
+    /// Token type reported by Discord.
     var tokenType: TokenType
+
+    /// Date when the access token expires.
     var expiresAt: Date
+
+    /// OAuth scopes granted for this token.
     var scopes: String
 
+    /// Whether the access token has enough remaining lifetime for immediate use.
     var isAccessTokenUsable: Bool {
         !accessToken.isEmpty && expiresAt.timeIntervalSinceNow > 60
     }
 }
 
+/// Authorization-code response plus PKCE verifier needed for token exchange.
 private struct DiscordAuthorizationResponse: Sendable, Equatable {
+    /// Authorization code returned by Discord.
     var code: String
+
+    /// Redirect URI returned by Discord alongside the authorization code.
     var redirectURI: String
+
+    /// PKCE verifier paired with the authorization request.
     var codeVerifier: String
 }
 
+/// Rich Presence activity model used before converting values to Discord SDK types.
 struct DiscordActivity: Sendable, Equatable {
+    /// Discord Rich Presence activity category.
     enum ActivityType: Int, CaseIterable, Identifiable, Sendable {
+        /// Shows the activity as "Playing".
         case playing = 0
+
+        /// Shows the activity as "Streaming".
         case streaming = 1
+
+        /// Shows the activity as "Listening".
         case listening = 2
+
+        /// Shows the activity as "Watching".
         case watching = 3
+
+        /// Shows the activity as "Competing".
         case competing = 5
 
+        /// Stable identifier used by SwiftUI pickers.
         var id: Int { rawValue }
 
+        /// Human-readable activity type label.
         var displayName: String {
             switch self {
             case .playing: return "Playing"
@@ -1025,43 +1259,83 @@ struct DiscordActivity: Sendable, Equatable {
         }
     }
 
+    /// Discord Developer Portal asset keys and tooltip labels.
     struct Assets: Sendable, Equatable {
+        /// Discord Developer Portal key for the large Rich Presence image.
         var largeImage: String?
+
+        /// Tooltip text for the large Rich Presence image.
         var largeText: String?
+
+        /// Discord Developer Portal key for the small Rich Presence image.
         var smallImage: String?
+
+        /// Tooltip text for the small Rich Presence image.
         var smallText: String?
     }
 
+    /// Optional start and end times displayed by Discord.
     struct Timestamps: Sendable, Equatable {
+        /// Start time used for elapsed time displays.
         var start: Date?
+
+        /// End time used for remaining time displays.
         var end: Date?
     }
 
+    /// Party metadata displayed as current and maximum size.
     struct Party: Sendable, Equatable {
+        /// Stable party identifier for Discord party metadata.
         var id: String?
+
+        /// Current party size.
         var currentSize: Int?
+
+        /// Maximum party size.
         var maxSize: Int?
     }
 
+    /// Activity title shown as the primary Rich Presence label.
     var name: String?
+
+    /// Short status line, usually the current mode or context.
     var state: String?
+
+    /// Longer status line, usually the item, track, or screen name.
     var details: String?
+
+    /// Optional Rich Presence image assets.
     var assets = Assets()
+
+    /// Optional elapsed or remaining time values.
     var timestamps = Timestamps()
+
+    /// Optional party size metadata.
     var party = Party()
+
+    /// Discord activity category.
     var type: ActivityType = .playing
 }
 
+/// Periodically reapplies the selected presence so it stays ahead of lower-priority updates.
 @MainActor
 final class PresencePriorityController {
+    /// Shared priority controller used by presence features.
     static let shared = PresencePriorityController()
 
+    /// Background task that periodically checks whether presence should be reapplied.
     private var enforcementTask: Task<Void, Never>?
+
+    /// Reentrancy guard for priority enforcement.
     private var isReapplying = false
+
+    /// Interval between priority reapply checks, in nanoseconds.
     private let enforcementIntervalNanoseconds: UInt64 = 8_000_000_000
 
+    /// Prevents external construction so all callers share one priority controller.
     private init() {}
 
+    /// Starts periodic priority enforcement unless UI tests are running.
     func start() {
         guard enforcementTask == nil, !AutomationLaunchOptions.isUITesting else { return }
         enforcementTask = Task { [weak self] in
@@ -1074,11 +1348,13 @@ final class PresencePriorityController {
         }
     }
 
+    /// Stops periodic priority enforcement.
     func stop() {
         enforcementTask?.cancel()
         enforcementTask = nil
     }
 
+    /// Reapplies the selected custom presence when Discord currently shows a different activity.
     func enforceAppliedPresenceIfNeeded() async {
         guard !isReapplying else { return }
         guard await ConfigUtility.shared.isPresencePriorityEnabled() else { return }
@@ -1113,13 +1389,24 @@ final class PresencePriorityController {
     }
 }
 
+/// Errors surfaced by the Discord SDK integration layer.
 enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
+    /// The configured Discord application ID is missing, still a placeholder, or malformed.
     case invalidApplicationID(String)
+
+    /// The SDK has not been configured with a valid application ID.
     case notConfigured
+
+    /// No valid Discord authorization is available for the current application ID.
     case unauthorized
+
+    /// The Discord Social SDK module is not linked into the current build.
     case unsupportedPlatform
+
+    /// Native Discord SDK call failed.
     case sdk(String)
 
+    /// Localized error text suitable for user-facing surfaces.
     var errorDescription: String? {
         switch self {
         case .invalidApplicationID(let message):
@@ -1136,7 +1423,11 @@ enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
     }
 }
 
+/// Matching helpers for comparing Discord activity payloads with saved presets.
 private extension DiscordActivity {
+    /// Returns whether this activity already matches a saved custom presence preset.
+    ///
+    /// - Parameter preset: Saved custom presence preset to compare against this activity.
     func matches(_ preset: CustomPresencePreset) -> Bool {
         stringValue(name) == stringValue(preset.title)
             && stringValue(details) == stringValue(preset.details)
@@ -1150,6 +1441,9 @@ private extension DiscordActivity {
             && partyMatches(preset)
     }
 
+    /// Compares timestamp fields while allowing small elapsed-time drift.
+    ///
+    /// - Parameter preset: Saved custom presence preset whose elapsed-time settings are expected.
     private func timestampsMatch(_ preset: CustomPresencePreset) -> Bool {
         guard preset.usesElapsedTime else {
             return timestamps.start == nil
@@ -1161,6 +1455,9 @@ private extension DiscordActivity {
         return abs(actualStart.timeIntervalSince(expectedStart)) < 2
     }
 
+    /// Compares party metadata against a saved custom presence preset.
+    ///
+    /// - Parameter preset: Saved custom presence preset whose party fields are expected.
     private func partyMatches(_ preset: CustomPresencePreset) -> Bool {
         if preset.partyID == nil {
             return party.currentSize == nil && party.maxSize == nil
@@ -1169,50 +1466,79 @@ private extension DiscordActivity {
             && party.maxSize == preset.partyMaxValue
     }
 
+    /// Normalizes blank strings to nil before comparing activity fields.
+    ///
+    /// - Parameter value: Optional string to normalize before comparison.
     private func stringValue(_ value: String?) -> String? {
         value?.nilIfEmpty
     }
 }
 
 #if canImport(discord_partner_sdk)
+/// Retains state for a Discord authorization callback until the C callback releases it.
 private final class DiscordAuthorizationCallbackBox {
+    /// PKCE verifier paired with the authorization request.
     var codeVerifier = ""
+
+    /// Completion called with the authorization response or SDK error.
     let completion: (Result<DiscordAuthorizationResponse, DiscordSDKError>) -> Void
 
+    /// Creates a callback box with a Swift completion closure.
+    ///
+    /// - Parameter completion: Completion called with the authorization response or SDK error.
     init(completion: @escaping (Result<DiscordAuthorizationResponse, DiscordSDKError>) -> Void) {
         self.completion = completion
     }
 
+    /// Stores the PKCE verifier and returns this box for fluent setup.
+    ///
+    /// - Parameter codeVerifier: PKCE verifier created for the authorization request.
     func withCodeVerifier(_ codeVerifier: String) -> DiscordAuthorizationCallbackBox {
         self.codeVerifier = codeVerifier
         return self
     }
 }
 
+/// Retains a token exchange completion until the Discord C callback releases it.
 private final class DiscordTokenCallbackBox {
+    /// Completion called with OAuth tokens or an SDK error.
     let completion: (Result<DiscordOAuthToken, DiscordSDKError>) -> Void
 
+    /// Creates a token callback box with a Swift completion closure.
+    ///
+    /// - Parameter completion: Completion called with OAuth tokens or an SDK error.
     init(completion: @escaping (Result<DiscordOAuthToken, DiscordSDKError>) -> Void) {
         self.completion = completion
     }
 }
 
+/// Retains a current-user completion until the Discord C callback releases it.
 private final class DiscordFetchUserCallbackBox {
+    /// Completion called with the fetched Discord user or an SDK error.
     let completion: (Result<DiscordUser, DiscordSDKError>) -> Void
 
+    /// Creates a user callback box with a Swift completion closure.
+    ///
+    /// - Parameter completion: Completion called with the fetched Discord user or SDK error.
     init(completion: @escaping (Result<DiscordUser, DiscordSDKError>) -> Void) {
         self.completion = completion
     }
 }
 
+/// Retains a void completion until the Discord C callback releases it.
 private final class DiscordVoidCallbackBox {
+    /// Completion called with success or an SDK error.
     let completion: ((Result<Void, DiscordSDKError>) -> Void)?
 
+    /// Creates a void callback box with an optional Swift completion closure.
+    ///
+    /// - Parameter completion: Completion called with success or an SDK error.
     init(completion: ((Result<Void, DiscordSDKError>) -> Void)?) {
         self.completion = completion
     }
 }
 
+/// Shared token-exchange callback used by authorization-code and refresh-token flows.
 private let tokenExchangeCallback: Discord_Client_TokenExchangeCallback = { result, accessToken, refreshToken, tokenType, expiresIn, scopes, userData in
     guard let userData else { return }
     let box = Unmanaged<DiscordTokenCallbackBox>.fromOpaque(userData).takeUnretainedValue()
@@ -1239,7 +1565,9 @@ private let tokenExchangeCallback: Discord_Client_TokenExchangeCallback = { resu
     Discord_Free(accessToken.ptr)
 }
 
+/// Native Discord Social SDK conversion helpers for activity types.
 private extension DiscordActivity.ActivityType {
+    /// Native Discord Social SDK activity type matching this app model value.
     var socialSDKActivityType: Discord_ActivityTypes {
         switch self {
         case .playing:
@@ -1255,6 +1583,9 @@ private extension DiscordActivity.ActivityType {
         }
     }
 
+    /// Creates an app activity type from a native Discord Social SDK value.
+    ///
+    /// - Parameter socialSDKActivityType: Native Discord activity type to convert.
     init?(socialSDKActivityType: Discord_ActivityTypes) {
         switch socialSDKActivityType {
         case Discord_ActivityTypes_Playing:
@@ -1273,7 +1604,11 @@ private extension DiscordActivity.ActivityType {
     }
 }
 
+/// Native Discord Social SDK conversion helpers for activities.
 private extension DiscordActivity {
+    /// Creates a Swift Rich Presence activity from a native Discord activity handle.
+    ///
+    /// - Parameter nativeActivity: Native Discord activity handle to read before it is dropped.
     init(nativeActivity: UnsafeMutablePointer<Discord_Activity>) {
         var activity = DiscordActivity()
         activity.name = Self.requiredString { Discord_Activity_Name(nativeActivity, $0) }
@@ -1312,6 +1647,9 @@ private extension DiscordActivity {
         self = activity
     }
 
+    /// Reads a required native Discord string and normalizes blank values to nil.
+    ///
+    /// - Parameter getter: Native Discord getter that writes into a `Discord_String` pointer.
     private static func requiredString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Void) -> String? {
         var string = Discord_String(ptr: nil, size: 0)
         getter(&string)
@@ -1319,6 +1657,9 @@ private extension DiscordActivity {
         return DiscordSDKManager.string(from: string)?.nilIfEmpty
     }
 
+    /// Reads an optional native Discord string and normalizes blank values to nil.
+    ///
+    /// - Parameter getter: Native Discord getter that returns whether it wrote a `Discord_String`.
     private static func optionalString(_ getter: (UnsafeMutablePointer<Discord_String>?) -> Bool) -> String? {
         var string = Discord_String(ptr: nil, size: 0)
         guard getter(&string) else { return nil }
@@ -1326,6 +1667,9 @@ private extension DiscordActivity {
         return DiscordSDKManager.string(from: string)?.nilIfEmpty
     }
 
+    /// Converts Discord activity timestamps from seconds or milliseconds into `Date`.
+    ///
+    /// - Parameter value: Discord timestamp in seconds or milliseconds since the Unix epoch.
     private static func date(fromDiscordTimestamp value: UInt64) -> Date? {
         guard value > 0 else { return nil }
         let seconds: TimeInterval
@@ -1338,7 +1682,11 @@ private extension DiscordActivity {
     }
 }
 
+/// Native Discord Social SDK conversion helpers for OAuth token types.
 private extension DiscordOAuthToken.TokenType {
+    /// Creates an app token type from a native Discord authorization token type.
+    ///
+    /// - Parameter discordTokenType: Native Discord authorization token type to convert.
     init(discordTokenType: Discord_AuthorizationTokenType) {
         switch discordTokenType {
         case Discord_AuthorizationTokenType_User:
@@ -1350,6 +1698,7 @@ private extension DiscordOAuthToken.TokenType {
         }
     }
 
+    /// Native Discord authorization token type matching this app model value.
     var discordTokenType: Discord_AuthorizationTokenType {
         switch self {
         case .user:
@@ -1361,12 +1710,21 @@ private extension DiscordOAuthToken.TokenType {
 }
 #endif
 
+/// Keychain storage for Discord OAuth tokens.
 private final class DiscordTokenStore {
+    /// Keychain service name for Discord OAuth token data.
     private let service = "CraftPresence.DiscordOAuth"
+
+    /// Keychain account name for the single stored Discord OAuth token.
     private let account = "DiscordOAuthToken"
+
+    /// JSON encoder used before saving token data to Keychain.
     private let encoder = JSONEncoder()
+
+    /// JSON decoder used after loading token data from Keychain.
     private let decoder = JSONDecoder()
 
+    /// Loads the stored Discord OAuth token from Keychain.
     func load() -> DiscordOAuthToken? {
         var query = baseQuery
         query[kSecReturnData as String] = true
@@ -1381,6 +1739,9 @@ private final class DiscordTokenStore {
         return try? decoder.decode(DiscordOAuthToken.self, from: data)
     }
 
+    /// Saves a Discord OAuth token to Keychain, replacing any previous token.
+    ///
+    /// - Parameter token: OAuth token bundle to encode and store.
     func save(_ token: DiscordOAuthToken) {
         guard let data = try? encoder.encode(token) else { return }
         delete()
@@ -1391,10 +1752,12 @@ private final class DiscordTokenStore {
         SecItemAdd(query as CFDictionary, nil)
     }
 
+    /// Deletes the stored Discord OAuth token from Keychain.
     func delete() {
         SecItemDelete(baseQuery as CFDictionary)
     }
 
+    /// Base Keychain query shared by load, save, and delete operations.
     private var baseQuery: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -1404,7 +1767,9 @@ private final class DiscordTokenStore {
     }
 }
 
+/// String normalization helpers used by Discord payload builders.
 private extension String {
+    /// Returns the trimmed string, or nil when the value contains only whitespace.
     var nilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed

@@ -79,10 +79,17 @@ final class DiscordSDKManager: ObservableObject {
         case failed
     }
 
-    // MARK: - Published State (UI 자동 업데이트용)
+    // MARK: - Published State
+    /// Current high-level authorization status for the Discord session.
     @Published private(set) var authorizationStatus: AuthorizationStatus = .unknown
+
+    /// Current authorized Discord user, when user data is available.
     @Published private(set) var currentUser: DiscordUser? = nil
+
+    /// Dashboard-facing setup, authorization, and connection state.
     @Published private(set) var dashboardStatus: DashboardStatus = .notConfigured
+
+    /// Last SDK or configuration error intended for UI display.
     @Published private(set) var lastErrorMessage: String? = nil
 
     // MARK: - Private State
@@ -202,7 +209,7 @@ extension DiscordSDKManager {
 
             self.lifecycleState = .authorizing
 
-            // Swift 클로저를 보관할 컨텍스트 생성
+            // Retain a small Swift context until the C callback completes.
             let context = Unmanaged.passRetained(AuthorizationContext(sessionID: sessionID)).toOpaque()
 
             DispatchQueue.main.async {
@@ -211,7 +218,7 @@ extension DiscordSDKManager {
                 self.lastErrorMessage = nil
             }
             
-            // C 스타일 콜백 함수
+            // C-style callback invoked by the C++ Discord wrapper.
             let callback: AuthorizeCallback = { context, success, errorPtr in
                 let authorizationContext = Unmanaged<AuthorizationContext>.fromOpaque(context!).takeRetainedValue()
                 let errorMessage = errorPtr.map { String(cString: $0) }
@@ -256,7 +263,7 @@ extension DiscordSDKManager {
                 }
             }
             
-            // self.wrapper를 직접 수정 (복사 방지)
+            // Call through the existing wrapper instance so SDK state stays attached to this session.
             self.wrapper?.authorize(context, callback)
         }
     }
@@ -274,7 +281,7 @@ extension DiscordSDKManager {
             let callback: LogoutCallback = { context, success, errorPtr in
                 let completion = Unmanaged<AnyObject>.fromOpaque(context!).takeRetainedValue() as? (Result<Void, DiscordSDKError>) -> Void
                 
-                // C++ 포인터가 유효할 때 즉시 복사
+                // Copy the C++ string while the callback pointer is still valid.
                 let errorMessage = errorPtr.map { String(cString: $0) }
                 
                 DispatchQueue.main.async {
@@ -328,7 +335,7 @@ extension DiscordSDKManager {
             let callback: UserCallback = { context, success, idPtr, usernamePtr, errorPtr in
                 let requestContext = Unmanaged<UserRequestContext>.fromOpaque(context!).takeRetainedValue()
                 
-                // ⚠️ 중요: C++ 포인터가 유효할 때 즉시 Swift String으로 복사
+                // Copy C++ strings immediately while callback pointers are still valid.
                 let id: String
                 let username: String
                 let errorMessage: String?
@@ -338,7 +345,7 @@ extension DiscordSDKManager {
                     username = usernamePtr.map { String(cString: $0) } ?? ""
                     errorMessage = nil
                     
-                    // 문자열 디버깅 로그 (복사 직후)
+                    // Log after copying so the bytes reflect Swift-owned strings.
                     print("[DiscordSDKManager] Received user - ID: \(id), Username: \(username)")
                     print("[DiscordSDKManager] ID bytes: \(id.utf8.map { String(format: "%02X", $0) }.joined(separator: " "))")
                     print("[DiscordSDKManager] Username bytes: \(username.utf8.map { String(format: "%02X", $0) }.joined(separator: " "))")
@@ -348,7 +355,7 @@ extension DiscordSDKManager {
                     errorMessage = errorPtr.map { String(cString: $0) } ?? "Unknown error"
                 }
                 
-                // 복사된 문자열을 메인 큐로 전달
+                // Deliver copied strings to the main queue.
                 DiscordSDKManager.shared.queue.async {
                     guard DiscordSDKManager.shared.sessionID == requestContext.sessionID else {
                         requestContext.completion?(.failure(.sdk("Discord session changed during user fetch.")))
@@ -410,11 +417,11 @@ extension DiscordSDKManager {
                     return
                 }
 
-                // 연결 상태 확인
+                // Check whether the SDK is ready to return user data.
                 let connected = self.wrapper?.isConnected() ?? false
                 
                 if connected {
-                    // 연결 완료 - 사용자 정보 가져오기
+                    // Connection is ready; fetch user details.
                     let elapsed = Date().timeIntervalSince(startTime)
                     print("[DiscordSDKManager] SDK connected after \(String(format: "%.2f", elapsed))s, fetching user...")
                     let combinedCompletion: (Result<DiscordUser, DiscordSDKError>) -> Void = { result in
@@ -422,7 +429,7 @@ extension DiscordSDKManager {
                     }
                     self.fetchCurrentUser(sessionID: expectedSessionID, completion: combinedCompletion)
                 } else {
-                    // 타임아웃 확인
+                    // Check for timeout before scheduling another poll.
                     let elapsed = Date().timeIntervalSince(startTime)
                     if elapsed >= timeout {
                         print("[DiscordSDKManager] Connection timeout after \(String(format: "%.2f", elapsed))s")
@@ -436,7 +443,7 @@ extension DiscordSDKManager {
                         let error: Result<DiscordUser, DiscordSDKError> = .failure(.sdk("Connection timeout: SDK did not connect within \(timeout)s"))
                         completions.forEach { $0?(error) }
                     } else {
-                        // 다시 폴링
+                        // Poll again after a short delay.
                         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + pollInterval) {
                             checkConnection()
                         }
@@ -445,7 +452,7 @@ extension DiscordSDKManager {
             }
         }
         
-        // 첫 번째 체크는 약간 지연 후 시작 (Connect() 호출 직후이므로)
+        // Delay the first check briefly because Connect() was just requested.
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.2) {
             checkConnection()
         }
@@ -551,7 +558,7 @@ extension DiscordSDKManager {
             let callback: ActivityCallback = { context, success, errorPtr in
                 let requestContext = Unmanaged<ActivityRequestContext>.fromOpaque(context!).takeRetainedValue()
                 
-                // C++ 포인터가 유효할 때 즉시 복사
+                // Copy the C++ error string while the callback pointer is valid.
                 let errorMessage = errorPtr.map { String(cString: $0) }
                 
                 DiscordSDKManager.shared.queue.async {
@@ -864,11 +871,19 @@ private final class ActivityRequestContext {
     }
 }
 
-// MARK: - 모델 및 에러 타입 (SDK의 가상 타입을 래핑)
+// MARK: - Models and Errors
+/// Discord user identity returned by the SDK.
 public struct DiscordUser: Sendable, Equatable, Hashable {
+    /// Discord snowflake user ID.
     public var id: String
+
+    /// Display name or username reported by Discord.
     public var username: String
+
+    /// Legacy discriminator, when Discord provides one.
     public var discriminator: String?
+
+    /// Avatar image URL, when available.
     public var avatarURL: URL?
 
     public init(id: String, username: String, discriminator: String? = nil, avatarURL: URL? = nil) {
@@ -879,7 +894,9 @@ public struct DiscordUser: Sendable, Equatable, Hashable {
     }
 }
 
+/// Rich Presence activity model used before converting values to Discord SDK types.
 public struct DiscordActivity: Sendable, Equatable {
+    /// Discord Rich Presence activity category.
     public enum ActivityType: Int, CaseIterable, Identifiable, Sendable, Equatable {
         case playing = 0
         case streaming = 1
@@ -889,8 +906,10 @@ public struct DiscordActivity: Sendable, Equatable {
         case competing = 5
         case hangStatus = 6
 
+        /// Stable identifier used by SwiftUI pickers.
         public var id: Int { rawValue }
 
+        /// Human-readable activity type label.
         public var displayName: String {
             switch self {
             case .playing: return "Playing"
@@ -904,36 +923,64 @@ public struct DiscordActivity: Sendable, Equatable {
         }
     }
 
+    /// Optional start and end times displayed by Discord.
     public struct Timestamps: Sendable, Equatable { public var start: Date?; public var end: Date? }
+
+    /// Discord Developer Portal asset keys and tooltip labels.
     public struct Assets: Sendable, Equatable {
         public var largeImage: String?
         public var largeText: String?
         public var smallImage: String?
         public var smallText: String?
     }
+
+    /// Party metadata displayed as current and maximum size.
     public struct Party: Sendable, Equatable {
         public var id: String?
         public var currentSize: Int?
         public var maxSize: Int?
     }
 
+    /// Activity title shown as the primary Rich Presence label.
     public var name: String?
+
+    /// Short status line, usually the current mode or context.
     public var state: String?
+
+    /// Longer status line, usually the item, track, or screen name.
     public var details: String?
+
+    /// Discord activity category.
     public var type: ActivityType = .playing
+
+    /// Optional elapsed or remaining time values.
     public var timestamps: Timestamps = .init(start: nil, end: nil)
+
+    /// Optional Rich Presence image assets.
     public var assets: Assets = .init(largeImage: nil, largeText: nil, smallImage: nil, smallText: nil)
+
+    /// Optional party size metadata.
     public var party: Party = .init(id: nil, currentSize: nil, maxSize: nil)
 
+    /// Creates an empty Rich Presence activity.
     public init() {}
 }
 
+/// Errors surfaced by the Discord SDK integration layer.
 public enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
+    /// The SDK has not been configured with a valid application ID.
     case notConfigured
+
+    /// The configured Discord application ID is missing, still a placeholder, or malformed.
     case invalidApplicationID(String)
+
+    /// No valid Discord authorization is available for the current application ID.
     case unauthorized
+
+    /// Native Discord SDK call failed.
     case sdk(String)
 
+    /// Localized error text suitable for user-facing surfaces.
     public var errorDescription: String? {
         switch self {
         case .notConfigured: return "Discord SDK가 구성되지 않았습니다. configure(applicationId:)를 먼저 호출하세요."
@@ -944,7 +991,7 @@ public enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
     }
 }
 
-// MARK: - DiscordSocialSDK 가정 인터페이스 브릿지
+// MARK: - DiscordSocialSDK Bridge
 // Adjust the protocol/extension below to match the type/method signature of the actual DiscordSocial SDK.
 // This sample provides minimal bridge form for the project to be compiled.
 private protocol _DiscordClientProto {
@@ -969,7 +1016,7 @@ private final class DiscordClient: _DiscordClientProto {
 
     init(applicationId: String) {
         self.appId = applicationId
-        // DiscordSDKManager 초기화
+        // Initialize DiscordSDKManager without starting authorization automatically.
         manager.configure(applicationId: applicationId, autoAuthorize: false)
     }
 

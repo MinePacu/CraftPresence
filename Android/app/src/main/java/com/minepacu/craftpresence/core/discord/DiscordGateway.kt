@@ -1,17 +1,43 @@
 package com.minepacu.craftpresence.core.discord
 
+/**
+ * Platform abstraction for the Discord SDK.
+ *
+ * Implementations may call the real native SDK, a test double, or another bridge while preserving
+ * the same coroutine-friendly contract for the rest of the app.
+ */
 interface DiscordGateway {
+    /** Initializes the SDK for the given Discord Developer Portal application ID. */
     suspend fun configure(applicationId: String)
+
+    /** Starts interactive authorization and returns the authorized user plus refresh token. */
     suspend fun authorize(): DiscordAuthorizationResult
+
+    /** Restores authorization by exchanging a refresh token for a new SDK token. */
     suspend fun refreshAuthorization(refreshToken: String): DiscordAuthorizationResult
+
+    /** Returns the current authorized Discord user. */
     suspend fun currentUser(): DiscordUser
+
+    /** Disconnects the current user and clears SDK-side authorization state. */
     suspend fun logout()
+
+    /** Publishes a Rich Presence activity to Discord. */
     suspend fun updateActivity(activity: DiscordActivity)
+
+    /** Removes the currently published Rich Presence activity. */
     suspend fun clearActivity()
+
+    /** Returns `true` when the SDK has an authenticated user. */
     fun isAuthorized(): Boolean
+
+    /** Returns `true` when the SDK is authenticated and ready to serve user data. */
     fun isConnected(): Boolean
 }
 
+/**
+ * In-memory Discord gateway used for tests and previews where the native SDK is unavailable.
+ */
 class NoopDiscordGateway : DiscordGateway {
     private var configuredApplicationId: String? = null
     private var user: DiscordUser? = null

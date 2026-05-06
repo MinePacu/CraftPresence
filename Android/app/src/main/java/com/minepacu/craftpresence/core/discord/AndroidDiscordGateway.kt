@@ -3,6 +3,12 @@ package com.minepacu.craftpresence.core.discord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+/**
+ * Android implementation of [DiscordGateway] backed by the JNI Discord SDK bridge.
+ *
+ * Blocking native calls are dispatched on [Dispatchers.IO] so callers can use this from app
+ * coroutines without stalling the main thread.
+ */
 class AndroidDiscordGateway : DiscordGateway {
     override suspend fun configure(applicationId: String): Unit = withContext(Dispatchers.IO) {
         NativeDiscordBridge.configure(applicationId)?.let { throw DiscordSdkError.Sdk(it) }
