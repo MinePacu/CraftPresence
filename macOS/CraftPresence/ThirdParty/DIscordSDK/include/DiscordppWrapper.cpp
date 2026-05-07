@@ -46,6 +46,13 @@ DiscordppWrapper::DiscordppWrapper(const std::string& appId) : applicationId(app
 }
 
 DiscordppWrapper::~DiscordppWrapper() {
+    if (client) {
+        try {
+            client->Disconnect();
+        } catch (const std::exception& e) {
+            DPW_LOG_ERROR("[DiscordppWrapper] Disconnect during teardown failed: %s", e.what());
+        }
+    }
     client.reset();
 }
 
@@ -254,8 +261,13 @@ void DiscordppWrapper::logout(void* context, LogoutCallback callback) {
         callback(context, false, "Client not initialized");
         return;
     }
-    
-    callback(context, true, nullptr);
+
+    try {
+        client->Disconnect();
+        callback(context, true, nullptr);
+    } catch (const std::exception& e) {
+        callback(context, false, e.what());
+    }
 }
 
 void DiscordppWrapper::getCurrentUser(void* context, UserCallback callback) {

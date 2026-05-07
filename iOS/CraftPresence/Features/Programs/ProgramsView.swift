@@ -696,6 +696,15 @@ private struct PresenceScheduleEditor: View {
                                 Text(policy.localizedLabel(localizationManager)).tag(policy)
                             }
                         }
+                        if rule.restorePolicy == .previousPresence {
+                            Toggle(
+                                t("presets.schedule.reset_elapsed_time_on_restore"),
+                                isOn: $rule.resetsElapsedTimeOnRestore
+                            )
+                            Text(t("presets.schedule.reset_elapsed_time_on_restore_help"))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Stepper(value: $rule.priority, in: 0...100) {
                         LabeledContent(t("presets.schedule.priority"), value: "\(rule.priority)")
@@ -1556,8 +1565,12 @@ private extension PresenceScheduleRule {
         if copy.mode == .singleTime {
             copy.endTime = nil
             copy.restorePolicy = .previousPresence
+            copy.resetsElapsedTimeOnRestore = false
         } else if copy.endTime == nil {
             copy.endTime = PresenceScheduleTime(hour: 18, minute: 0)
+        }
+        if copy.mode == .timeRange, copy.restorePolicy == .clearPresence {
+            copy.resetsElapsedTimeOnRestore = false
         }
         return copy
     }

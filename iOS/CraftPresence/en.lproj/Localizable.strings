@@ -51,9 +51,6 @@
 "settings.live_activity.title" = "Show Live Activity";
 "settings.live_activity.description" = "Mirror the current Presence on the Lock Screen and Dynamic Island when supported.";
 "settings.live_activity.help" = "When disabled, publishing Presence still updates Discord but does not start or update a Live Activity.";
-"settings.scheduled_restore_elapsed_time.title" = "Reset elapsed time on restore";
-"settings.scheduled_restore_elapsed_time.description" = "Restart elapsed time when a scheduled preset ends and the previous Presence is restored.";
-"settings.scheduled_restore_elapsed_time.help" = "When disabled, the restored Presence keeps its saved start time if one exists.";
 "settings.import_export.export.title" = "Export Settings";
 "settings.import_export.export.description" = "Save presets, schedules, and app preferences as a JSON backup.";
 "settings.import_export.export.action" = "Export settings";
@@ -166,6 +163,8 @@
 "presets.schedule.restore_policy" = "When range ends";
 "presets.schedule.restore.previous" = "Restore previous Presence";
 "presets.schedule.restore.clear" = "Clear Presence";
+"presets.schedule.reset_elapsed_time_on_restore" = "Restart elapsed time on restore";
+"presets.schedule.reset_elapsed_time_on_restore_help" = "When this scheduled preset ends, the restored Presence starts its elapsed time from now.";
 "presets.schedule.priority" = "Priority";
 "presets.schedule.priority_help" = "When schedules overlap, higher priority wins. Ties use the most recently edited rule.";
 "presets.schedule.editor.title" = "Edit Schedule";

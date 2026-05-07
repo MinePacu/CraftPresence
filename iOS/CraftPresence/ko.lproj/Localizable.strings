@@ -51,9 +51,6 @@
 "settings.live_activity.title" = "Live Activity 표시";
 "settings.live_activity.description" = "지원되는 기기에서 현재 Presence를 잠금 화면과 Dynamic Island에 함께 표시합니다.";
 "settings.live_activity.help" = "끄면 Presence 게시 시 Discord는 업데이트하지만 Live Activity는 시작하거나 갱신하지 않습니다.";
-"settings.scheduled_restore_elapsed_time.title" = "복원 시 경과 시간 초기화";
-"settings.scheduled_restore_elapsed_time.description" = "예약 프리셋이 끝나 이전 Presence를 복원할 때 경과 시간을 다시 시작합니다.";
-"settings.scheduled_restore_elapsed_time.help" = "끄면 복원되는 Presence에 저장된 시작 시간이 있을 때 그대로 유지합니다.";
 "settings.import_export.export.title" = "설정 내보내기";
 "settings.import_export.export.description" = "프리셋, 스케줄, 앱 환경설정을 JSON 백업으로 저장합니다.";
 "settings.import_export.export.action" = "설정 내보내기";
@@ -166,6 +163,8 @@
 "presets.schedule.restore_policy" = "범위 종료 시";
 "presets.schedule.restore.previous" = "이전 Presence 복원";
 "presets.schedule.restore.clear" = "Presence 지우기";
+"presets.schedule.reset_elapsed_time_on_restore" = "복원할 때 경과 시간 다시 시작";
+"presets.schedule.reset_elapsed_time_on_restore_help" = "예약 프리셋이 끝나 이전 Presence를 복원할 때 시작 시간을 현재 시각으로 바꿉니다.";
 "presets.schedule.priority" = "우선순위";
 "presets.schedule.priority_help" = "스케줄이 겹치면 우선순위가 높은 규칙이 적용됩니다. 같으면 더 최근에 수정한 규칙이 우선합니다.";
 "presets.schedule.editor.title" = "스케줄 편집";

@@ -51,9 +51,6 @@
 "settings.live_activity.title" = "Live Activity を表示";
 "settings.live_activity.description" = "対応端末で現在の Presence をロック画面と Dynamic Island に表示します。";
 "settings.live_activity.help" = "無効にすると、Presence の公開は Discord のみ更新し、Live Activity は開始または更新しません。";
-"settings.scheduled_restore_elapsed_time.title" = "復元時に経過時間をリセット";
-"settings.scheduled_restore_elapsed_time.description" = "予約プリセット終了後に以前の Presence を復元するとき、経過時間を再開します。";
-"settings.scheduled_restore_elapsed_time.help" = "無効にすると、復元する Presence に保存済みの開始時刻がある場合は保持します。";
 "settings.import_export.export.title" = "設定を書き出す";
 "settings.import_export.export.description" = "プリセット、スケジュール、アプリ設定を JSON バックアップとして保存します。";
 "settings.import_export.export.action" = "設定を書き出す";
@@ -166,6 +163,8 @@
 "presets.schedule.restore_policy" = "範囲終了時";
 "presets.schedule.restore.previous" = "前の Presence を復元";
 "presets.schedule.restore.clear" = "Presence を消去";
+"presets.schedule.reset_elapsed_time_on_restore" = "復元時に経過時間を再開";
+"presets.schedule.reset_elapsed_time_on_restore_help" = "予約プリセット終了後に前の Presence を復元するとき、開始時刻を現在時刻に変更します。";
 "presets.schedule.priority" = "優先度";
 "presets.schedule.priority_help" = "スケジュールが重なる場合は優先度が高いルールを適用します。同じ場合は最近編集したルールを優先します。";
 "presets.schedule.editor.title" = "スケジュールを編集";

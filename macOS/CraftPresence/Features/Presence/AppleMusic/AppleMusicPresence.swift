@@ -127,6 +127,7 @@ class AppleMusicPresenceManager: ObservableObject {
     
     private var monitorTimer: Timer?
     private var updateTimer: Timer?
+    private var isFetchingNowPlaying = false
     private var runner = ScriptRunner()
     private var lastUpdateTime: Date?
     private let minimumUpdateInterval: TimeInterval = 15.0
@@ -160,14 +161,14 @@ class AppleMusicPresenceManager: ObservableObject {
             await ensureDiscordConfigured()
             
             // Immediate run
-            await fetchNowPlaying()
+            await fetchNowPlayingIfIdle()
             
             // Poll Music.app every 2 sec
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 let monitorTimer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
                     guard let self else { return }
-                    Task { await self.fetchNowPlaying() }
+                    Task { await self.fetchNowPlayingIfIdle() }
                 }
                 self.monitorTimer = monitorTimer
                 RunLoop.main.add(monitorTimer, forMode: .common)
@@ -189,6 +190,7 @@ class AppleMusicPresenceManager: ObservableObject {
         monitorTimer = nil
         updateTimer?.invalidate()
         updateTimer = nil
+        isFetchingNowPlaying = false
         
         // Clear Discord presence
         Task {
@@ -248,6 +250,13 @@ class AppleMusicPresenceManager: ObservableObject {
     }
     
     // MARK: - Fetch Now Playing
+    private func fetchNowPlayingIfIdle() async {
+        guard !isFetchingNowPlaying else { return }
+        isFetchingNowPlaying = true
+        defer { isFetchingNowPlaying = false }
+        await fetchNowPlaying()
+    }
+
     /// Queries Music.app for the current track, artwork, and playback position, then refreshes cached state.
     private func fetchNowPlaying() async {
         let lines: [String] = [

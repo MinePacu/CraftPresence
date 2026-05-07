@@ -29,6 +29,8 @@ public final class ProgramDetector: NSObject {
     private var workspaceObserver: Any?
     private var axObserver: AXObserver?
     private var observedAppElement: AXUIElement?
+    private var axRunLoop: CFRunLoop?
+    private var axRunLoopSource: CFRunLoopSource?
     private let axQueue = DispatchQueue(label: "ProgramDetector.AXQueue")
 
     // Polling fallback to catch title changes that don't fire AX notifications
@@ -167,7 +169,10 @@ public final class ProgramDetector: NSObject {
 
         // Add the observer's run loop source to the main run loop
         let source: CFRunLoopSource = AXObserverGetRunLoopSource(axObserver)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
+        let runLoop = CFRunLoopGetMain()
+        CFRunLoopAddSource(runLoop, source, .defaultMode)
+        axRunLoop = runLoop
+        axRunLoopSource = source
     }
     
     private static let axObserverCallback: AXObserverCallback = { (observer, axElement, notification, refcon) in
@@ -179,6 +184,11 @@ public final class ProgramDetector: NSObject {
     }
 
     private func stopAXObserver() {
+        if let runLoop = axRunLoop, let source = axRunLoopSource {
+            CFRunLoopRemoveSource(runLoop, source, .defaultMode)
+            axRunLoop = nil
+            axRunLoopSource = nil
+        }
         if let axObserver {
             if let element = observedAppElement {
                 let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
@@ -188,6 +198,8 @@ public final class ProgramDetector: NSObject {
             }
             self.axObserver = nil
         }
+        axRunLoop = nil
+        axRunLoopSource = nil
         self.observedAppElement = nil
     }
 

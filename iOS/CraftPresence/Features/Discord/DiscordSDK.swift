@@ -286,21 +286,19 @@ final class DiscordSDKManager: ObservableObject {
            !token.isEmpty,
            isClientInitialized {
             revokeToken(token, applicationId: applicationId) { [weak self] result in
-                self?.authorizationStatus = .unauthorized
-                self?.currentUser = nil
-                self?.dashboardStatus = self?.configuredApplicationId == nil ? .notConfigured : .unauthorized
-                self?.lastErrorMessage = nil
+                self?.finishLocalLogout()
                 completion?(result)
             }
             return
         }
+        finishLocalLogout()
         #else
         tokenStore.delete()
-        #endif
         authorizationStatus = .unauthorized
         currentUser = nil
         dashboardStatus = configuredApplicationId == nil ? .notConfigured : .unauthorized
         lastErrorMessage = nil
+        #endif
         completion?(.success(()))
     }
 
@@ -452,11 +450,7 @@ final class DiscordSDKManager: ObservableObject {
                 guard let userData else { return }
                 let box = Unmanaged<DiscordVoidCallbackBox>.fromOpaque(userData).takeUnretainedValue()
                 let isSuccessful = result.map { Discord_ClientResult_Successful($0) } ?? false
-                let message: String? = result.flatMap { resultPointer in
-                    var error = Discord_String(ptr: nil, size: 0)
-                    Discord_ClientResult_Error(resultPointer, &error)
-                    return DiscordSDKManager.string(from: error)
-                }
+                let message = result.flatMap { DiscordSDKManager.resultErrorMessage($0) }
 
                 DispatchQueue.main.async {
                     if isSuccessful {
@@ -706,6 +700,15 @@ final class DiscordSDKManager: ObservableObject {
     private func stopCallbackPump() {
         callbackPumpTask?.cancel()
         callbackPumpTask = nil
+    }
+
+    /// Clears local authorization state and releases native SDK resources after logout.
+    private func finishLocalLogout() {
+        authorizationStatus = .unauthorized
+        currentUser = nil
+        dashboardStatus = configuredApplicationId == nil ? .notConfigured : .unauthorized
+        lastErrorMessage = nil
+        resetSocialSDK()
     }
 
     /// Numeric Discord application ID used by native SDK functions.

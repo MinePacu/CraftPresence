@@ -245,40 +245,39 @@ struct ContentView: View {
 
             // Subscribe to ProgramDetector updates
             ProgramDetector.shared.start()
-            Task(priority: .utility) {
-                for await update in ProgramDetector.shared.updatesStream() {
-                    if Task.isCancelled { break }
-    #if os(macOS)
-                    let stabilizedTitle = await fetchFocusedWindowTitleWithRetries(pid: nil, retries: 4, delayNanoseconds: 150_000_000) ?? update.windowTitle
-                    await MainActor.run {
-                        self.activeAppName = update.appName
-                        self.activeBundleID = update.bundleID
-                        self.activeWindowTitle = stabilizedTitle
-                    }
-                    await handleProgramPresenceUpdate(
-                        appName: update.appName,
-                        bundleID: update.bundleID,
-                        windowTitle: stabilizedTitle
-                    )
-    #else
-                    await MainActor.run {
-                        self.activeAppName = update.appName
-                        self.activeBundleID = update.bundleID
-                        self.activeWindowTitle = update.windowTitle
-                    }
-                    await handleProgramPresenceUpdate(
-                        appName: update.appName,
-                        bundleID: update.bundleID,
-                        windowTitle: update.windowTitle
-                    )
-    #endif
-                }
-            }
             do {
                 let current = await ConfigUtility.shared.currentSettings()
                 await MainActor.run {
                     self.programIDs = current.bundleIDs
                 }
+            }
+
+            for await update in ProgramDetector.shared.updatesStream() {
+                if Task.isCancelled { break }
+    #if os(macOS)
+                let stabilizedTitle = await fetchFocusedWindowTitleWithRetries(pid: nil, retries: 4, delayNanoseconds: 150_000_000) ?? update.windowTitle
+                await MainActor.run {
+                    self.activeAppName = update.appName
+                    self.activeBundleID = update.bundleID
+                    self.activeWindowTitle = stabilizedTitle
+                }
+                await handleProgramPresenceUpdate(
+                    appName: update.appName,
+                    bundleID: update.bundleID,
+                    windowTitle: stabilizedTitle
+                )
+    #else
+                await MainActor.run {
+                    self.activeAppName = update.appName
+                    self.activeBundleID = update.bundleID
+                    self.activeWindowTitle = update.windowTitle
+                }
+                await handleProgramPresenceUpdate(
+                    appName: update.appName,
+                    bundleID: update.bundleID,
+                    windowTitle: update.windowTitle
+                )
+    #endif
             }
         }
         .onAppear {

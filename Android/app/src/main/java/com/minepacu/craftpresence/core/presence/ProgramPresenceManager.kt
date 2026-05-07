@@ -69,7 +69,7 @@ class ProgramPresenceManager private constructor(context: Context) {
 
     fun startMonitoring() {
         if (collectJob != null) return
-        detector.start()
+        detector.start(DETECTOR_OWNER)
         discord.retainActivityPriority(PRIORITY_OWNER)
         collectJob = scope.launch {
             runCatching {
@@ -93,7 +93,7 @@ class ProgramPresenceManager private constructor(context: Context) {
     fun stopMonitoring() {
         collectJob?.cancel()
         collectJob = null
-        detector.stop()
+        detector.stop(DETECTOR_OWNER)
         currentSession = null
         lastAppliedActivityKey = null
         discord.releaseActivityPriority(PRIORITY_OWNER)
@@ -229,6 +229,7 @@ class ProgramPresenceManager private constructor(context: Context) {
 
     companion object {
         private const val PRIORITY_OWNER = "program-presence"
+        private const val DETECTOR_OWNER = "program-presence-manager"
 
         @Volatile private var instance: ProgramPresenceManager? = null
 

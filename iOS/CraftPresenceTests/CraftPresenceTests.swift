@@ -138,6 +138,7 @@ final class CraftPresenceTests: XCTestCase {
     }
 
     func testSettingsBackupCodableRoundTripPreservesUserSettings() throws {
+        let presetID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
         var settings = AppSettings()
         settings.bundleIDs = ["com.apple.dt.Xcode"]
         settings.preferredLanguage = .english
@@ -145,11 +146,17 @@ final class CraftPresenceTests: XCTestCase {
         settings.resetElapsedTimeOnScheduledPresetRestore = true
         settings.customPresencePresets = [
             CustomPresencePreset(
-                id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+                id: presetID,
                 title: "Build",
                 activityType: .playing,
                 details: "Compiling",
                 state: "Xcode"
+            )
+        ]
+        settings.presenceScheduleRules = [
+            PresenceScheduleRule(
+                presetID: presetID,
+                resetsElapsedTimeOnRestore: true
             )
         ]
 
@@ -171,6 +178,49 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertFalse(backup.settings.presencePriorityEnabled)
         XCTAssertTrue(backup.settings.resetElapsedTimeOnScheduledPresetRestore)
         XCTAssertEqual(backup.settings.customPresencePresets.first?.title, "Build")
+        XCTAssertTrue(backup.settings.presenceScheduleRules.first?.resetsElapsedTimeOnRestore == true)
+    }
+
+    func testSettingsBackupMigratesLegacyScheduledRestoreElapsedTimeSettingToRules() throws {
+        let json = """
+        {
+          "appName": "CraftPresence",
+          "appVersion": "1.0",
+          "buildNumber": "1",
+          "exportedAt": "2026-05-06T00:00:00Z",
+          "platform": "iOS",
+          "schemaVersion": 1,
+          "settings": {
+            "customPresencePresets": [
+              {
+                "id": "22222222-2222-2222-2222-222222222222",
+                "title": "Build",
+                "activityType": "playing",
+                "details": "Compiling",
+                "state": "Xcode"
+              }
+            ],
+            "presenceScheduleRules": [
+              {
+                "id": "33333333-3333-3333-3333-333333333333",
+                "presetID": "22222222-2222-2222-2222-222222222222",
+                "isEnabled": true,
+                "mode": "timeRange",
+                "weekdays": [2, 3, 4, 5, 6],
+                "startTime": { "hour": 9, "minute": 0 },
+                "endTime": { "hour": 18, "minute": 0 },
+                "restorePolicy": "previousPresence",
+                "priority": 0,
+                "updatedAt": "2026-05-06T00:00:00Z"
+              }
+            ],
+            "resetElapsedTimeOnScheduledPresetRestore": true
+          }
+        }
+        """
+        let backup = try ConfigUtility.decodeSettingsBackup(from: Data(json.utf8))
+
+        XCTAssertTrue(backup.settings.presenceScheduleRules.first?.resetsElapsedTimeOnRestore == true)
     }
 
     func testSettingsBackupAcceptsDifferentAppVersionWithSupportedSchema() throws {

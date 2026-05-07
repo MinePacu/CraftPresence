@@ -32,6 +32,7 @@ class ForegroundAppNotificationController private constructor(context: Context) 
 
     fun start() {
         if (notificationJob != null) return
+        detector.start(DETECTOR_OWNER)
         ensureNotificationChannel()
         notificationJob = scope.launch {
             detector.updates.collect { update ->
@@ -43,6 +44,7 @@ class ForegroundAppNotificationController private constructor(context: Context) 
     fun stop() {
         notificationJob?.cancel()
         notificationJob = null
+        detector.stop(DETECTOR_OWNER)
         lastPackageName = null
         notificationManager.cancel(NOTIFICATION_ID)
     }
@@ -109,6 +111,7 @@ class ForegroundAppNotificationController private constructor(context: Context) 
     companion object {
         private const val CHANNEL_ID = "foreground_app_status"
         private const val NOTIFICATION_ID = 2001
+        private const val DETECTOR_OWNER = "foreground-app-notification"
 
         @Volatile private var instance: ForegroundAppNotificationController? = null
 

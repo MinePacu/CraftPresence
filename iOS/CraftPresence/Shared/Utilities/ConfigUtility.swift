@@ -54,12 +54,18 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.appliedCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .appliedCustomPresence)
         self.appliedPresence = try container.decodeIfPresent(AppliedPresencePayload.self, forKey: .appliedPresence)
         self.activeCustomPresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
-        self.presenceScheduleRules = try container.decodeIfPresent([PresenceScheduleRule].self, forKey: .presenceScheduleRules) ?? []
+        let legacyResetElapsedTimeOnScheduledPresetRestore = try container.decodeIfPresent(Bool.self, forKey: .resetElapsedTimeOnScheduledPresetRestore) ?? false
+        self.resetElapsedTimeOnScheduledPresetRestore = legacyResetElapsedTimeOnScheduledPresetRestore
+        self.presenceScheduleRules = (try container.decodeIfPresent([PresenceScheduleRule].self, forKey: .presenceScheduleRules) ?? [])
+            .map { rule in
+                var migratedRule = rule
+                migratedRule.applyLegacyRestoreElapsedTimeResetDefault(legacyResetElapsedTimeOnScheduledPresetRestore)
+                return migratedRule
+            }
         self.activePresenceScheduleState = try container.decodeIfPresent(ActivePresenceScheduleState.self, forKey: .activePresenceScheduleState)
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
         self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
         self.presenceLiveActivityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presenceLiveActivityEnabled) ?? true
-        self.resetElapsedTimeOnScheduledPresetRestore = try container.decodeIfPresent(Bool.self, forKey: .resetElapsedTimeOnScheduledPresetRestore) ?? false
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -485,8 +491,26 @@ public struct PresenceScheduleRule: Codable, Identifiable, Sendable, Equatable {
     public var excludesHolidays: Bool = false
     public var holidayRegion: String = PresenceHolidayRegion.system.rawValue
     public var restorePolicy: PresenceScheduleRestorePolicy = .previousPresence
+    public var resetsElapsedTimeOnRestore: Bool = false
     public var priority: Int = 0
     public var updatedAt: Date = Date()
+    private var hasExplicitResetsElapsedTimeOnRestore: Bool = true
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case presetID
+        case isEnabled
+        case mode
+        case weekdays
+        case startTime
+        case endTime
+        case excludesHolidays
+        case holidayRegion
+        case restorePolicy
+        case resetsElapsedTimeOnRestore
+        case priority
+        case updatedAt
+    }
 
     nonisolated public init(
         id: UUID = UUID(),
@@ -499,6 +523,7 @@ public struct PresenceScheduleRule: Codable, Identifiable, Sendable, Equatable {
         excludesHolidays: Bool = false,
         holidayRegion: String = PresenceHolidayRegion.system.rawValue,
         restorePolicy: PresenceScheduleRestorePolicy = .previousPresence,
+        resetsElapsedTimeOnRestore: Bool = false,
         priority: Int = 0,
         updatedAt: Date = Date()
     ) {
@@ -512,8 +537,84 @@ public struct PresenceScheduleRule: Codable, Identifiable, Sendable, Equatable {
         self.excludesHolidays = excludesHolidays
         self.holidayRegion = holidayRegion
         self.restorePolicy = restorePolicy
+        self.resetsElapsedTimeOnRestore = resetsElapsedTimeOnRestore
         self.priority = min(max(priority, 0), 100)
         self.updatedAt = updatedAt
+        self.hasExplicitResetsElapsedTimeOnRestore = true
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        presetID = try container.decode(UUID.self, forKey: .presetID)
+        isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
+        mode = try container.decodeIfPresent(PresenceScheduleMode.self, forKey: .mode) ?? .timeRange
+        let decodedWeekdays = try container.decodeIfPresent([PresenceScheduleWeekday].self, forKey: .weekdays) ?? [.monday, .tuesday, .wednesday, .thursday, .friday]
+        weekdays = decodedWeekdays.isEmpty ? [.monday] : Array(Set(decodedWeekdays)).sorted { $0.rawValue < $1.rawValue }
+        startTime = try container.decodeIfPresent(PresenceScheduleTime.self, forKey: .startTime) ?? PresenceScheduleTime(hour: 9, minute: 0)
+        endTime = try container.decodeIfPresent(PresenceScheduleTime.self, forKey: .endTime)
+        excludesHolidays = try container.decodeIfPresent(Bool.self, forKey: .excludesHolidays) ?? false
+        holidayRegion = try container.decodeIfPresent(String.self, forKey: .holidayRegion) ?? PresenceHolidayRegion.system.rawValue
+        restorePolicy = try container.decodeIfPresent(PresenceScheduleRestorePolicy.self, forKey: .restorePolicy) ?? .previousPresence
+        let decodedResetOnRestore = try container.decodeIfPresent(Bool.self, forKey: .resetsElapsedTimeOnRestore)
+        resetsElapsedTimeOnRestore = decodedResetOnRestore ?? false
+        hasExplicitResetsElapsedTimeOnRestore = decodedResetOnRestore != nil
+        priority = min(max(try container.decodeIfPresent(Int.self, forKey: .priority) ?? 0, 0), 100)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+
+    nonisolated public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(presetID, forKey: .presetID)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(weekdays, forKey: .weekdays)
+        try container.encode(startTime, forKey: .startTime)
+        try container.encodeIfPresent(endTime, forKey: .endTime)
+        try container.encode(excludesHolidays, forKey: .excludesHolidays)
+        try container.encode(holidayRegion, forKey: .holidayRegion)
+        try container.encode(restorePolicy, forKey: .restorePolicy)
+        try container.encode(resetsElapsedTimeOnRestore, forKey: .resetsElapsedTimeOnRestore)
+        try container.encode(priority, forKey: .priority)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+
+    nonisolated public static func == (lhs: PresenceScheduleRule, rhs: PresenceScheduleRule) -> Bool {
+        lhs.id == rhs.id &&
+        lhs.presetID == rhs.presetID &&
+        lhs.isEnabled == rhs.isEnabled &&
+        lhs.mode == rhs.mode &&
+        lhs.weekdays == rhs.weekdays &&
+        sameTime(lhs.startTime, rhs.startTime) &&
+        sameOptionalTime(lhs.endTime, rhs.endTime) &&
+        lhs.excludesHolidays == rhs.excludesHolidays &&
+        lhs.holidayRegion == rhs.holidayRegion &&
+        lhs.restorePolicy == rhs.restorePolicy &&
+        lhs.resetsElapsedTimeOnRestore == rhs.resetsElapsedTimeOnRestore &&
+        lhs.priority == rhs.priority &&
+        lhs.updatedAt == rhs.updatedAt
+    }
+
+    nonisolated private static func sameTime(_ lhs: PresenceScheduleTime, _ rhs: PresenceScheduleTime) -> Bool {
+        lhs.hour == rhs.hour && lhs.minute == rhs.minute
+    }
+
+    nonisolated private static func sameOptionalTime(_ lhs: PresenceScheduleTime?, _ rhs: PresenceScheduleTime?) -> Bool {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?):
+            return sameTime(lhs, rhs)
+        case (nil, nil):
+            return true
+        default:
+            return false
+        }
+    }
+
+    nonisolated public mutating func applyLegacyRestoreElapsedTimeResetDefault(_ enabled: Bool) {
+        guard !hasExplicitResetsElapsedTimeOnRestore else { return }
+        resetsElapsedTimeOnRestore = enabled
+        hasExplicitResetsElapsedTimeOnRestore = true
     }
 }
 
@@ -533,16 +634,33 @@ public struct ActivePresenceScheduleState: Codable, Sendable, Equatable {
     public var presetID: UUID
     public var activationKey: String
     public var mode: PresenceScheduleMode
+    public var restorePolicy: PresenceScheduleRestorePolicy
+    public var resetsElapsedTimeOnRestore: Bool
     public var previousPresence: AppliedPresencePayload?
     public var previousPresetID: UUID?
     public var startedAt: Date
     public var expectedEnd: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case ruleID
+        case presetID
+        case activationKey
+        case mode
+        case restorePolicy
+        case resetsElapsedTimeOnRestore
+        case previousPresence
+        case previousPresetID
+        case startedAt
+        case expectedEnd
+    }
 
     nonisolated public init(
         ruleID: UUID,
         presetID: UUID,
         activationKey: String,
         mode: PresenceScheduleMode,
+        restorePolicy: PresenceScheduleRestorePolicy = .previousPresence,
+        resetsElapsedTimeOnRestore: Bool = false,
         previousPresence: AppliedPresencePayload?,
         previousPresetID: UUID?,
         startedAt: Date,
@@ -552,10 +670,40 @@ public struct ActivePresenceScheduleState: Codable, Sendable, Equatable {
         self.presetID = presetID
         self.activationKey = activationKey
         self.mode = mode
+        self.restorePolicy = restorePolicy
+        self.resetsElapsedTimeOnRestore = resetsElapsedTimeOnRestore
         self.previousPresence = previousPresence
         self.previousPresetID = previousPresetID
         self.startedAt = startedAt
         self.expectedEnd = expectedEnd
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ruleID = try container.decode(UUID.self, forKey: .ruleID)
+        presetID = try container.decode(UUID.self, forKey: .presetID)
+        activationKey = try container.decode(String.self, forKey: .activationKey)
+        mode = try container.decode(PresenceScheduleMode.self, forKey: .mode)
+        restorePolicy = try container.decodeIfPresent(PresenceScheduleRestorePolicy.self, forKey: .restorePolicy) ?? .previousPresence
+        resetsElapsedTimeOnRestore = try container.decodeIfPresent(Bool.self, forKey: .resetsElapsedTimeOnRestore) ?? false
+        previousPresence = try container.decodeIfPresent(AppliedPresencePayload.self, forKey: .previousPresence)
+        previousPresetID = try container.decodeIfPresent(UUID.self, forKey: .previousPresetID)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        expectedEnd = try container.decodeIfPresent(Date.self, forKey: .expectedEnd)
+    }
+
+    nonisolated public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(ruleID, forKey: .ruleID)
+        try container.encode(presetID, forKey: .presetID)
+        try container.encode(activationKey, forKey: .activationKey)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(restorePolicy, forKey: .restorePolicy)
+        try container.encode(resetsElapsedTimeOnRestore, forKey: .resetsElapsedTimeOnRestore)
+        try container.encodeIfPresent(previousPresence, forKey: .previousPresence)
+        try container.encodeIfPresent(previousPresetID, forKey: .previousPresetID)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encodeIfPresent(expectedEnd, forKey: .expectedEnd)
     }
 }
 
@@ -838,11 +986,6 @@ public actor ConfigUtility {
         settings.presenceLiveActivityEnabled
     }
 
-    /// Returns whether restoring a Presence after a scheduled preset should restart elapsed time.
-    public func isScheduledPresetRestoreElapsedTimeResetEnabled() -> Bool {
-        settings.resetElapsedTimeOnScheduledPresetRestore
-    }
-
     @discardableResult
     /// Persists whether the app should keep its last published custom Presence authoritative.
     public func setPresencePriorityEnabled(_ enabled: Bool) async throws -> AppSettings {
@@ -855,14 +998,6 @@ public actor ConfigUtility {
     /// Persists whether the app should show the current Presence as an ActivityKit Live Activity.
     public func setPresenceLiveActivityEnabled(_ enabled: Bool) async throws -> AppSettings {
         settings.presenceLiveActivityEnabled = enabled
-        try persist()
-        return settings
-    }
-
-    @discardableResult
-    /// Persists whether scheduled preset restoration should restart elapsed time.
-    public func setScheduledPresetRestoreElapsedTimeResetEnabled(_ enabled: Bool) async throws -> AppSettings {
-        settings.resetElapsedTimeOnScheduledPresetRestore = enabled
         try persist()
         return settings
     }
@@ -1332,6 +1467,8 @@ public final class PresenceScheduleManager {
                     presetID: preset.id,
                     activationKey: match.activationKey,
                     mode: match.rule.mode,
+                    restorePolicy: match.rule.restorePolicy,
+                    resetsElapsedTimeOnRestore: match.rule.resetsElapsedTimeOnRestore,
                     previousPresence: previousPresence,
                     previousPresetID: previousPresetID,
                     startedAt: now,
@@ -1356,10 +1493,9 @@ public final class PresenceScheduleManager {
         }
 
         do {
-            if let previousPresence = active.previousPresence {
+            if active.restorePolicy == .previousPresence, let previousPresence = active.previousPresence {
                 var restoredPresence = previousPresence
-                if await ConfigUtility.shared.isScheduledPresetRestoreElapsedTimeResetEnabled(),
-                   restoredPresence.start != nil {
+                if active.resetsElapsedTimeOnRestore, restoredPresence.start != nil {
                     restoredPresence.start = now
                 }
                 try await DiscordSDKManager.shared.publishAppliedPresence(restoredPresence)

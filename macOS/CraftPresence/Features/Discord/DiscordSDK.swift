@@ -140,7 +140,7 @@ extension DiscordSDKManager {
         queue.sync {
             let isSameConfiguration = self.configuredApplicationId == normalizedApplicationId && self.wrapper != nil
             if isSameConfiguration {
-                shouldStartCallbackPump = self.callbackTimer == nil
+                shouldStartCallbackPump = autoAuthorize && self.callbackTimer == nil
                 shouldAuthorize = autoAuthorize && !self.isAuthorizationInFlightLocked && !(self.wrapper?.isAuthorized() ?? false)
                 return
             }
@@ -153,7 +153,7 @@ extension DiscordSDKManager {
             self.pendingAuthorizationCompletions.removeAll()
             self.lastConfigurationError = nil
             shouldResetUI = true
-            shouldStartCallbackPump = true
+            shouldStartCallbackPump = autoAuthorize
             shouldAuthorize = autoAuthorize
         }
 
@@ -186,6 +186,9 @@ extension DiscordSDKManager {
             guard self.wrapper != nil else {
                 completion?(.failure(self.configurationFailureLocked))
                 return
+            }
+            if self.callbackTimer == nil {
+                self.startCallbackPumpLocked()
             }
 
             let sessionID = self.sessionID
@@ -284,18 +287,27 @@ extension DiscordSDKManager {
                 // Copy the C++ string while the callback pointer is still valid.
                 let errorMessage = errorPtr.map { String(cString: $0) }
                 
-                DispatchQueue.main.async {
+                DiscordSDKManager.shared.queue.async {
                     if success {
-                        DiscordSDKManager.shared.authorizationStatus = .unauthorized
-                        DiscordSDKManager.shared.currentUser = nil
-                        DiscordSDKManager.shared.dashboardStatus = .unauthorized
-                        DiscordSDKManager.shared.lastErrorMessage = nil
-                        completion?(.success(()))
+                        DiscordSDKManager.shared.sessionID &+= 1
+                        DiscordSDKManager.shared.lifecycleState = .configured
+                        DiscordSDKManager.shared.pendingAuthorizationCompletions.removeAll()
+                        DiscordSDKManager.shared.stopCallbackPumpLocked()
+                        DispatchQueue.main.async {
+                            DiscordSDKManager.shared.authorizationStatus = .unauthorized
+                            DiscordSDKManager.shared.currentUser = nil
+                            DiscordSDKManager.shared.dashboardStatus = .unauthorized
+                            DiscordSDKManager.shared.lastErrorMessage = nil
+                            completion?(.success(()))
+                        }
                     } else {
                         let message = errorMessage ?? "Unknown error"
-                        DiscordSDKManager.shared.dashboardStatus = .failed
-                        DiscordSDKManager.shared.lastErrorMessage = message
-                        completion?(.failure(.sdk(message)))
+                        DiscordSDKManager.shared.lifecycleState = .failed
+                        DispatchQueue.main.async {
+                            DiscordSDKManager.shared.dashboardStatus = .failed
+                            DiscordSDKManager.shared.lastErrorMessage = message
+                            completion?(.failure(.sdk(message)))
+                        }
                     }
                 }
             }
@@ -803,20 +815,7 @@ private extension DiscordSDKManager {
     func startCallbackPump() {
         queue.async { [weak self] in
             guard let self else { return }
-            self.stopCallbackPumpLocked()
-            guard self.wrapper != nil else { return }
-            let timer = DispatchSource.makeTimerSource(queue: self.queue)
-            timer.schedule(deadline: .now(), repeating: .milliseconds(16), leeway: .milliseconds(8))
-            timer.setEventHandler { [weak self] in
-                guard let self else { return }
-                self.wrapper?.runCallbacks()
-            }
-            timer.resume()
-            self.callbackTimer = timer
-            if self.processActivity == nil {
-                let options: ProcessInfo.ActivityOptions = [.background, .idleSystemSleepDisabled]
-                self.processActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "Discord SDK callback pump")
-            }
+            self.startCallbackPumpLocked()
         }
     }
 
@@ -833,6 +832,23 @@ private extension DiscordSDKManager {
         if let activity = processActivity {
             ProcessInfo.processInfo.endActivity(activity)
             processActivity = nil
+        }
+    }
+
+    func startCallbackPumpLocked() {
+        stopCallbackPumpLocked()
+        guard wrapper != nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(16), leeway: .milliseconds(8))
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.wrapper?.runCallbacks()
+        }
+        timer.resume()
+        callbackTimer = timer
+        if processActivity == nil {
+            let options: ProcessInfo.ActivityOptions = [.background]
+            processActivity = ProcessInfo.processInfo.beginActivity(options: options, reason: "Discord SDK callback pump")
         }
     }
 }

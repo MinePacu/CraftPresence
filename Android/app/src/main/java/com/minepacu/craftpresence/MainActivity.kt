@@ -108,11 +108,11 @@ import com.minepacu.craftpresence.core.discord.DiscordAuthorizationStatus
 import com.minepacu.craftpresence.core.discord.DiscordDashboardStatus
 import com.minepacu.craftpresence.core.discord.DiscordSdkManager
 import com.minepacu.craftpresence.core.media.MusicPlatform
-import com.minepacu.craftpresence.core.notifications.ForegroundAppNotificationController
 import com.minepacu.craftpresence.core.permissions.PermissionService
 import com.minepacu.craftpresence.core.presence.AppleMusicPresenceManager
 import com.minepacu.craftpresence.core.presence.ProgramPresenceManager
 import com.minepacu.craftpresence.core.programs.ProgramDetector
+import com.minepacu.craftpresence.core.programs.ForegroundAppMonitorService
 import com.minepacu.craftpresence.ui.localization.LocalizedText
 import com.minepacu.craftpresence.ui.localization.LocalizedTextProvider
 import com.minepacu.craftpresence.ui.localization.rememberLocalizedText
@@ -174,6 +174,8 @@ private enum class SettingsPanel {
     PERMISSIONS,
 }
 
+private const val UI_DETECTOR_OWNER = "craftpresence-ui"
+
 private data class InstalledAppInfo(
     val label: String,
     val packageName: String,
@@ -188,7 +190,6 @@ private fun CraftPresenceApp() {
     val programPresence = remember { ProgramPresenceManager.getInstance(context) }
     val musicPresence = remember { AppleMusicPresenceManager.getInstance(context) }
     val detector = remember { ProgramDetector.getInstance(context) }
-    val foregroundAppNotification = remember { ForegroundAppNotificationController.getInstance(context) }
     val permissions = remember { PermissionService(context) }
 
     val settings by config.settings.collectAsState()
@@ -208,6 +209,10 @@ private fun CraftPresenceApp() {
     var showSystemApps by remember { mutableStateOf(true) }
     val foregroundDisplayEnabled = settings.showForegroundAppIndicator
     val foregroundNotificationEnabled = settings.showForegroundAppNotification
+    val shouldRunProgramPresence = settings.programPresenceEnabled &&
+        settings.packageNames.isNotEmpty() &&
+        settings.hasCompletedDiscordOnboarding
+    val shouldRunBackgroundForegroundMonitor = foregroundNotificationEnabled || shouldRunProgramPresence
     val text = rememberLocalizedText(settings.preferredLanguage)
     val scope = rememberCoroutineScope()
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -247,22 +252,15 @@ private fun CraftPresenceApp() {
         }
     }
 
-    LaunchedEffect(foregroundDisplayEnabled, foregroundNotificationEnabled, programState.isEnabled) {
-        if (foregroundDisplayEnabled || foregroundNotificationEnabled || programState.isEnabled) {
-            detector.start()
+    LaunchedEffect(foregroundDisplayEnabled, shouldRunBackgroundForegroundMonitor) {
+        if (foregroundDisplayEnabled && !shouldRunBackgroundForegroundMonitor) {
+            detector.start(UI_DETECTOR_OWNER)
         } else {
-            detector.stop()
+            detector.stop(UI_DETECTOR_OWNER)
         }
     }
 
-    LaunchedEffect(
-        settings.programPresenceEnabled,
-        settings.packageNames,
-        settings.hasCompletedDiscordOnboarding,
-    ) {
-        val shouldRunProgramPresence = settings.programPresenceEnabled &&
-            settings.packageNames.isNotEmpty() &&
-            settings.hasCompletedDiscordOnboarding
+    LaunchedEffect(shouldRunProgramPresence, programState.isEnabled) {
         if (shouldRunProgramPresence) {
             programPresence.startMonitoring()
         } else if (programState.isEnabled) {
@@ -270,17 +268,13 @@ private fun CraftPresenceApp() {
         }
     }
 
-    LaunchedEffect(foregroundNotificationEnabled) {
-        if (foregroundNotificationEnabled) {
-            foregroundAppNotification.start()
-        } else {
-            foregroundAppNotification.stop()
-        }
+    LaunchedEffect(shouldRunBackgroundForegroundMonitor) {
+        ForegroundAppMonitorService.setEnabled(context, shouldRunBackgroundForegroundMonitor)
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            foregroundAppNotification.stop()
+            detector.stop(UI_DETECTOR_OWNER)
         }
     }
 

@@ -16,7 +16,6 @@ struct SettingView: View {
     @EnvironmentObject private var localizationManager: LocalizationManager
     @State private var presencePriorityEnabled: Bool = true
     @State private var presenceLiveActivityEnabled: Bool = true
-    @State private var resetElapsedTimeOnScheduledRestore: Bool = false
 #if os(iOS)
     @State private var settingsExportDocument = SettingsBackupDocument()
     @State private var showingSettingsExporter = false
@@ -88,19 +87,6 @@ struct SettingView: View {
                     }
                     .help(t("settings.live_activity.help"))
                     .accessibilityIdentifier("settings.liveActivity")
-
-                    CPSectionDivider()
-                    CPSettingsRow(
-                        title: t("settings.scheduled_restore_elapsed_time.title"),
-                        subtitle: t("settings.scheduled_restore_elapsed_time.description"),
-                        systemImage: "clock",
-                        tint: .orange
-                    ) {
-                        Toggle(t("settings.scheduled_restore_elapsed_time.title"), isOn: $resetElapsedTimeOnScheduledRestore.onChange(scheduledRestoreElapsedTimeToggleChanged))
-                            .labelsHidden()
-                    }
-                    .help(t("settings.scheduled_restore_elapsed_time.help"))
-                    .accessibilityIdentifier("settings.scheduledRestoreElapsedTime")
                     #endif
                 }
 
@@ -218,7 +204,6 @@ struct SettingView: View {
                 Task {
                     presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
                     presenceLiveActivityEnabled = await ConfigUtility.shared.isPresenceLiveActivityEnabled()
-                    resetElapsedTimeOnScheduledRestore = await ConfigUtility.shared.isScheduledPresetRestoreElapsedTimeResetEnabled()
                 }
             }
         }
@@ -291,7 +276,6 @@ struct SettingView: View {
                     self.pendingSettingsImport = nil
                     presencePriorityEnabled = imported.presencePriorityEnabled
                     presenceLiveActivityEnabled = imported.presenceLiveActivityEnabled
-                    resetElapsedTimeOnScheduledRestore = imported.resetElapsedTimeOnScheduledPresetRestore
                     toastMessage = CPToastMessage(text: t("settings.import_export.import.success"))
                 }
             } catch {
@@ -366,17 +350,6 @@ struct SettingView: View {
                 }
             } catch {
                 presenceLiveActivityEnabled.toggle()
-            }
-        }
-    }
-
-    /// Saves whether scheduled preset restoration should restart elapsed time.
-    private func scheduledRestoreElapsedTimeToggleChanged(_ enabled: Bool) {
-        Task {
-            do {
-                _ = try await ConfigUtility.shared.setScheduledPresetRestoreElapsedTimeResetEnabled(enabled)
-            } catch {
-                resetElapsedTimeOnScheduledRestore.toggle()
             }
         }
     }
