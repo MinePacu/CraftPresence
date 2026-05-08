@@ -114,6 +114,71 @@ class ConfigUtility private constructor(context: Context) {
         newValue
     }
 
+    suspend fun presencePresets(): List<PresencePreset> = mutex.withLock {
+        loadLatest().presencePresets
+    }
+
+    suspend fun activePresencePreset(): PresencePreset? = mutex.withLock {
+        val current = loadLatest()
+        current.activePresencePresetID?.let { id ->
+            current.presencePresets.firstOrNull { it.id == id }
+        }
+    }
+
+    suspend fun upsertPresencePreset(preset: PresencePreset): PresencePreset = mutex.withLock {
+        val current = loadLatest()
+        val presets = if (current.presencePresets.any { it.id == preset.id }) {
+            current.presencePresets.map { existing ->
+                if (existing.id == preset.id) preset else existing
+            }
+        } else {
+            current.presencePresets + preset
+        }
+        val next = current.copy(presencePresets = presets)
+        persist(next)
+        _settings.value = next
+        preset
+    }
+
+    suspend fun removePresencePreset(id: String): AppSettings = mutex.withLock {
+        val current = loadLatest()
+        val next = current.copy(
+            presencePresets = current.presencePresets.filterNot { it.id == id },
+            activePresencePresetID = current.activePresencePresetID.takeIf { it != id },
+            appliedPresence = current.appliedPresence.takeUnless { it?.partyID == "preset:$id" },
+        )
+        persist(next)
+        _settings.value = next
+        next
+    }
+
+    suspend fun setActivePresencePresetID(id: String?): AppSettings = mutex.withLock {
+        val current = loadLatest()
+        val next = current.copy(activePresencePresetID = id)
+        persist(next)
+        _settings.value = next
+        next
+    }
+
+    suspend fun setAppliedPresence(payload: AppliedPresencePayload?): AppSettings = mutex.withLock {
+        val current = loadLatest()
+        val next = current.copy(appliedPresence = payload)
+        persist(next)
+        _settings.value = next
+        next
+    }
+
+    suspend fun restoreDefaultPresencePresets(): AppSettings = mutex.withLock {
+        val current = loadLatest()
+        val existingIDs = current.presencePresets.map { it.id }.toSet()
+        val missingDefaults = PresencePreset.defaults.filterNot { it.id in existingIDs }
+        if (missingDefaults.isEmpty()) return@withLock current
+        val next = current.copy(presencePresets = current.presencePresets + missingDefaults)
+        persist(next)
+        _settings.value = next
+        next
+    }
+
     suspend fun exportSettingsBackup(platform: String = CURRENT_BACKUP_PLATFORM): String = mutex.withLock {
         SettingsBackupFile(
             schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
@@ -193,7 +258,7 @@ class ConfigUtility private constructor(context: Context) {
         fun decodeSettingsBackup(raw: String): SettingsBackupFile = SettingsBackupFile.decode(raw)
 
         fun defaultSettingsBackupFilename(): String {
-            return "CraftPresence-Settings-${timestampForFilename()}.json"
+            return "CraftPresence-Settings-${timestampForFilename()}.craftpresence.json"
         }
 
         private fun iso8601Now(): String {

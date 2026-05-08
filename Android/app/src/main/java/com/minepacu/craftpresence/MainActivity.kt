@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -52,6 +55,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -80,6 +85,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -100,7 +106,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import com.discord.socialsdk.DiscordSocialSdkInit
 import com.minepacu.craftpresence.core.config.AppLanguage
 import com.minepacu.craftpresence.core.config.AppSettings
+import com.minepacu.craftpresence.core.config.AppliedPresencePayload
 import com.minepacu.craftpresence.core.config.ConfigUtility
+import com.minepacu.craftpresence.core.config.PresencePreset
 import com.minepacu.craftpresence.core.config.ProgramPresenceSettings
 import com.minepacu.craftpresence.core.discord.DiscordActivity
 import com.minepacu.craftpresence.core.discord.DiscordAppConfig
@@ -124,6 +132,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URL
 import java.nio.charset.Charset
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -292,45 +305,61 @@ private fun CraftPresenceApp() {
     }
 
     CompositionLocalProvider(LocalizedTextProvider provides text) {
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.background,
-            contentWindowInsets = WindowInsets(0.dp),
-            bottomBar = {
-                NavigationBar {
-                    AppTab.entries.forEach { tab ->
-                        val title = tabTitle(tab, text)
-                        NavigationBarItem(
-                            selected = selectedTab == tab,
-                            onClick = {
-                                selectedTab = tab
-                                if (tab == AppTab.SETTINGS) {
-                                    settingsPanel = SettingsPanel.MAIN
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    imageVector = tab.icon,
-                                    contentDescription = title,
-                                )
-                            },
-                            label = { Text(title) },
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val useNavigationRail = maxWidth >= 600.dp
+            val contentMaxWidth = if (useNavigationRail) 920.dp else maxWidth
+            val horizontalContentPadding = if (useNavigationRail) 24.dp else 18.dp
+            val verticalContentPadding = if (useNavigationRail) 24.dp else 18.dp
+            val selectTab: (AppTab) -> Unit = { tab ->
+                selectedTab = tab
+                if (tab == AppTab.SETTINGS) {
+                    settingsPanel = SettingsPanel.MAIN
+                }
+            }
+
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                contentWindowInsets = WindowInsets(0.dp),
+                bottomBar = {
+                    if (!useNavigationRail) {
+                        AppBottomNavigation(
+                            selectedTab = selectedTab,
+                            onSelectTab = selectTab,
                         )
                     }
-                }
-            },
-        ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(
-                start = 18.dp,
-                top = statusBarTopPadding + 18.dp,
-                end = 18.dp,
-                bottom = 18.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+                },
+            ) { innerPadding ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                ) {
+                    if (useNavigationRail) {
+                        AppNavigationRail(
+                            selectedTab = selectedTab,
+                            onSelectTab = selectTab,
+                            topPadding = statusBarTopPadding,
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth()
+                                .widthIn(max = contentMaxWidth),
+                            contentPadding = PaddingValues(
+                                start = horizontalContentPadding,
+                                top = statusBarTopPadding + verticalContentPadding,
+                                end = horizontalContentPadding,
+                                bottom = verticalContentPadding,
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
             item {
                 Header(
                     title = "CraftPresence",
@@ -394,6 +423,7 @@ private fun CraftPresenceApp() {
                             currentPackageName = foreground.packageName.orEmpty(),
                             currentAppName = foreground.appName.orEmpty(),
                             config = config,
+                            discord = discord,
                         )
                     }
                 }
@@ -578,9 +608,12 @@ private fun CraftPresenceApp() {
                         }
                     }
                 }
+                        }
+                    }
+                }
             }
         }
-    }
+        }
 
         if (showDiscordOnboarding) {
             DiscordOnboardingScreen(
@@ -598,6 +631,59 @@ private fun CraftPresenceApp() {
                     discordOnboardingSkippedForLaunch = true
                     showDiscordOnboarding = false
                 },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppBottomNavigation(
+    selectedTab: AppTab,
+    onSelectTab: (AppTab) -> Unit,
+) {
+    val text = LocalizedTextProvider.current
+    NavigationBar {
+        AppTab.entries.forEach { tab ->
+            val title = tabTitle(tab, text)
+            NavigationBarItem(
+                selected = selectedTab == tab,
+                onClick = { onSelectTab(tab) },
+                icon = {
+                    Icon(
+                        imageVector = tab.icon,
+                        contentDescription = title,
+                    )
+                },
+                label = { Text(title) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppNavigationRail(
+    selectedTab: AppTab,
+    onSelectTab: (AppTab) -> Unit,
+    topPadding: Dp,
+) {
+    val text = LocalizedTextProvider.current
+    NavigationRail(
+        modifier = Modifier
+            .fillMaxHeight()
+            .padding(top = topPadding),
+    ) {
+        AppTab.entries.forEach { tab ->
+            val title = tabTitle(tab, text)
+            NavigationRailItem(
+                selected = selectedTab == tab,
+                onClick = { onSelectTab(tab) },
+                icon = {
+                    Icon(
+                        imageVector = tab.icon,
+                        contentDescription = title,
+                    )
+                },
+                label = { Text(title) },
             )
         }
     }
@@ -831,6 +917,36 @@ private fun OverviewScreen(
             )
         }
 
+        InfoCard(text.actions) {
+            OverviewShortcutRow(
+                icon = Icons.Filled.SportsEsports,
+                title = text.tabDiscord,
+                detail = discordUser ?: dashboardStatusText(discordStatus, text),
+                onClick = onOpenDiscord,
+            )
+            HorizontalDivider()
+            OverviewShortcutRow(
+                icon = Icons.Filled.Apps,
+                title = text.registeredApps,
+                detail = text.countItems(settings.packageNames.size),
+                onClick = onOpenPrograms,
+            )
+            HorizontalDivider()
+            OverviewShortcutRow(
+                icon = Icons.Filled.Settings,
+                title = text.tabSettings,
+                detail = if (foregroundDisplayEnabled) text.showForegroundApp else text.setupHealthNeedsAttention,
+                onClick = onOpenSettings,
+            )
+            HorizontalDivider()
+            OverviewShortcutRow(
+                icon = Icons.Filled.Edit,
+                title = text.tabPresence,
+                detail = text.presenceCustomizerDescription,
+                onClick = onOpenPresence,
+            )
+        }
+
         InfoCard(text.actualPresence) {
             KeyValueRow(text.discordStatus, dashboardStatusText(discordStatus, text))
             if (!discordReady) {
@@ -900,6 +1016,45 @@ private fun OverviewScreen(
 
         if (!lastError.isNullOrBlank()) {
             WarningCard(title = text.lastError, message = lastError)
+        }
+    }
+}
+
+@Composable
+private fun OverviewShortcutRow(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.padding(10.dp).size(20.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -1490,10 +1645,28 @@ private fun PresenceScreen(
     currentPackageName: String,
     currentAppName: String,
     config: ConfigUtility,
+    discord: DiscordSdkManager,
 ) {
     val context = LocalContext.current
     val text = LocalizedTextProvider.current
     val scope = rememberCoroutineScope()
+    val activePreset = settings.activePresencePresetID?.let { activeID ->
+        settings.presencePresets.firstOrNull { it.id == activeID }
+    }
+    var customDraft by remember {
+        mutableStateOf(
+            activePreset ?: PresencePreset(
+                id = UUID.randomUUID().toString(),
+                title = text.customPresenceDefaultTitle,
+                details = "",
+                state = "",
+                isDefault = false,
+                updatedAt = iso8601Now(),
+            ),
+        )
+    }
+    var presetBeingEdited by remember { mutableStateOf<PresencePreset?>(null) }
+    var message by remember { mutableStateOf("") }
     var selectedPackage by remember(settings.packageNames) {
         mutableStateOf(
             currentPackageName
@@ -1503,11 +1676,32 @@ private fun PresenceScreen(
     }
     var draft by remember { mutableStateOf(ProgramPresenceSettings()) }
     var displayName by remember { mutableStateOf("") }
-    var message by remember { mutableStateOf("") }
     val selectedSettings = settings.programSettings[selectedPackage] ?: ProgramPresenceSettings()
     val selectedDisplayName = settings.appDisplayNames[selectedPackage]
         ?: selectedPackage.takeIf { it.isNotBlank() }?.let { appLabel(context, it) }
         ?: ""
+
+    fun publishPreset(preset: PresencePreset, activePresetID: String?) {
+        scope.launch {
+            val now = System.currentTimeMillis() / 1000L
+            val normalizedPreset = preset.normalizedForStorage()
+            runCatching {
+                discord.updateActivity(
+                    normalizedPreset.toDiscordActivity(now),
+                    DiscordPresenceSource.APP,
+                )
+                config.setAppliedPresence(AppliedPresencePayload.fromPreset(normalizedPreset, now))
+                config.setActivePresencePresetID(activePresetID)
+            }.onSuccess {
+                if (activePresetID != null) {
+                    customDraft = normalizedPreset
+                }
+                message = text.presetPublished(normalizedPreset.title)
+            }.onFailure {
+                message = it.message ?: text.discordConnectFailed
+            }
+        }
+    }
 
     LaunchedEffect(settings.packageNames, currentPackageName) {
         if (selectedPackage !in settings.packageNames) {
@@ -1522,10 +1716,61 @@ private fun PresenceScreen(
         displayName = selectedDisplayName
     }
 
+    LaunchedEffect(activePreset?.id) {
+        if (activePreset != null) {
+            customDraft = activePreset
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         InfoCard(text.presenceCustomizer) {
-            Text(text.presenceCustomizerDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(6.dp))
+            Text(text.customPresenceDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            PresencePresetPreview(customDraft)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            PresencePresetEditorFields(
+                preset = customDraft,
+                onChange = { customDraft = it.copy(updatedAt = iso8601Now()) },
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { publishPreset(customDraft, null) },
+                    enabled = customDraft.title.isNotBlank(),
+                ) {
+                    Text(text.publishNow)
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val preset = customDraft.copy(
+                                id = customDraft.id.takeIf { existingID ->
+                                    settings.presencePresets.any { it.id == existingID && !it.isDefault }
+                                } ?: UUID.randomUUID().toString(),
+                                isDefault = false,
+                                updatedAt = iso8601Now(),
+                            ).normalizedForStorage()
+                            config.upsertPresencePreset(preset)
+                            customDraft = preset
+                            message = text.presetSaved
+                        }
+                    },
+                    enabled = customDraft.title.isNotBlank(),
+                ) {
+                    Text(text.saveAsPreset)
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            discord.clearActivity()
+                            config.setActivePresencePresetID(null)
+                            config.setAppliedPresence(null)
+                            message = text.presenceCleared
+                        }
+                    },
+                ) {
+                    Text(text.clearPresence)
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
             KeyValueRow(text.currentApp, currentAppName.ifBlank { text.notDetected })
             KeyValueRow(text.packageName, currentPackageName.ifBlank { text.notDetected })
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1542,6 +1787,55 @@ private fun PresenceScreen(
             }
             if (message.isNotBlank()) {
                 AssistChip(onClick = { message = "" }, label = { Text(message) })
+            }
+        }
+
+        InfoCard(text.presetLibrary) {
+            Text(text.presetLibraryDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        presetBeingEdited = PresencePreset(
+                            id = UUID.randomUUID().toString(),
+                            title = text.newPresetTitle,
+                            details = "",
+                            state = "",
+                            isDefault = false,
+                            updatedAt = iso8601Now(),
+                        )
+                    },
+                ) {
+                    Text(text.newPreset)
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            config.restoreDefaultPresencePresets()
+                            message = text.defaultPresetsRestored
+                        }
+                    },
+                ) {
+                    Text(text.restoreDefaultPresets)
+                }
+            }
+            if (settings.presencePresets.isEmpty()) {
+                Text(text.noPresets, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                settings.presencePresets.forEach { preset ->
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    PresencePresetRow(
+                        preset = preset,
+                        isActive = preset.id == settings.activePresencePresetID,
+                        onPublish = { publishPreset(preset, preset.id) },
+                        onEdit = { presetBeingEdited = preset },
+                        onDelete = {
+                            scope.launch {
+                                config.removePresencePreset(preset.id)
+                                message = text.presetDeleted
+                            }
+                        },
+                    )
+                }
             }
         }
 
@@ -1642,6 +1936,215 @@ private fun PresenceScreen(
             }
         }
     }
+
+    presetBeingEdited?.let { editing ->
+        PresencePresetEditorDialog(
+            initialPreset = editing,
+            onDismiss = { presetBeingEdited = null },
+            onSave = { preset ->
+                scope.launch {
+                    config.upsertPresencePreset(preset.normalizedForStorage())
+                    presetBeingEdited = null
+                    message = text.presetSaved
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun PresencePresetRow(
+    preset: PresencePreset,
+    isActive: Boolean,
+    onPublish: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val text = LocalizedTextProvider.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(preset.title.ifBlank { text.newPresetTitle }, fontWeight = FontWeight.SemiBold)
+                    if (isActive) {
+                        StatusChip(text.activePreset, Color(0xFF2E7D32))
+                    }
+                }
+                Text(
+                    preset.details.ifBlank { text.none },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    preset.state.ifBlank { text.none },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            StatusChip(activityTypeText(preset.activityType, text), MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onPublish) { Text(text.publish) }
+            OutlinedButton(onClick = onEdit) { Text(text.editPreset) }
+            OutlinedButton(onClick = onDelete, enabled = !preset.isDefault) { Text(text.delete) }
+        }
+    }
+}
+
+@Composable
+private fun PresencePresetEditorDialog(
+    initialPreset: PresencePreset,
+    onDismiss: () -> Unit,
+    onSave: (PresencePreset) -> Unit,
+) {
+    val text = LocalizedTextProvider.current
+    var draft by remember(initialPreset) { mutableStateOf(initialPreset) }
+    val scroll = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text.editPreset) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scroll),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PresencePresetPreview(draft)
+                PresencePresetEditorFields(
+                    preset = draft,
+                    onChange = { draft = it.copy(updatedAt = iso8601Now(), isDefault = initialPreset.isDefault) },
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(draft.copy(updatedAt = iso8601Now())) },
+                enabled = draft.title.isNotBlank(),
+            ) {
+                Text(text.save)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text.cancel)
+            }
+        },
+    )
+}
+
+@Composable
+private fun PresencePresetEditorFields(
+    preset: PresencePreset,
+    onChange: (PresencePreset) -> Unit,
+) {
+    val text = LocalizedTextProvider.current
+    PresenceTextField(text.presetTitle, text.newPresetTitle, preset.title) {
+        onChange(preset.copy(title = it))
+    }
+    Text(text.activityType, fontWeight = FontWeight.SemiBold)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        DiscordActivity.ActivityType.entries.forEach { type ->
+            FilterChip(
+                selected = preset.activityType == type,
+                onClick = { onChange(preset.copy(activityType = type)) },
+                label = { Text(activityTypeText(type, text)) },
+            )
+        }
+    }
+    PresenceTextField(text.detailText, text.defaultDetailText, preset.details) {
+        onChange(preset.copy(details = it))
+    }
+    PresenceTextField(text.stateText, text.defaultStateText, preset.state) {
+        onChange(preset.copy(state = it))
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text.usesElapsedTime)
+        Switch(
+            checked = preset.usesElapsedTime,
+            onCheckedChange = { onChange(preset.copy(usesElapsedTime = it)) },
+        )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text.resetElapsedTimeOnPublish)
+        Switch(
+            checked = preset.resetsElapsedTimeOnPublish,
+            onCheckedChange = { onChange(preset.copy(resetsElapsedTimeOnPublish = it)) },
+            enabled = preset.usesElapsedTime,
+        )
+    }
+    PresenceTextField(text.largeImageKeyOrUrl, text.discordAssetKeyOrUrl, preset.largeImageKey) {
+        onChange(preset.copy(largeImageKey = it))
+    }
+    PresenceTextField(text.largeImageText, text.imageHoverText, preset.largeImageText) {
+        onChange(preset.copy(largeImageText = it))
+    }
+    PresenceTextField(text.smallImageKeyOrUrl, text.discordAssetKeyOrUrl, preset.smallImageKey) {
+        onChange(preset.copy(smallImageKey = it))
+    }
+    PresenceTextField(text.smallImageText, text.imageHoverText, preset.smallImageText) {
+        onChange(preset.copy(smallImageText = it))
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text.usesParty)
+        Switch(
+            checked = preset.usesParty,
+            onCheckedChange = { onChange(preset.copy(usesParty = it)) },
+        )
+    }
+    if (preset.usesParty) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = preset.partyCurrent.toString(),
+                onValueChange = { value ->
+                    onChange(preset.copy(partyCurrent = value.filter(Char::isDigit).toIntOrNull() ?: 0))
+                },
+                label = { Text(text.partyCurrent) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+            OutlinedTextField(
+                value = preset.partyMax.toString(),
+                onValueChange = { value ->
+                    onChange(preset.copy(partyMax = value.filter(Char::isDigit).toIntOrNull() ?: 0))
+                },
+                label = { Text(text.partyMax) },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PresencePresetPreview(preset: PresencePreset) {
+    DiscordPresencePreview(
+        appName = preset.title.ifBlank { LocalizedTextProvider.current.customPresenceDefaultTitle },
+        packageName = "",
+        settings = preset.toProgramPresenceSettings(),
+        windowTitle = LocalizedTextProvider.current.currentPresence,
+    )
 }
 
 @Composable
@@ -1678,7 +2181,7 @@ private fun DiscordPresencePreview(
     }
     val smallImageText = settings.smallImageText.ifBlank { settings.smallImageKey }
     val partyText = when {
-        settings.partyCurrent > 0 && settings.partyMax >= settings.partyCurrent -> "${settings.partyCurrent}/${settings.partyMax}"
+        settings.partyCurrent > 0 && settings.partyMax >= settings.partyCurrent -> "$state (${settings.partyCurrent} of ${settings.partyMax})"
         else -> ""
     }
     val discordCardColor = Color(0xFF314D3A)
@@ -1756,7 +2259,9 @@ private fun DiscordPresencePreview(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(resolvedAppName, color = discordTextColor, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(details, style = MaterialTheme.typography.bodySmall, color = discordTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(state, style = MaterialTheme.typography.bodySmall, color = discordMutedTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (partyText.isBlank()) {
+                        Text(state, style = MaterialTheme.typography.bodySmall, color = discordMutedTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                     if (largeImageText.isNotBlank()) {
                         Text(largeImageText, style = MaterialTheme.typography.labelSmall, color = discordMutedTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -1766,7 +2271,14 @@ private fun DiscordPresencePreview(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("00:00:01", style = MaterialTheme.typography.labelSmall, color = discordGreen, maxLines = 1)
                         if (partyText.isNotBlank()) {
-                            Text(partyText, style = MaterialTheme.typography.labelSmall, color = discordTextColor, maxLines = 1)
+                            Text(
+                                partyText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = discordTextColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
@@ -1813,6 +2325,40 @@ private fun renderPresencePreviewText(
     .replace("{package}", packageName)
     .replace("{title}", windowTitle)
     .trim()
+
+private fun PresencePreset.toProgramPresenceSettings(): ProgramPresenceSettings = ProgramPresenceSettings(
+    activityType = activityType,
+    presetID = id,
+    detailText = details,
+    stateText = state,
+    useAppIconForLargeImage = false,
+    largeImageKey = largeImageKey,
+    largeImageText = largeImageText,
+    smallImageKey = smallImageKey,
+    smallImageText = smallImageText,
+    resetElapsedTimeOnPresenceChange = resetsElapsedTimeOnPublish,
+    partyCurrent = if (usesParty) partyCurrent else 0,
+    partyMax = if (usesParty) partyMax else 0,
+)
+
+private fun PresencePreset.normalizedForStorage(): PresencePreset = copy(
+    title = title.trim().ifBlank { "Custom Presence" },
+    details = details.trim(),
+    state = state.trim(),
+    largeImageKey = largeImageKey.trim(),
+    largeImageText = largeImageText.trim(),
+    smallImageKey = smallImageKey.trim(),
+    smallImageText = smallImageText.trim(),
+    partyCurrent = partyCurrent.coerceAtLeast(0),
+    partyMax = partyMax.coerceAtLeast(0),
+    updatedAt = updatedAt.ifBlank { iso8601Now() },
+)
+
+private fun iso8601Now(): String {
+    return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }.format(Date())
+}
 
 @Composable
 private fun MusicScreen(
@@ -1928,6 +2474,33 @@ private fun MusicPlatformCard(
 }
 
 @Composable
+private fun SetupHealthCard(
+    title: String,
+    message: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    complete: Boolean,
+) {
+    val container = if (complete) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+    val content = if (complete) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = content)
+            Text(message, style = MaterialTheme.typography.bodyMedium, color = content)
+            if (actionLabel != null && onAction != null) {
+                Button(onClick = onAction) {
+                    Text(actionLabel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PermissionsScreen(permissions: PermissionService) {
     val context = LocalContext.current
     val text = LocalizedTextProvider.current
@@ -1944,11 +2517,13 @@ private fun PermissionsScreen(permissions: PermissionService) {
         !usageGranted -> PermissionSetupAction(
             title = text.usageAccess,
             detail = text.usageAccessDescription,
+            destination = text.usageAccessSettingsDestination,
             onOpen = { context.startActivity(permissions.usageAccessSettingsIntent()) },
         )
         !appNotificationGranted -> PermissionSetupAction(
             title = text.appNotificationPermission,
             detail = text.appNotificationPermissionDescription,
+            destination = text.appNotificationSettingsDestination,
             onOpen = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -1960,12 +2535,20 @@ private fun PermissionsScreen(permissions: PermissionService) {
         !notificationGranted -> PermissionSetupAction(
             title = text.notificationAccess,
             detail = text.notificationAccessDescription,
+            destination = text.notificationAccessSettingsDestination,
             onOpen = { context.startActivity(permissions.notificationListenerSettingsIntent()) },
         )
         else -> null
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        SetupHealthCard(
+            title = if (permissionAction == null) text.setupHealth else text.nextRequiredPermission,
+            message = permissionAction?.destination ?: text.permissionReadyMessage,
+            actionLabel = permissionAction?.let { text.openSettings },
+            onAction = permissionAction?.onOpen,
+            complete = permissionAction == null,
+        )
         PermissionSetupGuideCard(
             usageGranted = usageGranted,
             appNotificationGranted = appNotificationGranted,
@@ -2032,6 +2615,8 @@ private fun PermissionSetupGuideCard(
         } else {
             Text(action.title, fontWeight = FontWeight.SemiBold)
             Text(action.detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(action.destination, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text.permissionReturnHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Button(onClick = action.onOpen) {
                 Text(text.openSettings)
             }
@@ -2042,6 +2627,7 @@ private fun PermissionSetupGuideCard(
 private data class PermissionSetupAction(
     val title: String,
     val detail: String,
+    val destination: String,
     val onOpen: () -> Unit,
 )
 
@@ -2077,26 +2663,104 @@ private fun SettingsHomeScreen(
     onOpenPrograms: () -> Unit,
     onOpenPermissions: () -> Unit,
 ) {
+    val context = LocalContext.current
     val text = LocalizedTextProvider.current
+    val permissions = remember { PermissionService(context) }
+    val missingPermissionCount = listOf(
+        permissions.hasUsageAccess(),
+        permissions.hasPostNotificationsAccess(),
+        permissions.hasNotificationListenerAccess(),
+    ).count { !it }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        SetupHealthCard(
+            title = text.setupHealth,
+            message = if (missingPermissionCount == 0) text.setupHealthReady else text.setupHealthNeedsAttention,
+            actionLabel = if (missingPermissionCount == 0) null else text.continueSetup,
+            onAction = if (missingPermissionCount == 0) null else onOpenPermissions,
+            complete = missingPermissionCount == 0,
+        )
+        InfoCard(text.settingsDestinations) {
+            SettingsDestinationRow(
+                icon = Icons.Filled.SportsEsports,
+                title = text.tabDiscord,
+                description = text.discordSettingsDescription,
+                status = if (settings.hasCompletedDiscordOnboarding) text.configured else text.required,
+                statusTint = if (settings.hasCompletedDiscordOnboarding) Color(0xFF2E7D32) else Color(0xFFC62828),
+                onClick = onOpenDiscord,
+            )
+            HorizontalDivider()
+            SettingsDestinationRow(
+                icon = Icons.Filled.Apps,
+                title = text.tabPrograms,
+                description = text.trackedAppsSettingsDescription,
+                status = text.countItems(settings.packageNames.size),
+                statusTint = if (settings.packageNames.isNotEmpty()) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onOpenPrograms,
+            )
+            HorizontalDivider()
+            SettingsDestinationRow(
+                icon = Icons.Filled.Security,
+                title = text.tabPermissions,
+                description = text.permissionsSettingsDescription,
+                status = if (missingPermissionCount == 0) text.granted else text.settingsRequired,
+                statusTint = if (missingPermissionCount == 0) Color(0xFF2E7D32) else Color(0xFFC62828),
+                onClick = onOpenPermissions,
+            )
+            HorizontalDivider()
+            SettingsDestinationRow(
+                icon = Icons.Filled.FileUpload,
+                title = text.backupAndRestore,
+                description = text.backupAndRestoreDescription,
+                status = text.settingsImportExport,
+                statusTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = {},
+                enabled = false,
+            )
+        }
         SettingsScreen(settings = settings, config = config)
-        InfoCard(text.actions) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onOpenDiscord) {
-                    Icon(Icons.Filled.SportsEsports, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(text.tabDiscord)
-                }
-                OutlinedButton(onClick = onOpenPrograms) {
-                    Icon(Icons.Filled.Apps, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(text.tabPrograms)
-                }
-                OutlinedButton(onClick = onOpenPermissions) {
-                    Icon(Icons.Filled.Security, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(text.tabPermissions)
-                }
+    }
+}
+
+@Composable
+private fun SettingsDestinationRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    status: String,
+    statusTint: Color,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    val contentAlpha = if (enabled) 1f else 0.62f
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = contentAlpha),
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.padding(10.dp).size(20.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha))
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                )
+            }
+            StatusChip(status, statusTint.copy(alpha = contentAlpha))
+            if (enabled) {
+                Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

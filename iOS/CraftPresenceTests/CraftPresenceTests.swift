@@ -120,6 +120,42 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertNil(payload.end)
     }
 
+    func testDefaultPresencePresetsUseStableSharedIDs() {
+        let defaults = CustomPresencePreset.defaults
+
+        XCTAssertEqual(defaults.count, 5)
+        XCTAssertEqual(defaults.first?.id.uuidString, "00000000-0000-0000-0000-000000000001")
+        XCTAssertTrue(defaults.allSatisfy { $0.isDefault })
+    }
+
+    func testPresencePresetsSharedCodingKeyDecodesIntoExistingIOSModel() throws {
+        let json = """
+        {
+          "presencePresets": [
+            {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "title": "Focus",
+              "activityType": "Watching",
+              "details": "Deep work",
+              "state": "Writing",
+              "isDefault": true,
+              "updatedAt": "2026-05-08T00:00:00Z"
+            }
+          ],
+          "activePresencePresetID": "11111111-1111-1111-1111-111111111111"
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let settings = try decoder.decode(AppSettings.self, from: Data(json.utf8))
+
+        XCTAssertEqual(settings.customPresencePresets.first?.title, "Focus")
+        XCTAssertEqual(settings.customPresencePresets.first?.activityType, .watching)
+        XCTAssertTrue(settings.customPresencePresets.first?.isDefault == true)
+        XCTAssertEqual(settings.activeCustomPresencePresetID?.uuidString, "11111111-1111-1111-1111-111111111111")
+    }
+
     func testAppliedPresencePayloadCodableRoundTrip() throws {
         let payload = AppliedPresencePayload(
             name: "Apple Music",
@@ -178,7 +214,35 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertFalse(backup.settings.presencePriorityEnabled)
         XCTAssertTrue(backup.settings.resetElapsedTimeOnScheduledPresetRestore)
         XCTAssertEqual(backup.settings.customPresencePresets.first?.title, "Build")
+        XCTAssertEqual(backup.settings.customPresencePresets.first?.isDefault, false)
         XCTAssertTrue(backup.settings.presenceScheduleRules.first?.resetsElapsedTimeOnRestore == true)
+    }
+
+    func testSettingsBackupIncludesPlatformExtensionsAndImportSummary() throws {
+        var settings = AppSettings()
+        settings.bundleIDs = ["com.apple.dt.Xcode"]
+        settings.preferredLanguage = .english
+
+        let data = try ConfigUtility.encodeSettingsBackup(
+            settings: settings,
+            exportedAt: Date(timeIntervalSince1970: 1_000),
+            platform: "iOS",
+            platformExtensions: ["ios": "liveActivity=true"]
+        )
+        let backup = try ConfigUtility.decodeSettingsBackup(from: data)
+        let summary = backup.importSummary()
+
+        XCTAssertEqual(backup.platformExtensions, ["ios": "liveActivity=true"])
+        XCTAssertEqual(summary.platform, "iOS")
+        XCTAssertEqual(summary.presetCount, 5)
+        XCTAssertEqual(summary.trackedProgramCount, 1)
+        XCTAssertEqual(summary.ignoredPlatformExtensionKeys, ["ios"])
+    }
+
+    func testDefaultSettingsBackupFilenameUsesCraftPresenceExtension() {
+        let filename = ConfigUtility.defaultSettingsBackupFilename(now: Date(timeIntervalSince1970: 1_000))
+
+        XCTAssertTrue(filename.hasSuffix(".craftpresence.json"))
     }
 
     func testSettingsBackupMigratesLegacyScheduledRestoreElapsedTimeSettingToRules() throws {
@@ -333,6 +397,45 @@ final class CraftPresenceTests: XCTestCase {
 
         XCTAssertThrowsError(try ConfigUtility.decodeSettingsBackup(from: data)) { error in
             XCTAssertEqual(error as? SettingsBackupError, .scheduleReferencesMissingPreset(missingPresetID))
+        }
+    }
+
+    func testCustomPresencePresetReorderValidationRequiresSamePresetIDs() throws {
+        let first = CustomPresencePreset(
+            id: UUID(uuidString: "66666666-6666-6666-6666-666666666666")!,
+            title: "First",
+            activityType: .playing,
+            details: "First details",
+            state: "First state"
+        )
+        let second = CustomPresencePreset(
+            id: UUID(uuidString: "77777777-7777-7777-7777-777777777777")!,
+            title: "Second",
+            activityType: .playing,
+            details: "Second details",
+            state: "Second state"
+        )
+        let replacement = CustomPresencePreset(
+            id: UUID(uuidString: "88888888-8888-8888-8888-888888888888")!,
+            title: "Replacement",
+            activityType: .playing,
+            details: "Replacement details",
+            state: "Replacement state"
+        )
+
+        XCTAssertNoThrow(
+            try ConfigUtility.validateCustomPresencePresetReorder(
+                existing: [first, second],
+                reordered: [second, first]
+            )
+        )
+        XCTAssertThrowsError(
+            try ConfigUtility.validateCustomPresencePresetReorder(
+                existing: [first, second],
+                reordered: [second, replacement]
+            )
+        ) { error in
+            XCTAssertEqual(error as? ConfigUtilityError, .invalidPresetReorder)
         }
     }
 }

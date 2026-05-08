@@ -7,6 +7,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
     // 사용자 추가 프로그램의 bundleID 목록
     public var bundleIDs: [String] = []
     public var programSettings: [String: ProgramPresenceSettings] = [:]
+    public var presencePresets: [PresencePreset] = PresencePreset.defaults
+    public var activePresencePresetID: UUID?
+    public var appliedPresence: AppliedPresencePayload?
     public var preferredLanguage: AppLanguage = .system
     
     nonisolated init() { }
@@ -19,6 +22,11 @@ public struct AppSettings: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case bundleIDs
         case programSettings
+        case presencePresets
+        case customPresencePresets
+        case activePresencePresetID
+        case activeCustomPresencePresetID
+        case appliedPresence
         case preferredLanguage
     }
 
@@ -26,6 +34,12 @@ public struct AppSettings: Codable, Sendable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.bundleIDs = try container.decodeIfPresent([String].self, forKey: .bundleIDs) ?? []
         self.programSettings = try container.decodeIfPresent([String: ProgramPresenceSettings].self, forKey: .programSettings) ?? [:]
+        self.presencePresets = try container.decodeIfPresent([PresencePreset].self, forKey: .presencePresets)
+            ?? container.decodeIfPresent([PresencePreset].self, forKey: .customPresencePresets)
+            ?? PresencePreset.defaults
+        self.activePresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activePresencePresetID)
+            ?? container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
+        self.appliedPresence = try container.decodeIfPresent(AppliedPresencePayload.self, forKey: .appliedPresence)
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
     }
 
@@ -33,7 +47,91 @@ public struct AppSettings: Codable, Sendable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(bundleIDs, forKey: .bundleIDs)
         try container.encode(programSettings, forKey: .programSettings)
+        try container.encode(presencePresets, forKey: .presencePresets)
+        try container.encode(presencePresets, forKey: .customPresencePresets)
+        try container.encodeIfPresent(activePresencePresetID, forKey: .activePresencePresetID)
+        try container.encodeIfPresent(activePresencePresetID, forKey: .activeCustomPresencePresetID)
+        try container.encodeIfPresent(appliedPresence, forKey: .appliedPresence)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
+    }
+}
+
+/// Versioned JSON backup envelope used for cross-platform settings import and export.
+public struct SettingsBackupFile: Codable, Sendable, Equatable {
+    nonisolated public static let minimumSupportedSchemaVersion = 1
+    nonisolated public static let currentSchemaVersion = 1
+
+    public var schemaVersion: Int
+    public var appName: String
+    public var appVersion: String?
+    public var buildNumber: String?
+    public var exportedAt: Date
+    public var platform: String
+    public var settings: AppSettings
+    public var platformExtensions: [String: String]
+
+    nonisolated public init(
+        schemaVersion: Int = Self.currentSchemaVersion,
+        appName: String = "CraftPresence",
+        appVersion: String? = ConfigUtility.currentAppVersion,
+        buildNumber: String? = ConfigUtility.currentBuildNumber,
+        exportedAt: Date = Date(),
+        platform: String = ConfigUtility.currentBackupPlatform,
+        settings: AppSettings,
+        platformExtensions: [String: String] = [:]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.appName = appName
+        self.appVersion = appVersion
+        self.buildNumber = buildNumber
+        self.exportedAt = exportedAt
+        self.platform = platform
+        self.settings = settings
+        self.platformExtensions = platformExtensions
+    }
+
+    nonisolated public func importSummary() -> SettingsImportSummary {
+        SettingsImportSummary(
+            schemaVersion: schemaVersion,
+            platform: platform,
+            exportedAt: exportedAt,
+            presetCount: settings.presencePresets.count,
+            trackedProgramCount: settings.bundleIDs.count,
+            language: settings.preferredLanguage.rawValue,
+            ignoredPlatformExtensionKeys: platformExtensions.keys.sorted()
+        )
+    }
+}
+
+/// Platform-neutral summary that can be shown before replacing local settings.
+public struct SettingsImportSummary: Codable, Sendable, Equatable {
+    public var schemaVersion: Int
+    public var platform: String
+    public var exportedAt: Date
+    public var presetCount: Int
+    public var trackedProgramCount: Int
+    public var language: String
+    public var ignoredPlatformExtensionKeys: [String]
+}
+
+/// Validation failures that can happen before a settings backup is imported.
+public enum SettingsBackupError: Error, LocalizedError, Equatable {
+    case unsupportedSchemaVersion(Int)
+    case duplicatePresetID(UUID)
+    case missingActivePreset(UUID)
+    case duplicateBundleID(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedSchemaVersion(let version):
+            return "Unsupported settings backup schema version: \(version)."
+        case .duplicatePresetID(let id):
+            return "The settings backup contains a duplicate preset ID: \(id.uuidString)."
+        case .missingActivePreset(let id):
+            return "The settings backup references a missing active preset ID: \(id.uuidString)."
+        case .duplicateBundleID(let id):
+            return "The settings backup contains a duplicate bundle ID: \(id)."
+        }
     }
 }
 
@@ -57,6 +155,30 @@ public struct ProgramPresenceSettings: Codable, Sendable, Equatable {
         case competing = "Competing"
 
         public var id: String { rawValue }
+
+        nonisolated public init(from decoder: Decoder) throws {
+            let value = try decoder.singleValueContainer().decode(String.self)
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "playing":
+                self = .playing
+            case "streaming":
+                self = .streaming
+            case "listening":
+                self = .listening
+            case "watching":
+                self = .watching
+            case "competing":
+                self = .competing
+            default:
+                self = .playing
+            }
+        }
+
+        nonisolated public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
+        }
+
         public var localizedLabel: String {
             switch self {
             case .playing:
@@ -74,6 +196,7 @@ public struct ProgramPresenceSettings: Codable, Sendable, Equatable {
     }
 
     public var activityType: ActivityType = .playing
+    public var presetID: UUID?
     public var detailText: String = ""
     public var stateText: String = ""
     public var useAppIconForLargeImage: Bool = true
@@ -85,6 +208,192 @@ public struct ProgramPresenceSettings: Codable, Sendable, Equatable {
     public var partyMax: Int = 1
 
     nonisolated public init() {}
+}
+
+/// Shared Rich Presence preset schema used by Android, iOS, and macOS.
+public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
+    public var id: UUID = UUID()
+    public var title: String = ""
+    public var activityType: ProgramPresenceSettings.ActivityType = .playing
+    public var details: String = ""
+    public var state: String = ""
+    public var largeImageKey: String = ""
+    public var largeImageText: String = ""
+    public var smallImageKey: String = ""
+    public var smallImageText: String = ""
+    public var usesElapsedTime: Bool = true
+    public var resetsElapsedTimeOnPublish: Bool = true
+    public var usesParty: Bool = false
+    public var partyCurrent: Int = 1
+    public var partyMax: Int = 1
+    public var isDefault: Bool = false
+    public var updatedAt: Date = defaultUpdatedAt
+
+    nonisolated public init() {}
+
+    nonisolated public init(
+        id: UUID = UUID(),
+        title: String,
+        activityType: ProgramPresenceSettings.ActivityType,
+        details: String,
+        state: String,
+        largeImageKey: String = "",
+        largeImageText: String = "",
+        smallImageKey: String = "",
+        smallImageText: String = "",
+        usesElapsedTime: Bool = true,
+        resetsElapsedTimeOnPublish: Bool = true,
+        usesParty: Bool = false,
+        partyCurrent: Int = 1,
+        partyMax: Int = 1,
+        isDefault: Bool = false,
+        updatedAt: Date = PresencePreset.defaultUpdatedAt
+    ) {
+        self.id = id
+        self.title = title
+        self.activityType = activityType
+        self.details = details
+        self.state = state
+        self.largeImageKey = largeImageKey
+        self.largeImageText = largeImageText
+        self.smallImageKey = smallImageKey
+        self.smallImageText = smallImageText
+        self.usesElapsedTime = usesElapsedTime
+        self.resetsElapsedTimeOnPublish = resetsElapsedTimeOnPublish
+        self.usesParty = usesParty
+        self.partyCurrent = partyCurrent
+        self.partyMax = partyMax
+        self.isDefault = isDefault
+        self.updatedAt = updatedAt
+    }
+
+    nonisolated public static let defaultUpdatedAt = Date(timeIntervalSince1970: 1_778_198_400)
+
+    nonisolated public static let defaults: [PresencePreset] = [
+        PresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            title: "Coding",
+            activityType: .playing,
+            details: "Building CraftPresence",
+            state: "Writing code",
+            largeImageKey: "code",
+            largeImageText: "Coding",
+            isDefault: true
+        ),
+        PresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            title: "Studying",
+            activityType: .watching,
+            details: "Studying",
+            state: "Reviewing notes",
+            largeImageKey: "study",
+            largeImageText: "Study session",
+            isDefault: true
+        ),
+        PresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work session",
+            state: "Staying focused",
+            largeImageKey: "focus",
+            largeImageText: "Focus mode",
+            isDefault: true
+        ),
+        PresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            title: "Gaming",
+            activityType: .playing,
+            details: "Gaming session",
+            state: "In game",
+            largeImageKey: "gaming",
+            largeImageText: "Gaming",
+            isDefault: true
+        ),
+        PresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!,
+            title: "Listening",
+            activityType: .listening,
+            details: "Listening to music",
+            state: "Now playing",
+            largeImageKey: "music",
+            largeImageText: "Music",
+            isDefault: true
+        )
+    ]
+}
+
+/// Discord Rich Presence payload last successfully applied by CraftPresence.
+public struct AppliedPresencePayload: Codable, Sendable, Equatable {
+    public var name: String = ""
+    public var state: String?
+    public var details: String?
+    public var largeImageKey: String?
+    public var largeImageText: String?
+    public var smallImageKey: String?
+    public var smallImageText: String?
+    public var partyID: String?
+    public var partyCurrent: Int?
+    public var partyMax: Int?
+    public var start: Date?
+    public var end: Date?
+    public var activityType: ProgramPresenceSettings.ActivityType = .playing
+
+    nonisolated public init(
+        name: String,
+        state: String? = nil,
+        details: String? = nil,
+        largeImageKey: String? = nil,
+        largeImageText: String? = nil,
+        smallImageKey: String? = nil,
+        smallImageText: String? = nil,
+        partyID: String? = nil,
+        partyCurrent: Int? = nil,
+        partyMax: Int? = nil,
+        start: Date? = nil,
+        end: Date? = nil,
+        activityType: ProgramPresenceSettings.ActivityType = .playing
+    ) {
+        self.name = Self.trimmed(name) ?? "CraftPresence"
+        self.state = Self.trimmed(state)
+        self.details = Self.trimmed(details)
+        self.largeImageKey = Self.trimmed(largeImageKey)
+        self.largeImageText = Self.trimmed(largeImageText)
+        self.smallImageKey = Self.trimmed(smallImageKey)
+        self.smallImageText = Self.trimmed(smallImageText)
+        self.partyID = Self.trimmed(partyID)
+        self.partyCurrent = partyCurrent
+        self.partyMax = partyMax
+        self.start = start
+        self.end = end
+        self.activityType = activityType
+    }
+
+    nonisolated public init(presencePreset preset: PresencePreset) {
+        let partyID = preset.usesParty && preset.partyCurrent > 0 && preset.partyMax >= preset.partyCurrent
+            ? "preset:\(preset.id.uuidString)"
+            : nil
+
+        self.init(
+            name: preset.title,
+            state: preset.state,
+            details: preset.details,
+            largeImageKey: preset.largeImageKey,
+            largeImageText: preset.largeImageText,
+            smallImageKey: preset.smallImageKey,
+            smallImageText: preset.smallImageText,
+            partyID: partyID,
+            partyCurrent: partyID == nil ? nil : preset.partyCurrent,
+            partyMax: partyID == nil ? nil : preset.partyMax,
+            start: preset.usesElapsedTime ? Date() : nil,
+            activityType: preset.activityType
+        )
+    }
+
+    nonisolated private static func trimmed(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == true ? nil : trimmed
+    }
 }
 
 // MARK: - Config Utility (Actor for thread-safety)
@@ -116,6 +425,136 @@ public actor ConfigUtility {
     }
 
     // MARK: - Public API
+
+    /// Platform value written into exported settings backup metadata.
+    public nonisolated static var currentBackupPlatform: String { "macOS" }
+
+    /// App version written into exported settings backup metadata.
+    public nonisolated static var currentAppVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
+
+    /// Build number written into exported settings backup metadata.
+    public nonisolated static var currentBuildNumber: String? {
+        Bundle.main.object(forInfoDictionaryKey: kCFBundleVersionKey as String) as? String
+    }
+
+    /// Default user-facing filename for an exported settings backup.
+    public nonisolated static func defaultSettingsBackupFilename(now: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return "CraftPresence-Settings-\(formatter.string(from: now)).craftpresence.json"
+    }
+
+    /// Encodes the supplied settings into the versioned JSON backup format.
+    public nonisolated static func encodeSettingsBackup(
+        settings: AppSettings,
+        exportedAt: Date = Date(),
+        platform: String = ConfigUtility.currentBackupPlatform,
+        appVersion: String? = ConfigUtility.currentAppVersion,
+        buildNumber: String? = ConfigUtility.currentBuildNumber,
+        platformExtensions: [String: String] = [:]
+    ) throws -> Data {
+        let backup = SettingsBackupFile(
+            appVersion: appVersion,
+            buildNumber: buildNumber,
+            exportedAt: exportedAt,
+            platform: platform,
+            settings: sanitizedSettingsForBackup(settings),
+            platformExtensions: platformExtensions
+        )
+        return try backupJSONEncoder().encode(backup)
+    }
+
+    /// Decodes and validates a versioned JSON settings backup without applying it.
+    public nonisolated static func decodeSettingsBackup(from data: Data) throws -> SettingsBackupFile {
+        let decoder = backupJSONDecoder()
+
+        do {
+            let backup = try decoder.decode(SettingsBackupFile.self, from: data)
+            try validateSettingsBackup(backup)
+            return backup
+        } catch let error as SettingsBackupError {
+            throw error
+        } catch {
+            if let legacySettings = try? JSONDecoder().decode(AppSettings.self, from: data) {
+                let backup = SettingsBackupFile(
+                    appName: "CraftPresence",
+                    appVersion: nil,
+                    buildNumber: nil,
+                    exportedAt: Date(timeIntervalSince1970: 0),
+                    platform: "legacy",
+                    settings: sanitizedSettingsForBackup(legacySettings),
+                    platformExtensions: [:]
+                )
+                try validateSettingsBackup(backup)
+                return backup
+            }
+
+            throw error
+        }
+    }
+
+    /// Validates settings backup structure before import.
+    public nonisolated static func validateSettingsBackup(_ backup: SettingsBackupFile) throws {
+        guard backup.schemaVersion >= SettingsBackupFile.minimumSupportedSchemaVersion,
+              backup.schemaVersion <= SettingsBackupFile.currentSchemaVersion else {
+            throw SettingsBackupError.unsupportedSchemaVersion(backup.schemaVersion)
+        }
+
+        let bundleIDs = backup.settings.bundleIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let duplicateBundleID = bundleIDs.first(where: { id in !id.isEmpty && bundleIDs.filter { $0 == id }.count > 1 }) {
+            throw SettingsBackupError.duplicateBundleID(duplicateBundleID)
+        }
+
+        let presetIDs = backup.settings.presencePresets.map(\.id)
+        let uniquePresetIDs = Set(presetIDs)
+        if presetIDs.count != uniquePresetIDs.count,
+           let duplicateID = presetIDs.first(where: { id in presetIDs.filter { $0 == id }.count > 1 }) {
+            throw SettingsBackupError.duplicatePresetID(duplicateID)
+        }
+
+        if let activeID = backup.settings.activePresencePresetID,
+           !uniquePresetIDs.contains(activeID) {
+            throw SettingsBackupError.missingActivePreset(activeID)
+        }
+    }
+
+    /// Returns the data users can save as a `.craftpresence.json` settings backup file.
+    public func exportSettingsBackup(
+        exportedAt: Date = Date(),
+        platform: String = ConfigUtility.currentBackupPlatform,
+        appVersion: String? = ConfigUtility.currentAppVersion,
+        buildNumber: String? = ConfigUtility.currentBuildNumber,
+        platformExtensions: [String: String] = [:]
+    ) throws -> Data {
+        try ConfigUtility.encodeSettingsBackup(
+            settings: settings,
+            exportedAt: exportedAt,
+            platform: platform,
+            appVersion: appVersion,
+            buildNumber: buildNumber,
+            platformExtensions: platformExtensions
+        )
+    }
+
+    @discardableResult
+    /// Imports a decoded settings backup after clearing runtime-only state.
+    public func importSettingsBackup(_ backup: SettingsBackupFile) async throws -> AppSettings {
+        try ConfigUtility.validateSettingsBackup(backup)
+        settings = ConfigUtility.settingsForImport(from: backup)
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Decodes, validates, and imports a settings backup atomically.
+    public func importSettingsBackup(from data: Data) async throws -> AppSettings {
+        let backup = try ConfigUtility.decodeSettingsBackup(from: data)
+        return try await importSettingsBackup(backup)
+    }
 
     /// Returns the in-memory snapshot of the current app settings.
     public func currentSettings() -> AppSettings {
@@ -180,6 +619,86 @@ public actor ConfigUtility {
         return newValue
     }
 
+    // MARK: Presence Presets
+
+    /// Returns all saved Rich Presence presets.
+    public func presencePresets() -> [PresencePreset] {
+        settings.presencePresets
+    }
+
+    /// Returns the currently active Presence preset when it still exists in settings.
+    public func activePresencePreset() -> PresencePreset? {
+        guard let id = settings.activePresencePresetID else { return nil }
+        return settings.presencePresets.first { $0.id == id }
+    }
+
+    @discardableResult
+    /// Updates an existing preset or appends it when it is new.
+    public func upsertPresencePreset(_ preset: PresencePreset) async throws -> PresencePreset {
+        if let index = settings.presencePresets.firstIndex(where: { $0.id == preset.id }) {
+            settings.presencePresets[index] = preset
+        } else {
+            settings.presencePresets.append(preset)
+        }
+        try persist()
+        return preset
+    }
+
+    @discardableResult
+    /// Creates a copy of a preset with a new identifier so users can edit it independently.
+    public func duplicatePresencePreset(id: UUID, title: String? = nil) async throws -> PresencePreset? {
+        guard let source = settings.presencePresets.first(where: { $0.id == id }) else { return nil }
+        var copy = source
+        copy.id = UUID()
+        copy.title = title ?? source.title
+        copy.isDefault = false
+        copy.updatedAt = Date()
+        settings.presencePresets.append(copy)
+        try persist()
+        return copy
+    }
+
+    @discardableResult
+    /// Removes a preset and clears active state if that preset was published.
+    public func removePresencePreset(id: UUID) async throws -> AppSettings {
+        settings.presencePresets.removeAll { $0.id == id }
+        if settings.activePresencePresetID == id {
+            settings.activePresencePresetID = nil
+        }
+        if settings.appliedPresence?.partyID == "preset:\(id.uuidString)" {
+            settings.appliedPresence = nil
+        }
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Stores which preset is currently active.
+    public func setActivePresencePreset(id: UUID?) async throws -> AppSettings {
+        settings.activePresencePresetID = id
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Stores the latest app-owned Presence payload that was actually published to Discord.
+    public func setAppliedPresence(_ payload: AppliedPresencePayload?) async throws -> AppSettings {
+        settings.appliedPresence = payload
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Restores only missing built-in Presence presets while leaving user edits and deletions intact.
+    public func restoreDefaultPresencePresets() async throws -> AppSettings {
+        let existingIDs = Set(settings.presencePresets.map(\.id))
+        let missingDefaults = PresencePreset.defaults.filter { !existingIDs.contains($0.id) }
+        guard !missingDefaults.isEmpty else { return settings }
+        settings.presencePresets.append(contentsOf: missingDefaults)
+        try persist()
+        return settings
+    }
+
     // MARK: - Persistence
 
     private func persist() throws {
@@ -211,5 +730,34 @@ public actor ConfigUtility {
         let bundleID = (Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String) ?? "CraftPresence"
         return base.appendingPathComponent(bundleID, isDirectory: true)
                    .appendingPathComponent("settings.json")
+    }
+
+    private nonisolated static func settingsForImport(from backup: SettingsBackupFile) -> AppSettings {
+        switch backup.schemaVersion {
+        case 1:
+            return sanitizedSettingsForBackup(backup.settings)
+        default:
+            return sanitizedSettingsForBackup(backup.settings)
+        }
+    }
+
+    private nonisolated static func sanitizedSettingsForBackup(_ settings: AppSettings) -> AppSettings {
+        var sanitized = settings
+        sanitized.appliedPresence = nil
+        sanitized.activePresencePresetID = nil
+        return sanitized
+    }
+
+    private nonisolated static func backupJSONEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
+    }
+
+    private nonisolated static func backupJSONDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
     }
 }

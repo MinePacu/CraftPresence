@@ -1,5 +1,9 @@
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 
 /// Manual Rich Presence preset manager. Users choose exactly what Discord should display.
 struct ProgramsView: View {
@@ -10,46 +14,51 @@ struct ProgramsView: View {
 
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var presets: [CustomPresencePreset] = []
     @State private var activePresetID: UUID?
     @State private var scheduleRules: [PresenceScheduleRule] = []
     @State private var editingPreset: CustomPresencePreset?
     @State private var schedulingPreset: CustomPresencePreset?
-    @State private var isPresentingEditor = false
     @State private var toastMessage: CPToastMessage?
     @State private var errorMessage = ""
+    @State private var draggedPresetID: UUID?
+    @State private var didReorderPresets = false
+    @State private var presetRowFrames: [UUID: CGRect] = [:]
+    @State private var autoScrollTask: Task<Void, Never>?
+    @State private var autoScrollDirection: PresencePresetAutoScrollDirection?
+    @State private var autoScrollAnchorPresetID: UUID?
+    @State private var lastAutoScrollUpdate = Date.distantPast
 
     var body: some View {
-        CPSettingsPage {
-            CPHeaderCard(
-                title: t("presets.title"),
-                subtitle: t("presets.subtitle"),
-                systemImage: "slider.horizontal.3",
-                tint: .orange
-            )
+        ScrollViewReader { scrollProxy in
+            CPSettingsPage {
+                CPHeaderCard(
+                    title: t("presets.title"),
+                    subtitle: t("presets.subtitle"),
+                    systemImage: "slider.horizontal.3",
+                    tint: .orange
+                )
 
-            controlPanel
+                presetActions
 
-            if !errorMessage.isEmpty {
-                messagePanel(errorMessage)
+                if !errorMessage.isEmpty {
+                    messagePanel(errorMessage)
+                }
+
+                presetList(scrollProxy)
             }
-
-            presetList
         }
         .task {
             await reloadPresets()
             isLoadingPrograms = false
         }
-        .sheet(isPresented: $isPresentingEditor) {
+        .onReceive(NotificationCenter.default.publisher(for: ConfigUtility.settingsDidChangeNotification)) { _ in
+            Task { await reloadPresets() }
+        }
+        .sheet(item: $editingPreset) { preset in
             PresencePresetEditor(
-                initialPreset: editingPreset ?? CustomPresencePreset(
-                    title: t("presets.new_default_title"),
-                    activityType: .playing,
-                    details: "",
-                    state: ""
-                ),
+                initialPreset: preset,
                 onSave: { preset in
                     Task {
                         await savePreset(preset)
@@ -73,67 +82,31 @@ struct ProgramsView: View {
             )
             .environmentObject(localizationManager)
         }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if showsInlinePageHeader {
-                Label(t("presets.title"), systemImage: "slider.horizontal.3")
-                    .font(.title2.weight(.bold))
-                    .accessibilityIdentifier("programs.title")
-            }
-            if showsInlinePageHeader {
-                Text(t("presets.subtitle"))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text(t("presets.subtitle"))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("programs.title")
-            }
+        .onDisappear {
+            stopPresetAutoScroll()
         }
     }
 
-    private var showsInlinePageHeader: Bool {
-        horizontalSizeClass != .compact
-    }
-
-    private var controlPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(t("presets.manual_control"))
-                        .font(.headline)
-                    Text(t("presets.manual_control_description"))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 12)
-                Text(t(discordManager.dashboardStatus.localizationKey))
-                    .font(.footnote.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(statusColor.opacity(0.14), in: Capsule())
-                    .foregroundStyle(statusColor)
-            }
-
+    private var presetActions: some View {
+        HStack {
+            Spacer(minLength: 0)
             Button {
-                editingPreset = nil
-                isPresentingEditor = true
+                editingPreset = CustomPresencePreset(
+                    title: t("presets.new_default_title"),
+                    activityType: .playing,
+                    details: "",
+                    state: ""
+                )
             } label: {
                 Label(t("presets.create"), systemImage: "plus.circle.fill")
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("programs.add")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .trailing)
     }
 
-    private var presetList: some View {
+    private func presetList(_ scrollProxy: ScrollViewProxy) -> some View {
         Group {
             if presets.isEmpty {
                 ContentUnavailableView(
@@ -148,33 +121,53 @@ struct ProgramsView: View {
                             preset: preset,
                             isActive: preset.id == activePresetID,
                             scheduleRules: scheduleRulesByPresetID[preset.id] ?? [],
+                            onReorderStarted: {
+                                draggedPresetID = preset.id
+                            },
                             onPublish: { Task { await publish(preset) } },
                             onEdit: {
                                 editingPreset = preset
-                                isPresentingEditor = true
                             },
                             onSchedule: {
                                 schedulingPreset = preset
                             },
                             onDelete: { Task { await deletePreset(preset) } }
                         )
+                        .id(preset.id)
                         .accessibilityIdentifier("programs.row.\(preset.id.uuidString)")
+                        .background(
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: PresencePresetRowFramePreferenceKey.self,
+                                    value: [preset.id: geometry.frame(in: .global)]
+                                )
+                            }
+                        )
+                        .onDrop(
+                            of: [UTType.text],
+                            delegate: PresencePresetDropDelegate(
+                                targetPreset: preset,
+                                presets: $presets,
+                                draggedPresetID: $draggedPresetID,
+                                didReorderPresets: $didReorderPresets,
+                                onDropUpdated: {
+                                    handlePresetReorderDropUpdated(
+                                        targetPresetID: preset.id,
+                                        scrollProxy: scrollProxy
+                                    )
+                                },
+                                onDropCompleted: {
+                                    stopPresetAutoScroll()
+                                    Task { await persistPresetOrderIfNeeded() }
+                                }
+                            )
+                        )
                     }
                 }
+                .onPreferenceChange(PresencePresetRowFramePreferenceKey.self) { frames in
+                    presetRowFrames = frames
+                }
             }
-        }
-    }
-
-    private var statusColor: Color {
-        switch discordManager.dashboardStatus {
-        case .ready:
-            return .green
-        case .configured, .authorizing, .connecting:
-            return .orange
-        case .failed, .unauthorized:
-            return .red
-        case .notConfigured:
-            return .secondary
         }
     }
 
@@ -193,6 +186,16 @@ struct ProgramsView: View {
 
     private var scheduleRulesByPresetID: [UUID: [PresenceScheduleRule]] {
         Dictionary(grouping: scheduleRules, by: \.presetID)
+    }
+
+    private var visibleScreenBounds: CGRect {
+        #if os(iOS)
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.screen.bounds }
+            .first ?? CGRect(x: 0, y: 0, width: 0, height: 1_000)
+        #else
+        CGRect(x: 0, y: 0, width: 0, height: 1_000)
+        #endif
     }
 
     @MainActor
@@ -222,6 +225,24 @@ struct ProgramsView: View {
             await reloadPresets()
             showToast(t("presets.deleted"))
         } catch {
+            showError(error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func persistPresetOrderIfNeeded() async {
+        defer {
+            draggedPresetID = nil
+        }
+        guard didReorderPresets else { return }
+
+        do {
+            _ = try await ConfigUtility.shared.setCustomPresencePresets(presets)
+            didReorderPresets = false
+            await reloadPresets()
+        } catch {
+            didReorderPresets = false
+            await reloadPresets()
             showError(error.localizedDescription)
         }
     }
@@ -300,6 +321,94 @@ struct ProgramsView: View {
         errorMessage = message
     }
 
+    @MainActor
+    private func handlePresetReorderDropUpdated(
+        targetPresetID: UUID,
+        scrollProxy: ScrollViewProxy
+    ) {
+        guard draggedPresetID != nil,
+              let frame = presetRowFrames[targetPresetID] else {
+            stopPresetAutoScroll()
+            return
+        }
+
+        let edgeThreshold: CGFloat = 96
+        let screenBounds = visibleScreenBounds
+        if frame.minY < screenBounds.minY + edgeThreshold {
+            startPresetAutoScroll(direction: .up, anchorPresetID: targetPresetID, scrollProxy: scrollProxy)
+        } else if frame.maxY > screenBounds.maxY - edgeThreshold {
+            startPresetAutoScroll(direction: .down, anchorPresetID: targetPresetID, scrollProxy: scrollProxy)
+        } else {
+            stopPresetAutoScroll()
+        }
+    }
+
+    @MainActor
+    private func startPresetAutoScroll(
+        direction: PresencePresetAutoScrollDirection,
+        anchorPresetID: UUID,
+        scrollProxy: ScrollViewProxy
+    ) {
+        autoScrollDirection = direction
+        autoScrollAnchorPresetID = anchorPresetID
+        lastAutoScrollUpdate = Date()
+
+        guard autoScrollTask == nil else { return }
+        autoScrollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                guard !Task.isCancelled else { break }
+                guard draggedPresetID != nil,
+                      let direction = autoScrollDirection,
+                      let anchorPresetID = autoScrollAnchorPresetID,
+                      Date().timeIntervalSince(lastAutoScrollUpdate) < 0.8 else {
+                    break
+                }
+                scrollPresetListOneStep(
+                    from: anchorPresetID,
+                    direction: direction,
+                    scrollProxy: scrollProxy
+                )
+            }
+
+            autoScrollTask = nil
+            autoScrollDirection = nil
+            autoScrollAnchorPresetID = nil
+        }
+    }
+
+    @MainActor
+    private func scrollPresetListOneStep(
+        from anchorPresetID: UUID,
+        direction: PresencePresetAutoScrollDirection,
+        scrollProxy: ScrollViewProxy
+    ) {
+        guard let index = presets.firstIndex(where: { $0.id == anchorPresetID }) else { return }
+
+        let targetIndex: Int
+        switch direction {
+        case .up:
+            targetIndex = max(presets.startIndex, index - 1)
+        case .down:
+            targetIndex = min(presets.index(before: presets.endIndex), index + 1)
+        }
+
+        guard targetIndex != index else { return }
+        let targetID = presets[targetIndex].id
+        autoScrollAnchorPresetID = targetID
+        withAnimation(.linear(duration: 0.18)) {
+            scrollProxy.scrollTo(targetID, anchor: direction.scrollAnchor)
+        }
+    }
+
+    @MainActor
+    private func stopPresetAutoScroll() {
+        autoScrollTask?.cancel()
+        autoScrollTask = nil
+        autoScrollDirection = nil
+        autoScrollAnchorPresetID = nil
+    }
+
     private func partyID(for preset: CustomPresencePreset) -> String? {
         preset.partyID
     }
@@ -317,10 +426,33 @@ struct ProgramsView: View {
     }
 }
 
+private enum PresencePresetAutoScrollDirection {
+    case up
+    case down
+
+    var scrollAnchor: UnitPoint {
+        switch self {
+        case .up:
+            return .top
+        case .down:
+            return .bottom
+        }
+    }
+}
+
+private struct PresencePresetRowFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] = [:]
+
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+    }
+}
+
 private struct PresencePresetRow: View {
     let preset: CustomPresencePreset
     let isActive: Bool
     let scheduleRules: [PresenceScheduleRule]
+    let onReorderStarted: () -> Void
     let onPublish: () -> Void
     let onEdit: () -> Void
     let onSchedule: () -> Void
@@ -346,6 +478,7 @@ private struct PresencePresetRow: View {
             HStack(alignment: .top, spacing: 14) {
                 icon
                 textBlock
+                reorderHandle
             }
 
             actionRow
@@ -359,6 +492,7 @@ private struct PresencePresetRow: View {
             textBlock
             Spacer(minLength: 16)
             actionRow
+            reorderHandle
         }
     }
 
@@ -392,11 +526,19 @@ private struct PresencePresetRow: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if !scheduleRules.isEmpty {
-                Label(scheduleSummary, systemImage: "calendar")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            if hasMetadataSummary {
+                HStack(spacing: 12) {
+                    if let partySummary {
+                        Label(partySummary, systemImage: "person.2.fill")
+                    }
+
+                    if !scheduleRules.isEmpty {
+                        Label(scheduleSummary, systemImage: "calendar")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -435,6 +577,19 @@ private struct PresencePresetRow: View {
         .labelStyle(.iconOnly)
     }
 
+    private var reorderHandle: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: 34, height: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel(t("presets.reorder"))
+            .onDrag {
+                onReorderStarted()
+                return NSItemProvider(object: preset.id.uuidString as NSString)
+            }
+    }
+
     private var icon: some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
             .fill(isActive ? Color.green.opacity(0.14) : Color.accentColor.opacity(0.12))
@@ -455,8 +610,55 @@ private struct PresencePresetRow: View {
         )
     }
 
+    private var partySummary: String? {
+        guard let current = preset.partyCurrentValue,
+              let max = preset.partyMaxValue else {
+            return nil
+        }
+        return String(format: t("presets.party.summary_format"), current, max)
+    }
+
+    private var hasMetadataSummary: Bool {
+        partySummary != nil || !scheduleRules.isEmpty
+    }
+
     private func t(_ key: String) -> String {
         localizationManager.string(key)
+    }
+}
+
+private struct PresencePresetDropDelegate: DropDelegate {
+    let targetPreset: CustomPresencePreset
+    @Binding var presets: [CustomPresencePreset]
+    @Binding var draggedPresetID: UUID?
+    @Binding var didReorderPresets: Bool
+    let onDropUpdated: () -> Void
+    let onDropCompleted: () -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedPresetID,
+              draggedPresetID != targetPreset.id,
+              let fromIndex = presets.firstIndex(where: { $0.id == draggedPresetID }),
+              let toIndex = presets.firstIndex(where: { $0.id == targetPreset.id }) else {
+            return
+        }
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            let draggedPreset = presets.remove(at: fromIndex)
+            let insertionIndex = toIndex > fromIndex ? toIndex : toIndex
+            presets.insert(draggedPreset, at: insertionIndex)
+        }
+        didReorderPresets = true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        onDropUpdated()
+        return DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        onDropCompleted()
+        return true
     }
 }
 
@@ -1030,10 +1232,12 @@ struct CustomPresenceView: View {
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
 
-                    Text(previewStateText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if previewPartyText == nil {
+                        Text(previewStateText)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
 
                     if let largeAssetText = previewLargeAssetText {
                         Text(largeAssetText)
@@ -1049,24 +1253,32 @@ struct CustomPresenceView: View {
                             .lineLimit(1)
                     }
 
-                    if draft.normalized.usesElapsedTime {
-                        HStack(spacing: 4) {
-                            Image(systemName: "desktopcomputer")
-                                .font(.caption2.weight(.bold))
-                            Text(previewElapsedText)
-                                .font(.caption.monospacedDigit().weight(.semibold))
-                        }
-                        .foregroundStyle(.green)
-                        .lineLimit(1)
-                        .padding(.top, 1)
-                    }
-
-                    if let previewPartyText {
-                        Label(previewPartyText, systemImage: "person.2.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        if draft.normalized.usesElapsedTime {
+                            HStack(spacing: 3) {
+                                Image(systemName: "desktopcomputer")
+                                    .font(.caption2.weight(.bold))
+                                Text(previewElapsedText)
+                                    .font(.caption.monospacedDigit().weight(.semibold))
+                            }
+                            .foregroundStyle(.green)
                             .lineLimit(1)
+                        }
+
+                        if let previewPartyText {
+                            HStack(spacing: 3) {
+                                Image(systemName: "person.2.fill")
+                                    .font(.caption2.weight(.bold))
+                                Text(previewPartyText)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            .foregroundStyle(.primary)
+                            .layoutPriority(1)
+                        }
                     }
+                    .padding(.top, 1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1116,7 +1328,7 @@ struct CustomPresenceView: View {
               let max = draft.normalized.partyMaxValue else {
             return nil
         }
-        return "\(current)/\(max)"
+        return "\(previewStateText) (\(current) of \(max))"
     }
 
     private var previewElapsedText: String {

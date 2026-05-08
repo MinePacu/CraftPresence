@@ -10,6 +10,7 @@ data class SettingsBackupFile(
     val exportedAt: String,
     val platform: String,
     val settings: AppSettings,
+    val platformExtensions: JSONObject = JSONObject(),
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("schemaVersion", schemaVersion)
@@ -19,11 +20,22 @@ data class SettingsBackupFile(
         .put("exportedAt", exportedAt)
         .put("platform", platform)
         .put("settings", settings.toJson())
+        .put("platformExtensions", platformExtensions)
 
     fun settingsForImport(): AppSettings = when (schemaVersion) {
         CURRENT_SCHEMA_VERSION -> settings
         else -> settings
     }
+
+    fun importSummary(): SettingsImportSummary = SettingsImportSummary(
+        schemaVersion = schemaVersion,
+        platform = platform,
+        exportedAt = exportedAt,
+        presetCount = settings.presencePresets.size,
+        trackedProgramCount = settings.packageNames.size,
+        language = settings.preferredLanguage.value,
+        ignoredPlatformExtensionKeys = platformExtensions.keys().asSequence().toList().sorted(),
+    )
 
     companion object {
         const val MINIMUM_SUPPORTED_SCHEMA_VERSION = 1
@@ -47,6 +59,7 @@ data class SettingsBackupFile(
                     root.optJSONObject("settings")
                         ?: throw IllegalArgumentException("Settings backup is missing the settings object."),
                 ),
+                platformExtensions = root.optJSONObject("platformExtensions") ?: JSONObject(),
             )
             backup.validate()
             return backup
@@ -60,6 +73,7 @@ data class SettingsBackupFile(
             exportedAt = LEGACY_EXPORTED_AT,
             platform = "legacy",
             settings = settings,
+            platformExtensions = JSONObject(),
         )
     }
 
@@ -68,7 +82,7 @@ data class SettingsBackupFile(
             throw IllegalArgumentException("Unsupported settings backup schema version: $schemaVersion.")
         }
 
-        if (platform != "Android" && platform != "legacy") {
+        if (platform != "Android" && platform != "iOS" && platform != "macOS" && platform != "legacy") {
             throw IllegalArgumentException("Unsupported settings backup platform: $platform.")
         }
 
@@ -85,8 +99,32 @@ data class SettingsBackupFile(
         settings.programSettings.keys.firstOrNull { it.isBlank() }?.let {
             throw IllegalArgumentException("Settings backup contains an empty package key.")
         }
+
+        val presetIDs = settings.presencePresets.map { it.id.trim() }
+        val duplicatePreset = presetIDs
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .firstNotNullOfOrNull { (presetID, count) -> presetID.takeIf { count > 1 } }
+        if (duplicatePreset != null) {
+            throw IllegalArgumentException("Settings backup contains a duplicate Presence preset: $duplicatePreset.")
+        }
+
+        if (settings.activePresencePresetID != null && settings.activePresencePresetID !in presetIDs) {
+            throw IllegalArgumentException("Settings backup references a missing active Presence preset: ${settings.activePresencePresetID}.")
+        }
     }
 }
+
+data class SettingsImportSummary(
+    val schemaVersion: Int,
+    val platform: String,
+    val exportedAt: String,
+    val presetCount: Int,
+    val trackedProgramCount: Int,
+    val language: String,
+    val ignoredPlatformExtensionKeys: List<String>,
+)
 
 private fun JSONObject.optNullableString(name: String): String? {
     if (!has(name) || isNull(name)) return null

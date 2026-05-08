@@ -35,7 +35,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case lastCustomPresence
         case appliedCustomPresence
         case appliedPresence
+        case presencePresets
         case activeCustomPresencePresetID
+        case activePresencePresetID
         case presenceScheduleRules
         case activePresenceScheduleState
         case preferredLanguage
@@ -48,12 +50,15 @@ public struct AppSettings: Codable, Sendable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.bundleIDs = try container.decodeIfPresent([String].self, forKey: .bundleIDs) ?? []
         self.programSettings = try container.decodeIfPresent([String: ProgramPresenceSettings].self, forKey: .programSettings) ?? [:]
-        self.customPresencePresets = try container.decodeIfPresent([CustomPresencePreset].self, forKey: .customPresencePresets) ?? CustomPresencePreset.defaults
+        self.customPresencePresets = try container.decodeIfPresent([CustomPresencePreset].self, forKey: .customPresencePresets)
+            ?? container.decodeIfPresent([CustomPresencePreset].self, forKey: .presencePresets)
+            ?? CustomPresencePreset.defaults
         self.customPresenceDraft = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .customPresenceDraft)
         self.lastCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .lastCustomPresence)
         self.appliedCustomPresence = try container.decodeIfPresent(CustomPresencePreset.self, forKey: .appliedCustomPresence)
         self.appliedPresence = try container.decodeIfPresent(AppliedPresencePayload.self, forKey: .appliedPresence)
         self.activeCustomPresencePresetID = try container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
+            ?? container.decodeIfPresent(UUID.self, forKey: .activePresencePresetID)
         let legacyResetElapsedTimeOnScheduledPresetRestore = try container.decodeIfPresent(Bool.self, forKey: .resetElapsedTimeOnScheduledPresetRestore) ?? false
         self.resetElapsedTimeOnScheduledPresetRestore = legacyResetElapsedTimeOnScheduledPresetRestore
         self.presenceScheduleRules = (try container.decodeIfPresent([PresenceScheduleRule].self, forKey: .presenceScheduleRules) ?? [])
@@ -73,11 +78,13 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encode(bundleIDs, forKey: .bundleIDs)
         try container.encode(programSettings, forKey: .programSettings)
         try container.encode(customPresencePresets, forKey: .customPresencePresets)
+        try container.encode(customPresencePresets, forKey: .presencePresets)
         try container.encodeIfPresent(customPresenceDraft, forKey: .customPresenceDraft)
         try container.encodeIfPresent(lastCustomPresence, forKey: .lastCustomPresence)
         try container.encodeIfPresent(appliedCustomPresence, forKey: .appliedCustomPresence)
         try container.encodeIfPresent(appliedPresence, forKey: .appliedPresence)
         try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activeCustomPresencePresetID)
+        try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activePresencePresetID)
         try container.encode(presenceScheduleRules, forKey: .presenceScheduleRules)
         try container.encodeIfPresent(activePresenceScheduleState, forKey: .activePresenceScheduleState)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
@@ -99,6 +106,7 @@ public struct SettingsBackupFile: Codable, Sendable, Equatable {
     public var exportedAt: Date
     public var platform: String
     public var settings: AppSettings
+    public var platformExtensions: [String: String]
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion
@@ -108,6 +116,7 @@ public struct SettingsBackupFile: Codable, Sendable, Equatable {
         case exportedAt
         case platform
         case settings
+        case platformExtensions
     }
 
     nonisolated public init(
@@ -117,7 +126,8 @@ public struct SettingsBackupFile: Codable, Sendable, Equatable {
         buildNumber: String? = ConfigUtility.currentBuildNumber,
         exportedAt: Date = Date(),
         platform: String = ConfigUtility.currentBackupPlatform,
-        settings: AppSettings
+        settings: AppSettings,
+        platformExtensions: [String: String] = [:]
     ) {
         self.schemaVersion = schemaVersion
         self.appName = appName
@@ -126,6 +136,7 @@ public struct SettingsBackupFile: Codable, Sendable, Equatable {
         self.exportedAt = exportedAt
         self.platform = platform
         self.settings = settings
+        self.platformExtensions = platformExtensions
     }
 
     nonisolated public init(from decoder: Decoder) throws {
@@ -137,6 +148,7 @@ public struct SettingsBackupFile: Codable, Sendable, Equatable {
         self.exportedAt = try container.decode(Date.self, forKey: .exportedAt)
         self.platform = try container.decodeIfPresent(String.self, forKey: .platform) ?? "unknown"
         self.settings = try container.decode(AppSettings.self, forKey: .settings)
+        self.platformExtensions = try container.decodeIfPresent([String: String].self, forKey: .platformExtensions) ?? [:]
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -148,7 +160,31 @@ public struct SettingsBackupFile: Codable, Sendable, Equatable {
         try container.encode(exportedAt, forKey: .exportedAt)
         try container.encode(platform, forKey: .platform)
         try container.encode(settings, forKey: .settings)
+        try container.encode(platformExtensions, forKey: .platformExtensions)
     }
+
+    nonisolated public func importSummary() -> SettingsImportSummary {
+        SettingsImportSummary(
+            schemaVersion: schemaVersion,
+            platform: platform,
+            exportedAt: exportedAt,
+            presetCount: settings.customPresencePresets.count,
+            trackedProgramCount: settings.bundleIDs.count,
+            language: settings.preferredLanguage.rawValue,
+            ignoredPlatformExtensionKeys: platformExtensions.keys.sorted()
+        )
+    }
+}
+
+/// Platform-neutral summary that can be shown before replacing local settings.
+public struct SettingsImportSummary: Codable, Sendable, Equatable {
+    public var schemaVersion: Int
+    public var platform: String
+    public var exportedAt: Date
+    public var presetCount: Int
+    public var trackedProgramCount: Int
+    public var language: String
+    public var ignoredPlatformExtensionKeys: [String]
 }
 
 /// Validation failures that can happen before a settings backup is imported.
@@ -165,6 +201,17 @@ public enum SettingsBackupError: Error, LocalizedError, Equatable {
             return "The settings backup contains a duplicate preset ID: \(id.uuidString)."
         case .scheduleReferencesMissingPreset(let id):
             return "The settings backup contains a schedule for a missing preset ID: \(id.uuidString)."
+        }
+    }
+}
+
+public enum ConfigUtilityError: Error, LocalizedError, Equatable {
+    case invalidPresetReorder
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidPresetReorder:
+            return "Reordered presets must contain the same preset IDs."
         }
     }
 }
@@ -190,6 +237,30 @@ public struct ProgramPresenceSettings: Codable, Sendable, Equatable {
         case competing = "Competing"
 
         public var id: String { rawValue }
+
+        nonisolated public init(from decoder: Decoder) throws {
+            let value = try decoder.singleValueContainer().decode(String.self)
+            switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "playing":
+                self = .playing
+            case "streaming":
+                self = .streaming
+            case "listening":
+                self = .listening
+            case "watching":
+                self = .watching
+            case "competing":
+                self = .competing
+            default:
+                self = .playing
+            }
+        }
+
+        nonisolated public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
+        }
+
         public var localizedLabel: String {
             switch self {
             case .playing:
@@ -207,6 +278,7 @@ public struct ProgramPresenceSettings: Codable, Sendable, Equatable {
     }
 
     public var activityType: ActivityType = .playing
+    public var presetID: UUID?
     public var detailText: String = ""
     public var stateText: String = ""
     public var useAppIconForLargeImage: Bool = true
@@ -237,6 +309,8 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var usesParty: Bool = false
     public var partyCurrent: Int = 1
     public var partyMax: Int = 1
+    public var isDefault: Bool = false
+    public var updatedAt: Date = defaultUpdatedAt
 
     nonisolated public init() {}
 
@@ -256,6 +330,8 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         case usesParty
         case partyCurrent
         case partyMax
+        case isDefault
+        case updatedAt
     }
 
     nonisolated public init(from decoder: Decoder) throws {
@@ -275,6 +351,8 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.usesParty = try container.decodeIfPresent(Bool.self, forKey: .usesParty) ?? false
         self.partyCurrent = try container.decodeIfPresent(Int.self, forKey: .partyCurrent) ?? 1
         self.partyMax = try container.decodeIfPresent(Int.self, forKey: .partyMax) ?? 1
+        self.isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        self.updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Self.defaultUpdatedAt
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -294,6 +372,8 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         try container.encode(usesParty, forKey: .usesParty)
         try container.encode(partyCurrent, forKey: .partyCurrent)
         try container.encode(partyMax, forKey: .partyMax)
+        try container.encode(isDefault, forKey: .isDefault)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 
     nonisolated public init(
@@ -311,7 +391,9 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         resetsElapsedTimeOnPublish: Bool = true,
         usesParty: Bool = false,
         partyCurrent: Int = 1,
-        partyMax: Int = 1
+        partyMax: Int = 1,
+        isDefault: Bool = false,
+        updatedAt: Date = CustomPresencePreset.defaultUpdatedAt
     ) {
         self.id = id
         self.title = title
@@ -328,35 +410,67 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.usesParty = usesParty
         self.partyCurrent = partyCurrent
         self.partyMax = partyMax
+        self.isDefault = isDefault
+        self.updatedAt = updatedAt
     }
+
+    nonisolated public static let defaultUpdatedAt = Date(timeIntervalSince1970: 1_778_198_400)
 
     nonisolated public static let defaults: [CustomPresencePreset] = [
         CustomPresencePreset(
-            title: "Focus",
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            title: "Coding",
             activityType: .playing,
-            details: "Deep work session",
-            state: "Staying focused",
-            largeImageKey: "focus",
-            largeImageText: "Focus mode"
+            details: "Building CraftPresence",
+            state: "Writing code",
+            largeImageKey: "code",
+            largeImageText: "Coding",
+            isDefault: true
         ),
         CustomPresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
             title: "Studying",
             activityType: .watching,
             details: "Studying",
             state: "Reviewing notes",
             largeImageKey: "study",
-            largeImageText: "Study session"
+            largeImageText: "Study session",
+            isDefault: true
         ),
         CustomPresencePreset(
-            title: "Coding",
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+            title: "Focus",
             activityType: .playing,
-            details: "Building CraftPresence",
-            state: "Writing Swift",
-            largeImageKey: "code",
-            largeImageText: "Coding"
+            details: "Deep work session",
+            state: "Staying focused",
+            largeImageKey: "focus",
+            largeImageText: "Focus mode",
+            isDefault: true
+        ),
+        CustomPresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!,
+            title: "Gaming",
+            activityType: .playing,
+            details: "Gaming session",
+            state: "In game",
+            largeImageKey: "gaming",
+            largeImageText: "Gaming",
+            isDefault: true
+        ),
+        CustomPresencePreset(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!,
+            title: "Listening",
+            activityType: .listening,
+            details: "Listening to music",
+            state: "Now playing",
+            largeImageKey: "music",
+            largeImageText: "Music",
+            isDefault: true
         )
     ]
 }
+
+public typealias PresencePreset = CustomPresencePreset
 
 /// Discord Rich Presence payload last successfully applied by CraftPresence.
 public struct AppliedPresencePayload: Codable, Sendable, Equatable {
@@ -765,7 +879,7 @@ public actor ConfigUtility {
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
-        return "CraftPresence-Settings-\(formatter.string(from: now)).json"
+        return "CraftPresence-Settings-\(formatter.string(from: now)).craftpresence.json"
     }
 
     /// Encodes the supplied settings into the versioned JSON backup format.
@@ -774,14 +888,16 @@ public actor ConfigUtility {
         exportedAt: Date = Date(),
         platform: String = ConfigUtility.currentBackupPlatform,
         appVersion: String? = ConfigUtility.currentAppVersion,
-        buildNumber: String? = ConfigUtility.currentBuildNumber
+        buildNumber: String? = ConfigUtility.currentBuildNumber,
+        platformExtensions: [String: String] = [:]
     ) throws -> Data {
         let backup = SettingsBackupFile(
             appVersion: appVersion,
             buildNumber: buildNumber,
             exportedAt: exportedAt,
             platform: platform,
-            settings: sanitizedSettingsForBackup(settings)
+            settings: sanitizedSettingsForBackup(settings),
+            platformExtensions: platformExtensions
         )
         return try backupJSONEncoder().encode(backup)
     }
@@ -804,7 +920,8 @@ public actor ConfigUtility {
                     buildNumber: nil,
                     exportedAt: Date(timeIntervalSince1970: 0),
                     platform: "legacy",
-                    settings: sanitizedSettingsForBackup(legacySettings)
+                    settings: sanitizedSettingsForBackup(legacySettings),
+                    platformExtensions: [:]
                 )
                 try validateSettingsBackup(backup)
                 return backup
@@ -830,6 +947,17 @@ public actor ConfigUtility {
 
         for rule in backup.settings.presenceScheduleRules where !uniquePresetIDs.contains(rule.presetID) {
             throw SettingsBackupError.scheduleReferencesMissingPreset(rule.presetID)
+        }
+    }
+
+    public nonisolated static func validateCustomPresencePresetReorder(
+        existing: [CustomPresencePreset],
+        reordered: [CustomPresencePreset]
+    ) throws {
+        let existingIDs = existing.map(\.id.uuidString).sorted()
+        let reorderedIDs = reordered.map(\.id.uuidString).sorted()
+        guard existingIDs == reorderedIDs else {
+            throw ConfigUtilityError.invalidPresetReorder
         }
     }
 
@@ -1020,6 +1148,43 @@ public actor ConfigUtility {
         }
         try persist()
         return preset
+    }
+
+    @discardableResult
+    /// Persists a reordered preset list without changing preset identity.
+    public func setCustomPresencePresets(_ presets: [CustomPresencePreset]) async throws -> AppSettings {
+        try ConfigUtility.validateCustomPresencePresetReorder(
+            existing: settings.customPresencePresets,
+            reordered: presets
+        )
+        settings.customPresencePresets = presets
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Creates a copy of a preset with a new identifier so users can edit it independently.
+    public func duplicateCustomPresencePreset(id: UUID, title: String? = nil) async throws -> CustomPresencePreset? {
+        guard let source = settings.customPresencePresets.first(where: { $0.id == id }) else { return nil }
+        var copy = source
+        copy.id = UUID()
+        copy.title = title ?? source.title
+        copy.isDefault = false
+        copy.updatedAt = Date()
+        settings.customPresencePresets.append(copy)
+        try persist()
+        return copy
+    }
+
+    @discardableResult
+    /// Restores only missing built-in Presence presets while leaving user edits and deletions intact.
+    public func restoreDefaultPresencePresets() async throws -> AppSettings {
+        let existingIDs = Set(settings.customPresencePresets.map(\.id))
+        let missingDefaults = CustomPresencePreset.defaults.filter { !existingIDs.contains($0.id) }
+        guard !missingDefaults.isEmpty else { return settings }
+        settings.customPresencePresets.append(contentsOf: missingDefaults)
+        try persist()
+        return settings
     }
 
     @discardableResult

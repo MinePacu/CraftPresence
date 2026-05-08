@@ -209,17 +209,17 @@ private struct CPToastModifier: ViewModifier {
         content
             .task(id: message?.id) {
                 guard let current = message else {
-                    await CPToastWindowPresenter.shared.dismiss()
+                    CPToastWindowPresenter.shared.dismiss()
                     return
                 }
-                await CPToastWindowPresenter.shared.show(current)
+                CPToastWindowPresenter.shared.show(current)
                 try? await Task.sleep(nanoseconds: 2_600_000_000)
                 await MainActor.run {
                     if message?.id == current.id {
                         message = nil
                     }
                 }
-                await CPToastWindowPresenter.shared.dismiss(id: current.id)
+                CPToastWindowPresenter.shared.dismiss(id: current.id)
             }
         #else
         ZStack(alignment: .bottom) {

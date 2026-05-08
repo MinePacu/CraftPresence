@@ -2,6 +2,9 @@ package com.minepacu.craftpresence
 
 import com.minepacu.craftpresence.core.config.AppLanguage
 import com.minepacu.craftpresence.core.config.AppSettings
+import com.minepacu.craftpresence.core.config.AppliedPresencePayload
+import com.minepacu.craftpresence.core.config.ConfigUtility
+import com.minepacu.craftpresence.core.config.PresencePreset
 import com.minepacu.craftpresence.core.config.ProgramPresenceSettings
 import com.minepacu.craftpresence.core.config.SettingsBackupFile
 import com.minepacu.craftpresence.core.discord.DiscordActivity
@@ -9,6 +12,7 @@ import com.minepacu.craftpresence.core.discord.DiscordPresenceSource
 import com.minepacu.craftpresence.core.discord.DiscordState
 import com.minepacu.craftpresence.core.presence.ProgramPresenceSession
 import com.minepacu.craftpresence.core.presence.resolveProgramPresenceSession
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -128,13 +132,141 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun appSettingsDefaultsIncludeStableSharedPresencePresets() {
+        val settings = AppSettings()
+
+        assertEquals(5, settings.presencePresets.size)
+        assertEquals("00000000-0000-0000-0000-000000000001", settings.presencePresets.first().id)
+        assertTrue(settings.presencePresets.all { it.isDefault })
+    }
+
+    @Test
+    fun presencePresetRoundTripPreservesSharedSchemaFields() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            activityType = DiscordActivity.ActivityType.WATCHING,
+            details = "Deep work",
+            state = "Writing",
+            largeImageKey = "focus",
+            largeImageText = "Focus mode",
+            smallImageKey = "small",
+            smallImageText = "Small text",
+            usesElapsedTime = true,
+            resetsElapsedTimeOnPublish = false,
+            usesParty = true,
+            partyCurrent = 2,
+            partyMax = 5,
+            isDefault = true,
+            updatedAt = "2026-05-08T00:00:00.000Z",
+        )
+
+        val decoded = PresencePreset.fromJson(preset.toJson())
+
+        assertEquals(preset, decoded)
+    }
+
+    @Test
+    fun presencePresetBuildsDiscordActivityPayload() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            details = "Deep work",
+            state = "Writing",
+            usesParty = true,
+            partyCurrent = 2,
+            partyMax = 5,
+        )
+
+        val activity = preset.toDiscordActivity(nowEpochSeconds = 1_000L)
+
+        assertEquals("Focus", activity.name)
+        assertEquals("Deep work", activity.details)
+        assertEquals("Writing", activity.state)
+        assertEquals("preset:11111111-1111-1111-1111-111111111111", activity.partyId)
+        assertEquals(2, activity.partyCurrent)
+        assertEquals(5, activity.partyMax)
+        assertEquals(1_000L, activity.startEpochSeconds)
+    }
+
+    @Test
+    fun presencePresetOmitsDisabledElapsedTimeAndPartyPayload() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            details = "Deep work",
+            state = "Writing",
+            usesElapsedTime = false,
+            usesParty = false,
+            partyCurrent = 2,
+            partyMax = 5,
+        )
+
+        val activity = preset.toDiscordActivity(nowEpochSeconds = 1_000L)
+
+        assertEquals(null, activity.partyId)
+        assertEquals(null, activity.partyCurrent)
+        assertEquals(null, activity.partyMax)
+        assertEquals(null, activity.startEpochSeconds)
+    }
+
+    @Test
+    fun appliedPresenceRoundTripPreservesSharedPayloadFields() {
+        val payload = AppliedPresencePayload(
+            name = "Focus",
+            state = "Writing",
+            details = "Deep work",
+            partyID = "preset:11111111-1111-1111-1111-111111111111",
+            partyCurrent = 2,
+            partyMax = 5,
+            startEpochSeconds = 1_000L,
+            activityType = DiscordActivity.ActivityType.PLAYING,
+        )
+
+        val decoded = AppliedPresencePayload.fromJson(payload.toJson())
+
+        assertEquals(payload, decoded)
+    }
+
+    @Test
+    fun settingsBackupIncludesSharedExtensionEnvelopeAndSummary() {
+        val backup = SettingsBackupFile(
+            schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
+            appName = "CraftPresence",
+            appVersion = "1.0",
+            buildNumber = "1",
+            exportedAt = "2026-05-08T00:00:00.000Z",
+            platform = "Android",
+            settings = AppSettings(packageNames = listOf("com.example.app")),
+            platformExtensions = JSONObject().put("android", JSONObject().put("notification", true)),
+        )
+
+        val decoded = SettingsBackupFile.decode(backup.toJson().toString())
+        val summary = decoded.importSummary()
+
+        assertTrue(decoded.toJson().has("platformExtensions"))
+        assertEquals(listOf("android"), summary.ignoredPlatformExtensionKeys)
+        assertEquals(5, summary.presetCount)
+        assertEquals(1, summary.trackedProgramCount)
+    }
+
+    @Test
+    fun defaultBackupFilenameUsesCraftPresenceExtension() {
+        assertTrue(ConfigUtility.defaultSettingsBackupFilename().endsWith(".craftpresence.json"))
+    }
+
+    @Test
     fun settingsBackupRoundTripPreservesUserSettingsAcrossAppVersions() {
         val settings = AppSettings(
             packageNames = listOf("com.example.app"),
             appDisplayNames = mapOf("com.example.app" to "Example"),
             programSettings = mapOf(
-                "com.example.app" to ProgramPresenceSettings(detailText = "Using {app}"),
+                "com.example.app" to ProgramPresenceSettings(
+                    presetID = "00000000-0000-0000-0000-000000000001",
+                    detailText = "Using {app}",
+                ),
             ),
+            activePresencePresetID = "00000000-0000-0000-0000-000000000001",
             preferredLanguage = AppLanguage.ENGLISH,
             programPresenceEnabled = false,
             resetElapsedTimeOnScheduledPresetRestore = true,
@@ -189,7 +321,7 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun settingsBackupRejectsUnsupportedPlatform() {
+    fun settingsBackupAcceptsSupportedApplePlatforms() {
         val backup = SettingsBackupFile(
             schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
             appName = "CraftPresence",
@@ -198,6 +330,21 @@ class ExampleUnitTest {
             exportedAt = "2026-05-06T00:00:00.000Z",
             platform = "iOS",
             settings = AppSettings(),
+        )
+
+        assertEquals("iOS", SettingsBackupFile.decode(backup.toJson().toString()).platform)
+    }
+
+    @Test
+    fun settingsBackupRejectsMissingActivePresencePresetReference() {
+        val backup = SettingsBackupFile(
+            schemaVersion = SettingsBackupFile.CURRENT_SCHEMA_VERSION,
+            appName = "CraftPresence",
+            appVersion = "1.0",
+            buildNumber = "1",
+            exportedAt = "2026-05-06T00:00:00.000Z",
+            platform = "Android",
+            settings = AppSettings(activePresencePresetID = "missing"),
         )
 
         assertThrows(IllegalArgumentException::class.java) {

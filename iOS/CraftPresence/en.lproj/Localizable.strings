@@ -140,7 +140,9 @@
 "presets.active" = "Live";
 "presets.no_details" = "No details";
 "presets.no_state" = "No state message";
+"presets.party.summary_format" = "Party %d/%d";
 "presets.publish" = "Publish";
+"presets.reorder" = "Reorder preset";
 "presets.schedule.title" = "Schedules";
 "presets.schedule.add" = "Add Schedule";
 "presets.schedule.summary_format" = "%d schedules, %d enabled";

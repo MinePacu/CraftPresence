@@ -140,7 +140,9 @@
 "presets.active" = "게시 중";
 "presets.no_details" = "세부 내용 없음";
 "presets.no_state" = "상태 메시지 없음";
+"presets.party.summary_format" = "파티 %d/%d";
 "presets.publish" = "게시";
+"presets.reorder" = "프리셋 순서 변경";
 "presets.schedule.title" = "스케줄";
 "presets.schedule.add" = "스케줄 추가";
 "presets.schedule.summary_format" = "스케줄 %d개, 활성 %d개";

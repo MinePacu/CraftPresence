@@ -140,7 +140,9 @@
 "presets.active" = "公開中";
 "presets.no_details" = "詳細なし";
 "presets.no_state" = "状態メッセージなし";
+"presets.party.summary_format" = "パーティー %d/%d";
 "presets.publish" = "公開";
+"presets.reorder" = "プリセットを並べ替え";
 "presets.schedule.title" = "スケジュール";
 "presets.schedule.add" = "スケジュールを追加";
 "presets.schedule.summary_format" = "%d 件のスケジュール、有効 %d 件";
