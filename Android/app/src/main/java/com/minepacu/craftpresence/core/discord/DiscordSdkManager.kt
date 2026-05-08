@@ -31,6 +31,7 @@ class DiscordSdkManager(
     private var configuredApplicationId: String? = null
     private var sessionId: Long = 0
     private var lastActivity: DiscordActivity? = null
+    private var lastActivitySource: DiscordPresenceSource = DiscordPresenceSource.NONE
     private var priorityJob: Job? = null
     private val priorityOwners = mutableSetOf<String>()
 
@@ -57,6 +58,7 @@ class DiscordSdkManager(
                 sessionId += 1
                 configuredApplicationId = null
                 lastActivity = null
+                lastActivitySource = DiscordPresenceSource.NONE
             }
             stopActivityPriority()
             _state.value = DiscordState(
@@ -73,6 +75,7 @@ class DiscordSdkManager(
                 sessionId += 1
                 configuredApplicationId = normalizedId
                 lastActivity = null
+                lastActivitySource = DiscordPresenceSource.NONE
                 gateway.configure(normalizedId)
                 _state.value = DiscordState(dashboardStatus = DiscordDashboardStatus.CONFIGURED)
             }
@@ -125,7 +128,7 @@ class DiscordSdkManager(
             _state.value = DiscordState(
                 authorizationStatus = DiscordAuthorizationStatus.UNAUTHORIZED,
                 dashboardStatus = DiscordDashboardStatus.UNAUTHORIZED,
-                lastErrorMessage = "Discord authorization is required.",
+                lastErrorMessage = null,
             )
             throw DiscordSdkError.Unauthorized
         }
@@ -153,6 +156,7 @@ class DiscordSdkManager(
     suspend fun logout() {
         mutex.withLock {
             lastActivity = null
+            lastActivitySource = DiscordPresenceSource.NONE
         }
         tokenStore.clearRefreshToken(mutex.withLock { configuredApplicationId })
         stopActivityPriority()
@@ -176,23 +180,37 @@ class DiscordSdkManager(
     }
 
     /** Publishes a Rich Presence activity, authorizing silently first when possible. */
-    suspend fun updateActivity(activity: DiscordActivity) {
+    suspend fun updateActivity(
+        activity: DiscordActivity,
+        source: DiscordPresenceSource = DiscordPresenceSource.UNKNOWN,
+    ) {
         if (!gateway.isAuthorized()) {
             authorizeIfNeeded(allowInteractiveAuthorization = false)
         }
         gateway.updateActivity(activity)
         mutex.withLock {
             lastActivity = activity
+            lastActivitySource = source
         }
-        _state.value = _state.value.copy(dashboardStatus = DiscordDashboardStatus.READY)
+        _state.value = _state.value.copy(
+            dashboardStatus = DiscordDashboardStatus.READY,
+            currentActivity = activity,
+            currentActivitySource = source,
+            lastErrorMessage = null,
+        )
     }
 
     /** Clears the last local activity and removes the published Rich Presence from Discord. */
     suspend fun clearActivity() {
         mutex.withLock {
             lastActivity = null
+            lastActivitySource = DiscordPresenceSource.NONE
         }
         gateway.clearActivity()
+        _state.value = _state.value.copy(
+            currentActivity = null,
+            currentActivitySource = DiscordPresenceSource.NONE,
+        )
     }
 
     /** Keeps reapplying the last activity while an owner needs Rich Presence priority. */
@@ -202,9 +220,11 @@ class DiscordSdkManager(
             if (priorityJob?.isActive == true) return
             priorityJob = scope.launch {
                 while (isActive) {
-                    val activity = mutex.withLock { lastActivity }
-                    if (activity != null) {
-                        runCatching { updateActivity(activity) }
+                    val presence = mutex.withLock {
+                        lastActivity?.let { activity -> activity to lastActivitySource }
+                    }
+                    if (presence != null) {
+                        runCatching { updateActivity(presence.first, presence.second) }
                     }
                     delay(ACTIVITY_PRIORITY_INTERVAL_MS)
                 }

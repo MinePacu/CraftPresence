@@ -253,6 +253,7 @@
 "builtin.status.enabled" = "Enabled";
 "discord.onboarding.title" = "Connect Discord before you start";
 "discord.onboarding.subtitle" = "Authorize CraftPresence with your Discord desktop app once, then Rich Presence updates can be sent automatically.";
+"discord.onboarding.priority" = "Discord connection is the first setup step.";
 "discord.onboarding.continue" = "Continue";
 "discord.onboarding.skip" = "Skip for now";
 "discord.connection.title" = "Discord connection";

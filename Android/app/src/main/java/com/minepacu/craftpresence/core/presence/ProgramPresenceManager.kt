@@ -4,6 +4,7 @@ import android.content.Context
 import com.minepacu.craftpresence.core.config.ConfigUtility
 import com.minepacu.craftpresence.core.config.ProgramPresenceSettings
 import com.minepacu.craftpresence.core.discord.DiscordActivity
+import com.minepacu.craftpresence.core.discord.DiscordPresenceSource
 import com.minepacu.craftpresence.core.discord.DiscordSdkManager
 import com.minepacu.craftpresence.core.programs.ProgramDetector
 import com.minepacu.craftpresence.core.programs.ProgramUpdate
@@ -162,7 +163,7 @@ class ProgramPresenceManager private constructor(context: Context) {
         val activityKey = activity.toUpdateKey()
 
         runCatching {
-            discord.updateActivity(activity)
+            discord.updateActivity(activity, DiscordPresenceSource.APP)
         }.onSuccess {
             lastAppliedActivityKey = activityKey
             _state.value = ProgramPresenceState(

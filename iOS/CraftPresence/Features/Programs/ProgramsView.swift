@@ -119,32 +119,18 @@ struct ProgramsView: View {
                     .foregroundStyle(statusColor)
             }
 
-            LazyVGrid(columns: actionColumns, alignment: .leading, spacing: 10) {
-                Button {
-                    editingPreset = nil
-                    isPresentingEditor = true
-                } label: {
-                    Label(t("presets.create"), systemImage: "plus.circle.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("programs.add")
-
-                Button {
-                    Task { await clearPresence() }
-                } label: {
-                    Label(t("presets.clear_presence"), systemImage: "xmark.circle")
-                }
-                .buttonStyle(.bordered)
-                .disabled(activePresetID == nil)
+            Button {
+                editingPreset = nil
+                isPresentingEditor = true
+            } label: {
+                Label(t("presets.create"), systemImage: "plus.circle.fill")
             }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("programs.add")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    private var actionColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 148), spacing: 10)]
     }
 
     private var presetList: some View {
@@ -276,21 +262,6 @@ struct ProgramsView: View {
             )
             await reloadPresets()
             showToast(String(format: t("presets.published_format"), publishedPreset.title))
-        } catch {
-            showError(error.localizedDescription)
-        }
-    }
-
-    @MainActor
-    private func clearPresence() async {
-        do {
-            try await DiscordSDKManager.shared.clearAppliedPresence()
-            _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
-            _ = try await ConfigUtility.shared.setLastCustomPresence(nil)
-            _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
-            await PresenceLiveActivityController.shared.end()
-            await reloadPresets()
-            showToast(t("presets.cleared"))
         } catch {
             showError(error.localizedDescription)
         }
@@ -1014,7 +985,7 @@ struct CustomPresenceView: View {
     private var previewPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(previewActivityHeaderText)
+                Text(draft.normalized.activityType.rawValue)
                     .font(.caption.weight(.bold))
                     .lineLimit(1)
 
@@ -1037,15 +1008,46 @@ struct CustomPresenceView: View {
                         .imageScale(.large)
                 }
                 .frame(width: 48, height: 48)
+                .overlay(alignment: .bottomTrailing) {
+                    if previewSmallAssetText != nil {
+                        Circle()
+                            .fill(CPStyle.cardBackground)
+                            .frame(width: 18, height: 18)
+                            .overlay(
+                                Text(previewSmallAssetInitial)
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Color.primary)
+                            )
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(previewDetailsText)
+                    Text(previewTitleText)
                         .font(.subheadline.weight(.bold))
+                        .lineLimit(1)
+
+                    Text(previewDetailsText)
+                        .font(.caption.weight(.semibold))
                         .lineLimit(1)
 
                     Text(previewStateText)
                         .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
+
+                    if let largeAssetText = previewLargeAssetText {
+                        Text(largeAssetText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    if let smallAssetText = previewSmallAssetText {
+                        Text(smallAssetText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
 
                     if draft.normalized.usesElapsedTime {
                         HStack(spacing: 4) {
@@ -1057,6 +1059,13 @@ struct CustomPresenceView: View {
                         .foregroundStyle(.green)
                         .lineLimit(1)
                         .padding(.top, 1)
+                    }
+
+                    if let previewPartyText {
+                        Label(previewPartyText, systemImage: "person.2.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1086,6 +1095,28 @@ struct CustomPresenceView: View {
 
     private var previewAssetSymbol: String {
         draft.normalized.largeImageKey.nilIfEmpty == nil ? "questionmark" : draft.activityType.systemImage
+    }
+
+    private var previewLargeAssetText: String? {
+        draft.normalized.largeImageText.nilIfEmpty ?? draft.normalized.largeImageKey.nilIfEmpty
+    }
+
+    private var previewSmallAssetText: String? {
+        draft.normalized.smallImageText.nilIfEmpty ?? draft.normalized.smallImageKey.nilIfEmpty
+    }
+
+    private var previewSmallAssetInitial: String {
+        let source = draft.normalized.smallImageKey.nilIfEmpty ?? draft.normalized.smallImageText.nilIfEmpty ?? "S"
+        return String(source.prefix(1)).uppercased()
+    }
+
+    private var previewPartyText: String? {
+        guard draft.normalized.usesParty,
+              let current = draft.normalized.partyCurrentValue,
+              let max = draft.normalized.partyMaxValue else {
+            return nil
+        }
+        return "\(current)/\(max)"
     }
 
     private var previewElapsedText: String {

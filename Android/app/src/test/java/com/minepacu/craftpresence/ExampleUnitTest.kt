@@ -4,6 +4,9 @@ import com.minepacu.craftpresence.core.config.AppLanguage
 import com.minepacu.craftpresence.core.config.AppSettings
 import com.minepacu.craftpresence.core.config.ProgramPresenceSettings
 import com.minepacu.craftpresence.core.config.SettingsBackupFile
+import com.minepacu.craftpresence.core.discord.DiscordActivity
+import com.minepacu.craftpresence.core.discord.DiscordPresenceSource
+import com.minepacu.craftpresence.core.discord.DiscordState
 import com.minepacu.craftpresence.core.presence.ProgramPresenceSession
 import com.minepacu.craftpresence.core.presence.resolveProgramPresenceSession
 import org.junit.Assert.assertEquals
@@ -12,6 +15,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ExampleUnitTest {
+    @Test
+    fun discordStateExposesCurrentPresencePayloadAndSource() {
+        val activity = DiscordActivity(
+            name = "Example App",
+            state = "Editing",
+            details = "Using Example App",
+            largeImageKey = "example_large",
+            smallImageKey = "example_small",
+            startEpochSeconds = 1_000L,
+            activityType = DiscordActivity.ActivityType.PLAYING,
+        )
+
+        val state = DiscordState(
+            currentActivity = activity,
+            currentActivitySource = DiscordPresenceSource.APP,
+        )
+
+        assertEquals(activity, state.currentActivity)
+        assertEquals(DiscordPresenceSource.APP, state.currentActivitySource)
+    }
+
     @Test
     fun programPresenceSessionResetsWhenPackageChanges() {
         val previous = ProgramPresenceSession(

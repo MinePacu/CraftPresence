@@ -9,6 +9,7 @@ struct DiscordConnectionView: View {
 
     let mode: Mode
     let onFinish: (() -> Void)?
+    let onSkip: (() -> Void)?
 
     @ObservedObject private var discordManager = DiscordSDKManager.shared
     @EnvironmentObject private var localizationManager: LocalizationManager
@@ -16,12 +17,50 @@ struct DiscordConnectionView: View {
     @State private var isLoading: Bool = false
     @State private var actionMessage: String = ""
 
-    init(mode: Mode = .standalone, onFinish: (() -> Void)? = nil) {
+    init(mode: Mode = .standalone, onFinish: (() -> Void)? = nil, onSkip: (() -> Void)? = nil) {
         self.mode = mode
         self.onFinish = onFinish
+        self.onSkip = onSkip
     }
 
     var body: some View {
+        content
+            .task {
+                refreshUserIfPossible()
+            }
+            .onChange(of: discordManager.dashboardStatus) { _, newStatus in
+                guard mode == .onboarding, newStatus == .ready else { return }
+                onFinish?()
+            }
+            .onChange(of: discordManager.authorizationStatus) { _, newStatus in
+                guard mode == .onboarding, newStatus == .authorized else { return }
+                onFinish?()
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if mode == .onboarding {
+            onboardingContent
+        } else {
+            standaloneContent
+        }
+    }
+
+    private var onboardingContent: some View {
+        CPSettingsPage(maximumContentWidth: 640) {
+            onboardingHero
+            statusCard
+            requirementsCard
+            if let user = discordManager.currentUser {
+                accountCard(user: user)
+            }
+            messageContent
+            actionSection
+        }
+    }
+
+    private var standaloneContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
@@ -30,19 +69,7 @@ struct DiscordConnectionView: View {
                 if let user = discordManager.currentUser {
                     accountCard(user: user)
                 }
-                if shouldShowRecentError, let lastErrorMessage = discordManager.lastErrorMessage, !lastErrorMessage.isEmpty {
-                    messageCard(
-                        title: t("discord.connection.error_title"),
-                        message: lastErrorMessage,
-                        tint: .red
-                    )
-                } else if !actionMessage.isEmpty {
-                    messageCard(
-                        title: t("discord.connection.message_title"),
-                        message: actionMessage,
-                        tint: .secondary
-                    )
-                }
+                messageContent
                 actionSection
             }
             .padding(24)
@@ -51,9 +78,48 @@ struct DiscordConnectionView: View {
 #if os(macOS) || targetEnvironment(macCatalyst)
         .frame(minWidth: mode == .onboarding ? 540 : 480)
 #endif
-        .task {
-            refreshUserIfPossible()
+    }
+
+    @ViewBuilder
+    private var messageContent: some View {
+        if shouldShowRecentError, let lastErrorMessage = discordManager.lastErrorMessage, !lastErrorMessage.isEmpty {
+            messageCard(
+                title: t("discord.connection.error_title"),
+                message: lastErrorMessage,
+                tint: .red
+            )
+        } else if !actionMessage.isEmpty {
+            messageCard(
+                title: t("discord.connection.message_title"),
+                message: actionMessage,
+                tint: .secondary
+            )
         }
+    }
+
+    private var onboardingHero: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Image(systemName: "gamecontroller.fill")
+                .font(.system(size: 38, weight: .semibold))
+                .frame(width: 72, height: 72)
+                .background(.indigo.gradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .foregroundStyle(.white)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(t("discord.onboarding.title"))
+                    .font(.largeTitle.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(t("discord.onboarding.subtitle"))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Label(t("discord.onboarding.priority"), systemImage: "sparkles")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.indigo)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -137,7 +203,42 @@ struct DiscordConnectionView: View {
             Text(t("discord.connection.actions_title"))
                 .font(.headline)
 
-            HStack(spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                actionButtons
+                VStack(alignment: .leading, spacing: 12) {
+                    actionButtons
+                }
+            }
+
+            if mode == .onboarding {
+                Button(t("discord.onboarding.skip")) {
+                    (onSkip ?? onFinish)?()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            if mode == .onboarding {
+                Button(primaryActionTitle) {
+                    Task {
+                        await performPrimaryAction()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isLoading || primaryActionDisabled)
+
+                if discordManager.dashboardStatus == .ready {
+                    Button(t("discord.onboarding.continue")) {
+                        onFinish?()
+                    }
+                    .buttonStyle(.bordered)
+                }
+            } else {
                 Button(primaryActionTitle) {
                     Task {
                         await performPrimaryAction()
@@ -163,23 +264,6 @@ struct DiscordConnectionView: View {
                     .buttonStyle(.bordered)
                     .disabled(isLoading)
                 }
-            }
-
-            if mode == .onboarding {
-                HStack(spacing: 12) {
-                    if discordManager.dashboardStatus == .ready {
-                        Button(t("discord.onboarding.continue")) {
-                            onFinish?()
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-
-                    Button(t("discord.onboarding.skip")) {
-                        onFinish?()
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.top, 4)
             }
         }
     }

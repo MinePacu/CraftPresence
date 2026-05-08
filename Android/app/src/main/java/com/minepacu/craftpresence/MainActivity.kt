@@ -106,6 +106,7 @@ import com.minepacu.craftpresence.core.discord.DiscordActivity
 import com.minepacu.craftpresence.core.discord.DiscordAppConfig
 import com.minepacu.craftpresence.core.discord.DiscordAuthorizationStatus
 import com.minepacu.craftpresence.core.discord.DiscordDashboardStatus
+import com.minepacu.craftpresence.core.discord.DiscordPresenceSource
 import com.minepacu.craftpresence.core.discord.DiscordSdkManager
 import com.minepacu.craftpresence.core.media.MusicPlatform
 import com.minepacu.craftpresence.core.permissions.PermissionService
@@ -201,6 +202,7 @@ private fun CraftPresenceApp() {
     var selectedTab by remember { mutableStateOf(AppTab.OVERVIEW) }
     var settingsPanel by remember { mutableStateOf(SettingsPanel.MAIN) }
     var showDiscordOnboarding by remember { mutableStateOf(false) }
+    var discordOnboardingSkippedForLaunch by remember { mutableStateOf(false) }
     var automaticDiscordMessage by remember { mutableStateOf("") }
     var showInstalledAppPicker by remember { mutableStateOf(false) }
     var installedAppSearch by remember { mutableStateOf("") }
@@ -216,6 +218,10 @@ private fun CraftPresenceApp() {
     val text = rememberLocalizedText(settings.preferredLanguage)
     val scope = rememberCoroutineScope()
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val discordConnected = discordState.authorizationStatus == DiscordAuthorizationStatus.AUTHORIZED ||
+        discordState.dashboardStatus == DiscordDashboardStatus.READY
+    val discordConnectionInProgress = discordState.dashboardStatus == DiscordDashboardStatus.AUTHORIZING ||
+        discordState.dashboardStatus == DiscordDashboardStatus.CONNECTING
     val filteredInstalledApps = remember(installedApps, installedAppSearch, showSystemApps) {
         val query = installedAppSearch.trim()
         val visibleApps = if (showSystemApps) {
@@ -234,12 +240,6 @@ private fun CraftPresenceApp() {
     }
 
     LaunchedEffect(settings.hasCompletedDiscordOnboarding, text) {
-        if (!settings.hasCompletedDiscordOnboarding) {
-            showDiscordOnboarding = true
-            return@LaunchedEffect
-        }
-
-        showDiscordOnboarding = false
         runCatching {
             discord.configure(
                 autoAuthorize = true,
@@ -248,7 +248,20 @@ private fun CraftPresenceApp() {
         }.onSuccess {
             automaticDiscordMessage = ""
         }.onFailure {
-            automaticDiscordMessage = it.message ?: text.discordAutoConnectFailed
+            automaticDiscordMessage = if (settings.hasCompletedDiscordOnboarding) {
+                it.message ?: text.discordAutoConnectFailed
+            } else {
+                ""
+            }
+        }
+    }
+
+    LaunchedEffect(discordConnected, discordConnectionInProgress, discordOnboardingSkippedForLaunch) {
+        showDiscordOnboarding = !discordConnected &&
+            !discordConnectionInProgress &&
+            !discordOnboardingSkippedForLaunch
+        if (discordConnected) {
+            discordOnboardingSkippedForLaunch = false
         }
     }
 
@@ -346,6 +359,8 @@ private fun CraftPresenceApp() {
                             settings = settings,
                             discordStatus = discordState.dashboardStatus,
                             discordUser = discordState.currentUser?.username,
+                            currentActivity = discordState.currentActivity,
+                            currentActivitySource = discordState.currentActivitySource,
                             programEnabled = programState.isEnabled,
                             musicEnabled = musicState.isEnabled,
                             foregroundDisplayEnabled = foregroundDisplayEnabled,
@@ -433,6 +448,9 @@ private fun CraftPresenceApp() {
                                     username = discordState.currentUser?.username,
                                     userId = discordState.currentUser?.id,
                                     lastError = discordState.lastErrorMessage,
+                                    onDisconnect = {
+                                        discordOnboardingSkippedForLaunch = true
+                                    },
                                 )
                             }
                         }
@@ -565,14 +583,21 @@ private fun CraftPresenceApp() {
     }
 
         if (showDiscordOnboarding) {
-            DiscordOnboardingDialog(
+            DiscordOnboardingScreen(
                 context = context,
                 manager = discord,
                 config = config,
                 settings = settings,
                 status = discordState.dashboardStatus,
                 lastError = discordState.lastErrorMessage,
-                onDismiss = { showDiscordOnboarding = false },
+                onConnected = {
+                    discordOnboardingSkippedForLaunch = false
+                    showDiscordOnboarding = false
+                },
+                onSkip = {
+                    discordOnboardingSkippedForLaunch = true
+                    showDiscordOnboarding = false
+                },
             )
         }
     }
@@ -614,14 +639,15 @@ private fun ForegroundAppBanner(appName: String, packageName: String, isTracked:
 }
 
 @Composable
-private fun DiscordOnboardingDialog(
+private fun DiscordOnboardingScreen(
     context: Context,
     manager: DiscordSdkManager,
     config: ConfigUtility,
     settings: AppSettings,
     status: DiscordDashboardStatus,
     lastError: String?,
-    onDismiss: () -> Unit,
+    onConnected: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     val text = LocalizedTextProvider.current
     val scope = rememberCoroutineScope()
@@ -631,12 +657,53 @@ private fun DiscordOnboardingDialog(
         DiscordAppConfig.validationError(applicationId)?.message
     }
 
-    AlertDialog(
-        onDismissRequest = {},
-        title = { Text(text.discordConnect) },
-        text = {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    start = 22.dp,
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 28.dp,
+                    end = 22.dp,
+                    bottom = 28.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(text.discordOnboardingBody)
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.SportsEsports,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(18.dp)
+                            .size(42.dp),
+                    )
+                }
+                Text(
+                    text.discordOnboardingTitle,
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text.discordOnboardingBody,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text(text.discordOnboardingPriority) },
+                )
+            }
+
+            InfoCard(text.discordConnect) {
                 KeyValueRow(text.status, dashboardStatusText(status, text))
                 KeyValueRow("Application ID", maskApplicationId(applicationId).ifBlank { text.notConfiguredValue })
                 if (validationMessage != null) {
@@ -649,44 +716,42 @@ private fun DiscordOnboardingDialog(
                     Text(actionMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    scope.launch {
-                        actionMessage = text.discordAuthStart
-                        runCatching {
-                            manager.configure(autoAuthorize = false)
-                            manager.authorizeIfNeeded()
-                        }.onSuccess {
-                            config.setSettings(settings.copy(hasCompletedDiscordOnboarding = true))
-                            actionMessage = text.discordAccountConnected
-                            onDismiss()
-                        }.onFailure {
-                            actionMessage = it.message ?: text.discordConnectFailed
+
+            InfoCard(text.requirements) {
+                Text(text.discordRequirementInstalled)
+                Text(text.discordRequirementApplicationId)
+                Text(text.discordRequirementRichPresence)
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            actionMessage = text.discordAuthStart
+                            runCatching {
+                                manager.configure(autoAuthorize = false)
+                                manager.authorizeIfNeeded()
+                            }.onSuccess {
+                                config.setSettings(settings.copy(hasCompletedDiscordOnboarding = true))
+                                actionMessage = text.discordAccountConnected
+                                onConnected()
+                            }.onFailure {
+                                actionMessage = it.message ?: text.discordConnectFailed
+                            }
                         }
-                    }
-                },
-                enabled = status != DiscordDashboardStatus.AUTHORIZING &&
-                    status != DiscordDashboardStatus.CONNECTING &&
-                    validationMessage == null,
-            ) {
-                Text(text.connectAccount)
+                    },
+                    enabled = status != DiscordDashboardStatus.AUTHORIZING &&
+                        status != DiscordDashboardStatus.CONNECTING &&
+                        validationMessage == null,
+                ) {
+                    Text(text.connectAccount)
+                }
+                TextButton(onClick = onSkip) {
+                    Text(text.later)
+                }
             }
-        },
-        dismissButton = {
-            TextButton(
-                onClick = {
-                    scope.launch {
-                        config.setSettings(settings.copy(hasCompletedDiscordOnboarding = true))
-                        onDismiss()
-                    }
-                },
-            ) {
-                Text(text.later)
-            }
-        },
-    )
+        }
+    }
 }
 
 @Composable
@@ -694,6 +759,8 @@ private fun OverviewScreen(
     settings: AppSettings,
     discordStatus: DiscordDashboardStatus,
     discordUser: String?,
+    currentActivity: DiscordActivity?,
+    currentActivitySource: DiscordPresenceSource,
     programEnabled: Boolean,
     musicEnabled: Boolean,
     foregroundDisplayEnabled: Boolean,
@@ -762,6 +829,52 @@ private fun OverviewScreen(
                 detail = if (programEnabled) text.running else text.stopped,
                 complete = programEnabled,
             )
+        }
+
+        InfoCard(text.actualPresence) {
+            KeyValueRow(text.discordStatus, dashboardStatusText(discordStatus, text))
+            if (!discordReady) {
+                Text(text.presenceDisconnected, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else if (currentActivity == null) {
+                Text(text.inactivePresence, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text.presenceSource, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    StatusChip(
+                        text = presenceSourceText(currentActivitySource, text),
+                        tint = presenceSourceTint(currentActivitySource),
+                    )
+                }
+                KeyValueRow(text.activityType, activityTypeText(currentActivity.activityType, text))
+                KeyValueRow(text.displayName, optionalPresenceValue(currentActivity.name, text))
+                KeyValueRow(text.detailText, optionalPresenceValue(currentActivity.details, text))
+                KeyValueRow(text.stateText, optionalPresenceValue(currentActivity.state, text))
+                HorizontalDivider()
+                Text(text.timestamps, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                KeyValueRow(text.startTimestamp, timestampPresenceText(currentActivity.startEpochSeconds, text))
+                KeyValueRow(text.endTimestamp, timestampPresenceText(currentActivity.endEpochSeconds, text))
+                HorizontalDivider()
+                KeyValueRow(
+                    text.largeImage,
+                    imagePresenceText(
+                        key = currentActivity.largeImageKey,
+                        hoverText = currentActivity.largeImageText,
+                        text = text,
+                    ),
+                )
+                KeyValueRow(
+                    text.smallImage,
+                    imagePresenceText(
+                        key = currentActivity.smallImageKey,
+                        hoverText = currentActivity.smallImageText,
+                        text = text,
+                    ),
+                )
+            }
         }
 
         InfoCard(text.currentPresence) {
@@ -847,6 +960,7 @@ private fun DiscordScreen(
     username: String?,
     userId: String?,
     lastError: String?,
+    onDisconnect: () -> Unit,
 ) {
     val text = LocalizedTextProvider.current
     val scope = rememberCoroutineScope()
@@ -940,6 +1054,8 @@ private fun DiscordScreen(
                     onClick = {
                         scope.launch {
                             manager.logout()
+                            config.setSettings(settings.copy(hasCompletedDiscordOnboarding = false))
+                            onDisconnect()
                             message = text.discordDisconnected
                         }
                     },
@@ -1352,6 +1468,7 @@ private fun ProgramSettingsDialog(
                 PresenceTextField(text.smallImageText, text.imageHoverText, draft.smallImageText) {
                     draft = draft.copy(smallImageText = it)
                 }
+                PartySizeFields(settings = draft, onChange = { draft = it })
             }
         },
         confirmButton = {
@@ -1510,6 +1627,7 @@ private fun PresenceScreen(
             PresenceTextField(text.smallImageText, text.imageHoverText, draft.smallImageText) {
                 draft = draft.copy(smallImageText = it)
             }
+            PartySizeFields(settings = draft, onChange = { draft = it })
             Button(
                 onClick = {
                     scope.launch {
@@ -1556,75 +1674,132 @@ private fun DiscordPresencePreview(
         settings.useAppIconForLargeImage -> resolvedAppName
         settings.largeImageText.isNotBlank() -> settings.largeImageText
         settings.largeImageKey.isNotBlank() -> settings.largeImageKey
-        else -> text.largeImageKeyOrUrl
+        else -> ""
     }
     val smallImageText = settings.smallImageText.ifBlank { settings.smallImageKey }
+    val partyText = when {
+        settings.partyCurrent > 0 && settings.partyMax >= settings.partyCurrent -> "${settings.partyCurrent}/${settings.partyMax}"
+        else -> ""
+    }
+    val discordCardColor = Color(0xFF314D3A)
+    val discordTextColor = Color(0xFFF2F7F1)
+    val discordMutedTextColor = Color(0xFFC6D0C3)
+    val discordGreen = Color(0xFF7AD88F)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
+        color = discordCardColor,
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Box {
-                if (settings.useAppIconForLargeImage) {
-                    AppIconImage(
-                        packageName = packageName,
-                        label = resolvedAppName,
-                        modifier = Modifier.size(64.dp),
-                        shape = RoundedCornerShape(8.dp),
-                    )
-                } else {
-                    Surface(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(8.dp)),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                largeImageLabel,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-                if (settings.smallImageKey.isNotBlank() || settings.smallImageText.isNotBlank()) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(22.dp)
-                            .clip(CircleShape),
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                settings.smallImageKey.take(1).uppercase().ifBlank { "S" },
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    activityTypeText(settings.activityType, text),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = discordTextColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("...", style = MaterialTheme.typography.labelMedium, color = discordMutedTextColor)
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Discord", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(resolvedAppName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(activityTypeText(settings.activityType, text), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                Text(details, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(state, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(largeImageText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (smallImageText.isNotBlank()) {
-                    Text(smallImageText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                Box {
+                    if (settings.useAppIconForLargeImage) {
+                        AppIconImage(
+                            packageName = packageName,
+                            label = resolvedAppName,
+                            modifier = Modifier.size(56.dp),
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                    } else {
+                        Surface(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                            color = Color(0xFFE7EEE5),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    largeImageLabel,
+                                    color = discordCardColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                    if (settings.smallImageKey.isNotBlank() || settings.smallImageText.isNotBlank()) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(20.dp)
+                                .clip(CircleShape),
+                            color = Color(0xFFE7EEE5),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    settings.smallImageKey.take(1).uppercase().ifBlank { "S" },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = discordCardColor,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(resolvedAppName, color = discordTextColor, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(details, style = MaterialTheme.typography.bodySmall, color = discordTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(state, style = MaterialTheme.typography.bodySmall, color = discordMutedTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (largeImageText.isNotBlank()) {
+                        Text(largeImageText, style = MaterialTheme.typography.labelSmall, color = discordMutedTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (smallImageText.isNotBlank()) {
+                        Text(smallImageText, style = MaterialTheme.typography.labelSmall, color = discordMutedTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("00:00:01", style = MaterialTheme.typography.labelSmall, color = discordGreen, maxLines = 1)
+                        if (partyText.isNotBlank()) {
+                            Text(partyText, style = MaterialTheme.typography.labelSmall, color = discordTextColor, maxLines = 1)
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PartySizeFields(
+    settings: ProgramPresenceSettings,
+    onChange: (ProgramPresenceSettings) -> Unit,
+) {
+    val text = LocalizedTextProvider.current
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = settings.partyCurrent.toString(),
+            onValueChange = { value ->
+                onChange(settings.copy(partyCurrent = value.filter(Char::isDigit).toIntOrNull() ?: 0))
+            },
+            label = { Text(text.partyCurrent) },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = settings.partyMax.toString(),
+            onValueChange = { value ->
+                onChange(settings.copy(partyMax = value.filter(Char::isDigit).toIntOrNull() ?: 0))
+            },
+            label = { Text(text.partyMax) },
+            singleLine = true,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -2288,6 +2463,39 @@ private fun activityTypeText(type: DiscordActivity.ActivityType, text: Localized
     DiscordActivity.ActivityType.LISTENING -> text.listeningActivity
     DiscordActivity.ActivityType.WATCHING -> text.watchingActivity
     DiscordActivity.ActivityType.COMPETING -> text.competingActivity
+}
+
+private fun presenceSourceText(source: DiscordPresenceSource, text: LocalizedText): String = when (source) {
+    DiscordPresenceSource.APP -> text.appPresence
+    DiscordPresenceSource.MUSIC -> text.musicPresence
+    DiscordPresenceSource.NONE -> text.none
+    DiscordPresenceSource.UNKNOWN -> text.unknown
+}
+
+private fun presenceSourceTint(source: DiscordPresenceSource): Color = when (source) {
+    DiscordPresenceSource.APP -> Color(0xFF00796B)
+    DiscordPresenceSource.MUSIC -> Color(0xFF6A1B9A)
+    DiscordPresenceSource.NONE -> Color(0xFF616161)
+    DiscordPresenceSource.UNKNOWN -> Color(0xFFEF6C00)
+}
+
+private fun optionalPresenceValue(value: String?, text: LocalizedText): String {
+    return value?.takeIf { it.isNotBlank() } ?: text.none
+}
+
+private fun timestampPresenceText(value: Long?, text: LocalizedText): String {
+    return value?.toString() ?: text.none
+}
+
+private fun imagePresenceText(key: String?, hoverText: String?, text: LocalizedText): String {
+    val imageKey = key?.takeIf { it.isNotBlank() }
+    val imageHoverText = hoverText?.takeIf { it.isNotBlank() }
+    return when {
+        imageKey == null && imageHoverText == null -> text.none
+        imageKey == null -> imageHoverText.orEmpty()
+        imageHoverText == null -> imageKey
+        else -> "$imageKey ($imageHoverText)"
+    }
 }
 
 private fun languageText(language: AppLanguage, text: LocalizedText): String = when (language) {

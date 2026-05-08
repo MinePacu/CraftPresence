@@ -253,6 +253,7 @@
 "builtin.status.enabled" = "有効";
 "discord.onboarding.title" = "開始前に Discord を接続してください";
 "discord.onboarding.subtitle" = "Discord デスクトップアプリで一度だけ CraftPresence を認証すれば、その後は Rich Presence 更新を自動送信できます。";
+"discord.onboarding.priority" = "Discord 接続が最初の設定ステップです。";
 "discord.onboarding.continue" = "続ける";
 "discord.onboarding.skip" = "今はスキップ";
 "discord.connection.title" = "Discord 接続";

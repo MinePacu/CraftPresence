@@ -2,6 +2,7 @@ package com.minepacu.craftpresence.core.presence
 
 import android.content.Context
 import com.minepacu.craftpresence.core.discord.DiscordActivity
+import com.minepacu.craftpresence.core.discord.DiscordPresenceSource
 import com.minepacu.craftpresence.core.discord.DiscordSdkManager
 import com.minepacu.craftpresence.core.media.ArtworkLookup
 import com.minepacu.craftpresence.core.media.MediaSessionNowPlayingMonitor
@@ -197,6 +198,7 @@ class AppleMusicPresenceManager private constructor(context: Context) {
                     endEpochSeconds = end,
                     activityType = DiscordActivity.ActivityType.LISTENING,
                 ),
+                DiscordPresenceSource.MUSIC,
             )
         }.onSuccess {
             lastUpdateTimeMs = System.currentTimeMillis()

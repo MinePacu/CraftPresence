@@ -101,6 +101,14 @@ enum class DiscordDashboardStatus {
     FAILED,
 }
 
+/** Owner category for the Rich Presence activity most recently published by the app. */
+enum class DiscordPresenceSource {
+    NONE,
+    APP,
+    MUSIC,
+    UNKNOWN,
+}
+
 /**
  * Observable Discord SDK state consumed by UI and presence features.
  *
@@ -108,10 +116,14 @@ enum class DiscordDashboardStatus {
  * @property currentUser Authorized user, when available.
  * @property dashboardStatus Current setup, authorization, or connection state.
  * @property lastErrorMessage Last user-facing error message, if any.
+ * @property currentActivity Last Rich Presence activity published through this manager, if active.
+ * @property currentActivitySource Presence owner that published [currentActivity].
  */
 data class DiscordState(
     val authorizationStatus: DiscordAuthorizationStatus = DiscordAuthorizationStatus.UNKNOWN,
     val currentUser: DiscordUser? = null,
     val dashboardStatus: DiscordDashboardStatus = DiscordDashboardStatus.NOT_CONFIGURED,
     val lastErrorMessage: String? = null,
+    val currentActivity: DiscordActivity? = null,
+    val currentActivitySource: DiscordPresenceSource = DiscordPresenceSource.NONE,
 )

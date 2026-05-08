@@ -253,6 +253,7 @@
 "builtin.status.enabled" = "활성화됨";
 "discord.onboarding.title" = "시작 전에 Discord를 연결하세요";
 "discord.onboarding.subtitle" = "Discord 데스크톱 앱으로 한 번만 CraftPresence를 인증하면 이후에는 Rich Presence가 자동으로 업데이트됩니다.";
+"discord.onboarding.priority" = "Discord 연결이 첫 설정 단계입니다.";
 "discord.onboarding.continue" = "계속";
 "discord.onboarding.skip" = "나중에 하기";
 "discord.connection.title" = "Discord 연결";

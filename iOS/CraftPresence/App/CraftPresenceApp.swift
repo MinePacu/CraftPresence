@@ -14,7 +14,7 @@ struct CraftPresenceApp: App {
     @StateObject private var permissionsService = PermissionsService()
     @StateObject private var localizationManager = LocalizationManager.shared
     @StateObject private var discordManager = DiscordSDKManager.shared
-    @AppStorage("discordOnboardingCompleted") private var discordOnboardingCompleted: Bool = false
+    @State private var discordOnboardingSkippedForLaunch: Bool = false
     @State private var showingDiscordOnboarding: Bool = false
     @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
@@ -70,24 +70,31 @@ struct CraftPresenceApp: App {
                     await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
                     await restoreAppliedPresenceLiveActivity()
                 }
+                updateDiscordOnboardingPresentation()
             }
             .onChange(of: permissionsService.isTrusted) { _, _ in
                 updateDiscordOnboardingPresentation()
             }
-            .onChange(of: discordOnboardingCompleted) { _, _ in
+            .onChange(of: discordManager.authorizationStatus) { _, newStatus in
+                if newStatus == .authorized {
+                    discordOnboardingSkippedForLaunch = false
+                }
+                updateDiscordOnboardingPresentation()
+            }
+            .onChange(of: discordManager.dashboardStatus) { _, newStatus in
+                if newStatus == .ready {
+                    discordOnboardingSkippedForLaunch = false
+                }
                 updateDiscordOnboardingPresentation()
             }
             .task {
                 await seedAutomationSettingsIfNeeded()
                 await localizationManager.load()
             }
-            .sheet(isPresented: $showingDiscordOnboarding) {
-                DiscordConnectionView(mode: .onboarding) {
-                    discordOnboardingCompleted = true
-                    showingDiscordOnboarding = false
-                }
-                .interactiveDismissDisabled()
-                .environmentObject(localizationManager)
+            .discordOnboardingPresentation(isPresented: $showingDiscordOnboarding) {
+                completeDiscordOnboarding()
+            } onSkip: {
+                skipDiscordOnboardingForLaunch()
             }
             .environmentObject(localizationManager)
             .environment(\.locale, localizationManager.locale)
@@ -122,15 +129,90 @@ struct CraftPresenceApp: App {
     }
 
     private func updateDiscordOnboardingPresentation() {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        if isDiscordConnected {
+            showingDiscordOnboarding = false
+            return
+        }
+
         showingDiscordOnboarding = permissionsService.isTrusted
-            && !discordOnboardingCompleted
+            && !discordOnboardingSkippedForLaunch
+            && !isDiscordConnectionInProgress
             && !AutomationLaunchOptions.isUITesting
+        #else
+        showingDiscordOnboarding = false
+        #endif
+    }
+
+    private var isDiscordConnected: Bool {
+        discordManager.authorizationStatus == .authorized || discordManager.dashboardStatus == .ready
+    }
+
+    private var isDiscordConnectionInProgress: Bool {
+        switch discordManager.dashboardStatus {
+        case .authorizing, .connecting:
+            return true
+        case .notConfigured, .configured, .ready, .unauthorized, .failed:
+            return false
+        }
+    }
+
+    private func completeDiscordOnboarding() {
+        discordOnboardingSkippedForLaunch = false
+        showingDiscordOnboarding = false
+    }
+
+    private func skipDiscordOnboardingForLaunch() {
+        discordOnboardingSkippedForLaunch = true
+        showingDiscordOnboarding = false
     }
 
     @MainActor
     private func restoreAppliedPresenceLiveActivity() async {
         await PresenceLiveActivityController.shared.restoreAppliedPresence(
             connectionStatus: localizationManager.string(discordManager.dashboardStatus.localizationKey)
+        )
+    }
+}
+
+private struct DiscordOnboardingPresentationModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    let onFinish: () -> Void
+    let onSkip: () -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS) || targetEnvironment(macCatalyst)
+        content
+            .fullScreenCover(isPresented: $isPresented) {
+                onboardingView
+            }
+        #else
+        content
+            .sheet(isPresented: $isPresented) {
+                onboardingView
+            }
+        #endif
+    }
+
+    private var onboardingView: some View {
+        DiscordConnectionView(mode: .onboarding, onFinish: onFinish, onSkip: onSkip)
+            .interactiveDismissDisabled()
+            .environmentObject(LocalizationManager.shared)
+    }
+}
+
+private extension View {
+    func discordOnboardingPresentation(
+        isPresented: Binding<Bool>,
+        onFinish: @escaping () -> Void,
+        onSkip: @escaping () -> Void
+    ) -> some View {
+        modifier(
+            DiscordOnboardingPresentationModifier(
+                isPresented: isPresented,
+                onFinish: onFinish,
+                onSkip: onSkip
+            )
         )
     }
 }
