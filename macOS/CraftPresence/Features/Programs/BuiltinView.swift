@@ -10,7 +10,6 @@ import SwiftUI
 struct BuiltinView: View {
     @StateObject private var appleMusicManager = AppleMusicPresenceManager.shared
     @StateObject private var xcodeManager = XcodePresenceManager.shared
-    @State private var isVSCodeEnabled: Bool = false
     @State private var showAppleMusicDetail: Bool = false
     @State private var showXcodeDetail: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
@@ -53,16 +52,6 @@ struct BuiltinView: View {
                     ) {
                         showXcodeDetail = true
                     }
-                    
-                    BuiltinProgramRow(
-                        title: "Visual Studio Code",
-                        subtitle: t("builtin.vscode.subtitle"),
-                        systemImage: "curlybraces",
-                        isEnabled: $isVSCodeEnabled,
-                        statusText: isVSCodeEnabled ? t("builtin.status.enabled") : t("builtin.status.disabled")
-                    ) {
-                        // TODO: 상세 설정 화면으로 이동하거나 시트를 표시
-                    }
                 }
             }
             // Keep empty title so ContentView can control toolbar appearance consistently
@@ -85,6 +74,8 @@ struct BuiltinView: View {
 struct AppleMusicDetailView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var manager = AppleMusicPresenceManager.shared
+    @State private var showingClearConfirmation = false
+    @State private var clearErrorMessage: String?
     
     var body: some View {
         NavigationStack {
@@ -161,11 +152,14 @@ struct AppleMusicDetailView: View {
                 
                 Section {
                     Button(role: .destructive) {
-                        Task {
-                            try? await DiscordSDKManager.shared.clearActivity()
-                        }
+                        showingClearConfirmation = true
                     } label: {
                         Label("Discord 상태 초기화", systemImage: "trash")
+                    }
+
+                    if let clearErrorMessage {
+                        Label(clearErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -177,8 +171,29 @@ struct AppleMusicDetailView: View {
                     }
                 }
             }
+            .confirmationDialog("Discord 상태를 초기화할까요?", isPresented: $showingClearConfirmation) {
+                Button("초기화", role: .destructive) {
+                    clearDiscordActivity()
+                }
+                Button("취소", role: .cancel) {}
+            }
         }
         .frame(width: 450, height: 400)
+    }
+
+    private func clearDiscordActivity() {
+        Task {
+            do {
+                try await DiscordSDKManager.shared.clearActivity()
+                await MainActor.run {
+                    clearErrorMessage = nil
+                }
+            } catch {
+                await MainActor.run {
+                    clearErrorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
 
@@ -186,6 +201,8 @@ struct AppleMusicDetailView: View {
 struct XcodeDetailView: View {
     @Environment(\.dismiss) var dismiss
     @StateObject private var manager = XcodePresenceManager.shared
+    @State private var showingClearConfirmation = false
+    @State private var clearErrorMessage: String?
     
     var body: some View {
         NavigationStack {
@@ -255,11 +272,14 @@ struct XcodeDetailView: View {
                 
                 Section {
                     Button(role: .destructive) {
-                        Task {
-                            try? await DiscordSDKManager.shared.clearActivity()
-                        }
+                        showingClearConfirmation = true
                     } label: {
                         Label("Discord 상태 초기화", systemImage: "trash")
+                    }
+
+                    if let clearErrorMessage {
+                        Label(clearErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
                     }
                 }
             }
@@ -271,8 +291,29 @@ struct XcodeDetailView: View {
                     }
                 }
             }
+            .confirmationDialog("Discord 상태를 초기화할까요?", isPresented: $showingClearConfirmation) {
+                Button("초기화", role: .destructive) {
+                    clearDiscordActivity()
+                }
+                Button("취소", role: .cancel) {}
+            }
         }
         .frame(width: 450, height: 400)
+    }
+
+    private func clearDiscordActivity() {
+        Task {
+            do {
+                try await DiscordSDKManager.shared.clearActivity()
+                await MainActor.run {
+                    clearErrorMessage = nil
+                }
+            } catch {
+                await MainActor.run {
+                    clearErrorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
 

@@ -60,9 +60,11 @@ struct ContentView: View {
     @State private var lastProgramPresenceBundleID: String? = nil
 
     // Settings presentation
-    @State private var showingSettings: Bool = false
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
+#if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+#endif
 
     // MARK: Body
 
@@ -82,6 +84,7 @@ struct ContentView: View {
                 }
             }, set: { newValue in
                 guard let key = newValue else { return }
+                let previousSelection = selection
                 if key == "overview" { selection = .overview }
                 else if key == "programs" { selection = .programs }
                 else if key == "builtin" { selection = .builtin }
@@ -94,44 +97,36 @@ struct ContentView: View {
                         selection = .item(match)
                     }
                 }
+                if previousSelection != selection {
+                    selectionStack.append(previousSelection)
+                }
             })) {
                 Section(t("sidebar.section.menu")) {
-                    SidebarRow(title: t("sidebar.overview"), systemImage: "rectangle.and.text.magnifyingglass", isSelected: selection == .overview, tint: .pink, accessibilityIdentifier: "sidebar.overview") {
-                        if selection != .overview { selectionStack.append(selection) }
-                        selection = .overview
-                    }
-                    SidebarRow(title: t("sidebar.programs"), systemImage: "list.bullet.rectangle", isSelected: selection == .programs, tint: .pink, accessibilityIdentifier: "sidebar.programs") {
-                        if selection != .programs { selectionStack.append(selection) }
-                        selection = .programs
-                    }
-                    SidebarRow(title: t("sidebar.builtin"), systemImage: "bolt.fill", isSelected: selection == .builtin, tint: .pink, accessibilityIdentifier: "sidebar.builtin") {
-                        if selection != .builtin { selectionStack.append(selection) }
-                        selection = .builtin
-                    }
-                    SidebarRow(title: t("sidebar.about"), systemImage: "info.circle", isSelected: selection == .about, tint: .pink, accessibilityIdentifier: "sidebar.about") {
-                        if selection != .about { selectionStack.append(selection) }
-                        selection = .about
-                    }
+                    Label(t("sidebar.overview"), systemImage: "rectangle.and.text.magnifyingglass")
+                        .tag("overview")
+                        .accessibilityIdentifier("sidebar.overview")
+                    Label(t("sidebar.programs"), systemImage: "list.bullet.rectangle")
+                        .tag("programs")
+                        .accessibilityIdentifier("sidebar.programs")
+                    Label(t("sidebar.builtin"), systemImage: "bolt.fill")
+                        .tag("builtin")
+                        .accessibilityIdentifier("sidebar.builtin")
+                    Label(t("sidebar.about"), systemImage: "info.circle")
+                        .tag("about")
+                        .accessibilityIdentifier("sidebar.about")
                 }
 
                 Section(t("sidebar.section.test")) {
-                    SidebarRow(title: t("sidebar.discord_test"), systemImage: "gamecontroller", isSelected: selection == .discordTest, tint: .pink, accessibilityIdentifier: "sidebar.discordTest") {
-                        if selection != .discordTest { selectionStack.append(selection) }
-                        selection = .discordTest
-                    }
-                    SidebarRow(title: t("sidebar.now_playing_test"), systemImage: "music.note", isSelected: selection == .nowPlayingTest, tint: .pink, accessibilityIdentifier: "sidebar.nowPlayingTest") {
-                        if selection != .nowPlayingTest { selectionStack.append(selection) }
-                        selection = .nowPlayingTest
-                    }
+                    Label(t("sidebar.discord_test"), systemImage: "gamecontroller")
+                        .tag("discordTest")
+                        .accessibilityIdentifier("sidebar.discordTest")
+                    Label(t("sidebar.now_playing_test"), systemImage: "music.note")
+                        .tag("nowPlayingTest")
+                        .accessibilityIdentifier("sidebar.nowPlayingTest")
                     ForEach(items) { item in
-                        SidebarRow(title: item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock", isSelected: {
-                            if case .item(let selected) = selection { return selected.id == item.id }
-                            return false
-                        }(), tint: .gray, accessibilityIdentifier: "sidebar.item.\(item.id)") {
-                            selectionStack.append(selection)
-                            selection = .item(item)
-                        }
+                        Label(item.timestamp.formatted(date: .numeric, time: .standard), systemImage: "clock")
                         .tag("item-\(item.id)")
+                        .accessibilityIdentifier("sidebar.item.\(item.id)")
                     }
                     .onDelete(perform: deleteItems)
                 }
@@ -214,19 +209,12 @@ struct ContentView: View {
                 // 설정 버튼
                 ToolbarItem(placement: .automatic) {
                     Button {
-                        showingSettings = true
+                        openSettings()
                     } label: {
                         Label(t("toolbar.settings"), systemImage: "gearshape")
                     }
                     .accessibilityIdentifier("toolbar.settings")
                 }
-            }
-            .sheet(isPresented: $showingSettings) {
-                SettingView()
-                    .onAppear {
-                        // 설정 화면을 열 때 현재 값 적용을 한 번 더 보장
-                        applyMenuBarMode(menuBarOnlyEnabled)
-                    }
             }
     #endif
         }
@@ -552,48 +540,6 @@ private extension String {
     var nilIfEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
-// MARK: - Reusable Views
-
-/// Reusable sidebar button row used throughout the app's primary navigation list.
-private struct SidebarRow: View {
-    let title: String
-    let systemImage: String
-    let isSelected: Bool
-    var tint: Color = .accentColor
-    let accessibilityIdentifier: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .imageScale(.medium)
-                Text(title)
-                    .font(.body)
-                    .lineLimit(1)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                ZStack {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(tint.gradient)
-                            .opacity(0.9)
-                    }
-                }
-            )
-            .foregroundStyle(isSelected ? Color.white : .primary)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(accessibilityIdentifier)
-        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-        .listRowBackground(Color.clear)
     }
 }
 

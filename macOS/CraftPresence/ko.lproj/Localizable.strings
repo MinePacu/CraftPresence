@@ -47,6 +47,7 @@
 "permissions.message" = "이 앱에는 macOS의 손쉬운 사용(접근성) 권한이 필요합니다.";
 "permissions.instructions" = "일반적으로 macOS에서 권한 요청 창이 표시되지만, 표시되지 않았다면 아래 버튼을 눌러 설정으로 이동하세요:";
 "permissions.open_settings" = "시스템 설정 열기";
+"permissions.refresh" = "다시 확인";
 "permissions.footer" = "권한이 허용되면 몇 초 내로 앱이 자동으로 활성화됩니다.";
 "about.title" = "정보";
 "about.app_name" = "앱 이름";
@@ -91,11 +92,13 @@
 "programs.description" = "앱 이름과 아이콘을 기준으로 관리하고, 필요한 경우 bundle ID를 함께 확인할 수 있습니다.";
 "programs.select_application" = "응용프로그램 선택";
 "programs.select_application_message" = "응용프로그램(.app)을 선택하세요.";
+"programs.bundle_id_unavailable" = "선택한 응용프로그램에서 bundle ID를 읽을 수 없습니다.";
 "programs.add_program" = "프로그램 추가";
 "programs.add_apple_music" = "Apple Music 추가";
 "programs.add_apple_music_help" = "macOS Music 앱(com.apple.Music)을 기본값으로 추가합니다.";
 "programs.empty_title" = "등록된 프로그램이 없습니다";
 "programs.empty_description" = "프로그램 추가 버튼을 눌러 응용프로그램(.app)을 선택하세요.";
+"programs.confirm_remove.title" = "이 프로그램을 제거할까요?";
 "programs.default_program_name" = "프로그램";
 "programs.resolved" = "확인됨";
 "programs.no_metadata" = "메타데이터 없음";

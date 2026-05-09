@@ -47,53 +47,76 @@ struct OverviewView: View {
     }
 
     private var statusGrid: some View {
-        Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 16) {
-            GridRow {
-                metricCard(
-                    title: t("overview.discord_status"),
-                    systemImage: "gamecontroller",
-                    accent: statusColor,
-                    value: t(discordManager.dashboardStatus.localizationKey),
-                    detail: statusDetailText
-                ) {
-                    statusBadge
+        ViewThatFits(in: .horizontal) {
+            Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 16) {
+                GridRow {
+                    discordStatusCard
+                    authorizedUserCard
                 }
 
-                metricCard(
-                    title: t("overview.authorized_user"),
-                    systemImage: "person.crop.circle",
-                    accent: .blue,
-                    value: discordManager.currentUser?.username ?? t("common.none"),
-                    detail: discordManager.currentUser?.id ?? t("overview.user_not_loaded")
-                )
+                GridRow {
+                    foregroundAppCard
+                    programsRegistrationCard
+                }
             }
 
-            GridRow {
-                metricCard(
-                    title: t("overview.foreground_app"),
-                    systemImage: "macwindow",
-                    accent: .orange,
-                    value: activeAppName ?? t("common.unknown"),
-                    detail: activeWindowTitle ?? t("overview.window_title_unavailable")
-                )
+            VStack(alignment: .leading, spacing: 16) {
+                discordStatusCard
+                authorizedUserCard
+                foregroundAppCard
+                programsRegistrationCard
+            }
+        }
+    }
 
-                metricCard(
-                    title: t("overview.programs_registration"),
-                    systemImage: "checkmark.seal",
-                    accent: isTracked ? .green : .secondary,
-                    value: isTracked ? t("overview.tracked") : t("overview.unregistered"),
-                    detail: activeBundleID ?? t("overview.bundle_id_unavailable")
-                ) {
-                    if isTracked {
-                        Label(t("overview.registered_in_programs"), systemImage: "checkmark.circle.fill")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.green)
-                    } else {
-                        Label(t("overview.not_in_programs"), systemImage: "minus.circle")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+    private var discordStatusCard: some View {
+        metricCard(
+            title: t("overview.discord_status"),
+            systemImage: "gamecontroller",
+            accent: statusColor,
+            value: t(discordManager.dashboardStatus.localizationKey),
+            detail: statusDetailText
+        ) {
+            statusBadge
+        }
+    }
+
+    private var authorizedUserCard: some View {
+        metricCard(
+            title: t("overview.authorized_user"),
+            systemImage: "person.crop.circle",
+            accent: .blue,
+            value: discordManager.currentUser?.username ?? t("common.none"),
+            detail: discordManager.currentUser?.id ?? t("overview.user_not_loaded")
+        )
+    }
+
+    private var foregroundAppCard: some View {
+        metricCard(
+            title: t("overview.foreground_app"),
+            systemImage: "macwindow",
+            accent: .orange,
+            value: activeAppName ?? t("common.unknown"),
+            detail: activeWindowTitle ?? t("overview.window_title_unavailable")
+        )
+    }
+
+    private var programsRegistrationCard: some View {
+        metricCard(
+            title: t("overview.programs_registration"),
+            systemImage: "checkmark.seal",
+            accent: isTracked ? .green : .secondary,
+            value: isTracked ? t("overview.tracked") : t("overview.unregistered"),
+            detail: activeBundleID ?? t("overview.bundle_id_unavailable")
+        ) {
+            if isTracked {
+                Label(t("overview.registered_in_programs"), systemImage: "checkmark.circle.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else {
+                Label(t("overview.not_in_programs"), systemImage: "minus.circle")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -133,7 +156,7 @@ struct OverviewView: View {
         }
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.secondary.opacity(0.08))
         )
     }
@@ -155,7 +178,7 @@ struct OverviewView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.secondary.opacity(0.08))
         )
     }
@@ -247,12 +270,15 @@ struct OverviewView: View {
             Text(detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.secondary.opacity(0.08))
         )
     }
@@ -289,11 +315,11 @@ struct OverviewView: View {
         }
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.red.opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.red.opacity(0.18), lineWidth: 1)
         )
     }
@@ -315,6 +341,9 @@ struct OverviewView: View {
                     .foregroundStyle(.secondary)
                 Text(value)
                     .font(.body)
+                    .lineLimit(3)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
                     .accessibilityIdentifier(valueAccessibilityIdentifier)
             }
             Spacer(minLength: 0)

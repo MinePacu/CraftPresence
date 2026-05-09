@@ -75,21 +75,17 @@ final class LSUIElementController {
     // MARK: - Menu Actions
 
     @objc private func showMainWindow() {
-        // SwiftUI 기반 앱의 메인 윈도우를 전면으로 가져옵니다.
-        NSApp.setActivationPolicy(.regular)
+        // Bring the existing SwiftUI window forward without changing the user's Dock preference.
         NSApp.activate(ignoringOtherApps: true)
 
-        // 첫 번째 윈도우를 보이도록 시도 (필요 시 구체적인 윈도우 관리 로직으로 교체)
         if let window = NSApplication.shared.windows.first {
             window.makeKeyAndOrderFront(nil)
         }
     }
 
     @objc private func openPreferences() {
-        // 환경설정 화면을 보여주고 싶다면 여기서 구현하세요.
-        // 예: 특정 SwiftUI 뷰를 새로운 NSWindow로 띄우는 코드 등
-        // 현재는 메인 윈도우를 전면으로 가져오는 기본 동작만 수행
-        showMainWindow()
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     @objc private func quitApp() {

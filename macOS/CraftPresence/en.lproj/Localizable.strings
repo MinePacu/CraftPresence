@@ -47,6 +47,7 @@
 "permissions.message" = "This app requires macOS Accessibility permission.";
 "permissions.instructions" = "macOS usually shows the permission prompt automatically. If it did not appear, use the button below to open Settings:";
 "permissions.open_settings" = "Open System Settings";
+"permissions.refresh" = "Check Again";
 "permissions.footer" = "Once permission is granted, the app activates automatically within a few seconds.";
 "about.title" = "About";
 "about.app_name" = "App Name";
@@ -91,11 +92,13 @@
 "programs.description" = "Manage apps by name and icon, and inspect the bundle ID when needed.";
 "programs.select_application" = "Select an Application";
 "programs.select_application_message" = "Choose an application bundle (.app).";
+"programs.bundle_id_unavailable" = "Could not read a bundle ID from the selected application.";
 "programs.add_program" = "Add Program";
 "programs.add_apple_music" = "Add Apple Music";
 "programs.add_apple_music_help" = "Add the macOS Music app (com.apple.Music) as a default entry.";
 "programs.empty_title" = "No registered programs";
 "programs.empty_description" = "Click Add Program and choose an application bundle (.app).";
+"programs.confirm_remove.title" = "Remove this program?";
 "programs.default_program_name" = "Program";
 "programs.resolved" = "Verified";
 "programs.no_metadata" = "No metadata";

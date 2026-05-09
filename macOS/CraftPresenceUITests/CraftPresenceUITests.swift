@@ -45,13 +45,26 @@ final class CraftPresenceUITests: XCTestCase {
         app.launchEnvironment["CRAFTPRESENCE_SEED_BUNDLE_IDS"] = "com.apple.Music,com.apple.dt.Xcode"
         app.launch()
 
-        let programsButton = app.buttons["sidebar.programs"]
-        XCTAssertTrue(programsButton.waitForExistence(timeout: 5))
-        programsButton.click()
+        let programsRow = element(in: app, identifier: "sidebar.programs")
+        XCTAssertTrue(programsRow.waitForExistence(timeout: 5))
+        programsRow.click()
 
         XCTAssertTrue(app.staticTexts["programs.title"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["com.apple.Music"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["com.apple.dt.Xcode"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testToolbarSettingsOpensSettingsWindowInsteadOfSheet() throws {
+        let app = makeApplication()
+        app.launch()
+
+        let settingsButton = app.buttons["toolbar.settings"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
+        settingsButton.click()
+
+        XCTAssertFalse(app.sheets.firstMatch.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.windows.containing(.any, identifier: "settings.root").firstMatch.waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -68,5 +81,9 @@ final class CraftPresenceUITests: XCTestCase {
         app.launchEnvironment["CRAFTPRESENCE_DISABLE_PROGRAM_DETECTOR"] = "1"
         app.launchEnvironment["CRAFTPRESENCE_SETTINGS_PATH"] = settingsPath
         return app
+    }
+
+    private func element(in app: XCUIApplication, identifier: String) -> XCUIElement {
+        app.descendants(matching: .any)[identifier]
     }
 }

@@ -16,6 +16,8 @@ struct ProgramsView: View {
     @State private var appMetadataCache: [String: ProgramDisplayInfo] = [:]
     #endif
     @State private var programSettingsCache: [String: ProgramPresenceSettings] = [:]
+    @State private var operationErrorMessage: String?
+    @State private var pendingRemovalBundleID: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -27,6 +29,14 @@ struct ProgramsView: View {
             Text(t("programs.description"))
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
+
+            if let operationErrorMessage {
+                Label(operationErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("programs.operationError")
+            }
 
             // Add buttons
             HStack(spacing: 8) {
@@ -45,17 +55,22 @@ struct ProgramsView: View {
                             Task {
                                 do {
                                     let updated = try await ConfigUtility.shared.addBundleID(bundleID)
-                                    programIDs = updated.bundleIDs
+                                    await MainActor.run {
+                                        operationErrorMessage = nil
+                                        programIDs = updated.bundleIDs
+                                    }
                                 } catch {
-                                    print("Failed to save bundleID: \(error)")
+                                    await MainActor.run {
+                                        operationErrorMessage = error.localizedDescription
+                                    }
                                 }
                             }
                         } else {
-                            print("선택한 항목에서 bundleID를 읽을 수 없습니다: \(String(describing: panel.url))")
+                            operationErrorMessage = t("programs.bundle_id_unavailable")
                         }
                     }
                     #else
-                    print("Add Program is only supported on macOS in this build.")
+                    operationErrorMessage = "Add Program is only supported on macOS in this build."
                     #endif
                 } label: {
                     Label(t("programs.add_program"), systemImage: "plus.circle.fill")
@@ -67,9 +82,14 @@ struct ProgramsView: View {
                     Task {
                         do {
                             let updated = try await ConfigUtility.shared.addBundleID("com.apple.Music")
-                            programIDs = updated.bundleIDs
+                            await MainActor.run {
+                                operationErrorMessage = nil
+                                programIDs = updated.bundleIDs
+                            }
                         } catch {
-                            print("Failed to add Apple Music: \(error)")
+                            await MainActor.run {
+                                operationErrorMessage = error.localizedDescription
+                            }
                         }
                     }
                 } label: {
@@ -92,14 +112,7 @@ struct ProgramsView: View {
                             ProgramRow(
                                 info: displayInfo(for: id),
                                 onRemove: {
-                                    Task {
-                                        do {
-                                            let updated = try await ConfigUtility.shared.removeBundleID(id)
-                                            programIDs = updated.bundleIDs
-                                        } catch {
-                                            print("Failed to remove bundleID: \(error)")
-                                        }
-                                    }
+                                    pendingRemovalBundleID = id
                                 },
                                 onSettings: {
                                     selectedProgramIDForSettings = id
@@ -119,6 +132,27 @@ struct ProgramsView: View {
             Spacer()
         }
         .padding(.horizontal, 12)
+        .confirmationDialog(
+            t("programs.confirm_remove.title"),
+            isPresented: Binding(
+                get: { pendingRemovalBundleID != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingRemovalBundleID = nil
+                    }
+                }
+            ),
+            presenting: pendingRemovalBundleID
+        ) { bundleID in
+            Button(t("common.delete"), role: .destructive) {
+                removeProgram(bundleID)
+            }
+            Button(t("common.cancel"), role: .cancel) {
+                pendingRemovalBundleID = nil
+            }
+        } message: { bundleID in
+            Text(bundleID)
+        }
         .onAppear {
             refreshMetadataCache()
             Task { await refreshProgramSettingsCache() }
@@ -134,15 +168,9 @@ struct ProgramsView: View {
                 initialSettings: selectedProgramIDForSettings.flatMap { programSettingsCache[$0] } ?? ProgramPresenceSettings(),
                 onSave: { updatedSettings in
                     guard let bundleID = selectedProgramIDForSettings else { return }
-                    Task {
-                        do {
-                            let saved = try await ConfigUtility.shared.setProgramSettings(updatedSettings, for: bundleID)
-                            await MainActor.run {
-                                programSettingsCache[bundleID] = saved
-                            }
-                        } catch {
-                            print("Failed to save program settings: \(error)")
-                        }
+                    let saved = try await ConfigUtility.shared.setProgramSettings(updatedSettings, for: bundleID)
+                    await MainActor.run {
+                        programSettingsCache[bundleID] = saved
                     }
                 }
             )
@@ -174,6 +202,24 @@ struct ProgramsView: View {
         let settings = await ConfigUtility.shared.allProgramSettings()
         await MainActor.run {
             programSettingsCache = settings
+        }
+    }
+
+    private func removeProgram(_ bundleID: String) {
+        Task {
+            do {
+                let updated = try await ConfigUtility.shared.removeBundleID(bundleID)
+                await MainActor.run {
+                    operationErrorMessage = nil
+                    pendingRemovalBundleID = nil
+                    programIDs = updated.bundleIDs
+                }
+            } catch {
+                await MainActor.run {
+                    pendingRemovalBundleID = nil
+                    operationErrorMessage = error.localizedDescription
+                }
+            }
         }
     }
 
@@ -242,7 +288,7 @@ private struct ProgramRow: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.secondary.opacity(0.08))
         )
     }
@@ -352,15 +398,17 @@ private struct ProgramsSettingsSheet: View {
     let programDisplayName: String
     let programBundleID: String?
     let initialSettings: ProgramPresenceSettings
-    let onSave: (ProgramPresenceSettings) -> Void
+    let onSave: (ProgramPresenceSettings) async throws -> Void
     @EnvironmentObject private var localizationManager: LocalizationManager
 
     @State private var draftSettings: ProgramPresenceSettings
+    @State private var isSaving: Bool = false
+    @State private var saveErrorMessage: String?
     init(
         programDisplayName: String,
         programBundleID: String?,
         initialSettings: ProgramPresenceSettings,
-        onSave: @escaping (ProgramPresenceSettings) -> Void
+        onSave: @escaping (ProgramPresenceSettings) async throws -> Void
     ) {
         self.programDisplayName = programDisplayName
         self.programBundleID = programBundleID
@@ -378,13 +426,18 @@ private struct ProgramsSettingsSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Button(t("common.cancel")) { dismiss() }
+                        .disabled(isSaving)
                     Spacer()
                     Button(t("common.save")) {
-                        onSave(draftSettings)
-                        dismiss()
+                        save()
                     }
-                    .disabled(!hasChanges)
-                        .keyboardShortcut(.defaultAction)
+                    .disabled(!hasChanges || isSaving)
+                    .keyboardShortcut(.defaultAction)
+
+                    if isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
                 }
                 .padding(.bottom, 4)
 
@@ -402,6 +455,14 @@ private struct ProgramsSettingsSheet: View {
                     Text(t("programs.sheet.supported_templates"))
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
+                }
+
+                if let saveErrorMessage {
+                    Label(saveErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("programs.settings.saveError")
                 }
 
                 Divider()
@@ -453,14 +514,6 @@ private struct ProgramsSettingsSheet: View {
                                 }
                             }
                             GridRow {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(t("programs.sheet.small_image_picker")).font(.headline)
-                                    RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08))
-                                        .frame(width: 48, height: 48)
-                                        .overlay(Image(systemName: "photo").imageScale(.medium).foregroundStyle(.secondary))
-                                }
-                            }
-                            GridRow {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(t("programs.sheet.small_image_key")).font(.headline)
                                     TextField(t("programs.sheet.discord_asset_key_placeholder"), text: $draftSettings.smallImageKey)
@@ -508,6 +561,28 @@ private struct ProgramsSettingsSheet: View {
 
     private func t(_ key: String) -> String {
         localizationManager.string(key)
+    }
+
+    private func save() {
+        guard !isSaving else { return }
+
+        isSaving = true
+        saveErrorMessage = nil
+
+        Task {
+            do {
+                try await onSave(draftSettings)
+                await MainActor.run {
+                    isSaving = false
+                    dismiss()
+                }
+            } catch {
+                await MainActor.run {
+                    isSaving = false
+                    saveErrorMessage = error.localizedDescription
+                }
+            }
+        }
     }
 }
 

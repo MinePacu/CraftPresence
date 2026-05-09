@@ -97,10 +97,19 @@ struct CraftPresenceApp: App {
                 .environmentObject(localizationManager)
             }
             .environmentObject(localizationManager)
+            .environmentObject(permissionsService)
             .environment(\.locale, localizationManager.locale)
             .environmentObject(discordManager)
         }
         .modelContainer(sharedModelContainer)
+
+        #if os(macOS)
+        Settings {
+            SettingView()
+                .environmentObject(localizationManager)
+                .environment(\.locale, localizationManager.locale)
+        }
+        #endif
     }
     
     /// Hides the default title bar when the app runs as a Mac Catalyst build.

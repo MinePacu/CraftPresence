@@ -53,6 +53,7 @@ struct SettingView: View {
                 #endif
             }
             .navigationTitle(t("settings.title"))
+            .accessibilityIdentifier("settings.root")
             .onAppear {
                 // 설정 화면 진입 시 현재 저장된 상태를 보장 적용
                 applyMenuBarMode(menuBarOnlyEnabled)
