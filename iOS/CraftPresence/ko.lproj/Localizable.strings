@@ -51,6 +51,12 @@
 "settings.live_activity.title" = "Live Activity 표시";
 "settings.live_activity.description" = "지원되는 기기에서 현재 Presence를 잠금 화면과 Dynamic Island에 함께 표시합니다.";
 "settings.live_activity.help" = "끄면 Presence 게시 시 Discord는 업데이트하지만 Live Activity는 시작하거나 갱신하지 않습니다.";
+"settings.live_activity.content.summary.title" = "Presence 요약";
+"settings.live_activity.content.summary.description" = "현재 Presence의 세부 내용과 상태를 표시합니다.";
+"settings.live_activity.content.elapsed.title" = "경과 시간";
+"settings.live_activity.content.elapsed.description" = "Presence가 경과 시간을 사용할 때 실행 시간을 표시합니다.";
+"settings.live_activity.content.discord_status.title" = "Discord 상태";
+"settings.live_activity.content.discord_status.description" = "현재 Discord 연결 상태를 표시합니다.";
 "settings.import_export.export.title" = "설정 내보내기";
 "settings.import_export.export.description" = "프리셋, 스케줄, 앱 환경설정을 JSON 백업으로 저장합니다.";
 "settings.import_export.export.action" = "설정 내보내기";

@@ -1,0 +1,24 @@
+{
+  "name": "craftpresence-web",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @craftpresence/server --filter @craftpresence/client dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc -b --pretty false",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "pnpm --filter @craftpresence/server db:migrate",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.0",
+    "drizzle-kit": "^0.30.6",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

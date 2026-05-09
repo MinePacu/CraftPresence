@@ -51,6 +51,12 @@
 "settings.live_activity.title" = "Live Activity を表示";
 "settings.live_activity.description" = "対応端末で現在の Presence をロック画面と Dynamic Island に表示します。";
 "settings.live_activity.help" = "無効にすると、Presence の公開は Discord のみ更新し、Live Activity は開始または更新しません。";
+"settings.live_activity.content.summary.title" = "Presence の概要";
+"settings.live_activity.content.summary.description" = "現在の Presence の詳細と状態を表示します。";
+"settings.live_activity.content.elapsed.title" = "経過時間";
+"settings.live_activity.content.elapsed.description" = "Presence が経過時間を使用している場合にタイマーを表示します。";
+"settings.live_activity.content.discord_status.title" = "Discord 状態";
+"settings.live_activity.content.discord_status.description" = "現在の Discord 接続状態を表示します。";
 "settings.import_export.export.title" = "設定を書き出す";
 "settings.import_export.export.description" = "プリセット、スケジュール、アプリ設定を JSON バックアップとして保存します。";
 "settings.import_export.export.action" = "設定を書き出す";

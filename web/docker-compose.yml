@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: craftpresence
+      POSTGRES_PASSWORD: craftpresence
+      POSTGRES_DB: craftpresence
+    volumes:
+      - craftpresence_postgres:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U craftpresence -d craftpresence"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: postgres://craftpresence:craftpresence@postgres:5432/craftpresence
+      SESSION_SECRET: replace-with-at-least-32-random-characters
+      DEVICE_TOKEN_PEPPER: replace-with-at-least-32-random-characters
+      COOKIE_SECURE: "false"
+      IMAGE_STORAGE_PATH: /app/data/images
+    ports:
+      - "8080:8080"
+    volumes:
+      - craftpresence_images:/app/data/images
+
+volumes:
+  craftpresence_postgres:
+  craftpresence_images:

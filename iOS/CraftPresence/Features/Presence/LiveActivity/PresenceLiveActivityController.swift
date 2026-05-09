@@ -29,7 +29,13 @@ final class PresenceLiveActivityController {
             return
         }
 
-        let state = contentState(for: preset, connectionStatus: connectionStatus, isLive: true)
+        let contentOptions = await ConfigUtility.shared.liveActivityContentOptions()
+        let state = contentState(
+            for: preset,
+            connectionStatus: connectionStatus,
+            isLive: true,
+            contentOptions: contentOptions
+        )
         let content = ActivityContent(state: state, staleDate: nil)
 
         if let activity = currentActivity {
@@ -62,7 +68,8 @@ final class PresenceLiveActivityController {
                 state: nil,
                 connectionStatus: "Stopped",
                 startedAt: nil,
-                isLive: false
+                isLive: false,
+                contentOptions: LiveActivityContentOptions()
             )
             await activity.end(
                 ActivityContent(state: endedState, staleDate: Date()),
@@ -81,7 +88,8 @@ final class PresenceLiveActivityController {
     private func contentState(
         for preset: CustomPresencePreset,
         connectionStatus: String,
-        isLive: Bool
+        isLive: Bool,
+        contentOptions: LiveActivityContentOptions
     ) -> PresenceActivityAttributes.ContentState {
         let normalized = preset.normalized
         return PresenceActivityAttributes.ContentState(
@@ -90,7 +98,8 @@ final class PresenceLiveActivityController {
             state: normalized.state.nilIfEmpty,
             connectionStatus: connectionStatus,
             startedAt: normalized.usesElapsedTime ? normalized.elapsedStartDate : nil,
-            isLive: isLive
+            isLive: isLive,
+            contentOptions: contentOptions
         )
     }
     #endif

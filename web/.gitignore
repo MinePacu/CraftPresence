@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-types/
+*.tsbuildinfo
+.env
+.DS_Store
+.worktrees/
+coverage/
+playwright-report/
+test-results/

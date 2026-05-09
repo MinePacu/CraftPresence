@@ -51,6 +51,12 @@
 "settings.live_activity.title" = "Show Live Activity";
 "settings.live_activity.description" = "Mirror the current Presence on the Lock Screen and Dynamic Island when supported.";
 "settings.live_activity.help" = "When disabled, publishing Presence still updates Discord but does not start or update a Live Activity.";
+"settings.live_activity.content.summary.title" = "Presence summary";
+"settings.live_activity.content.summary.description" = "Show the current Presence details and state.";
+"settings.live_activity.content.elapsed.title" = "Elapsed time";
+"settings.live_activity.content.elapsed.description" = "Show the running timer when the Presence uses elapsed time.";
+"settings.live_activity.content.discord_status.title" = "Discord status";
+"settings.live_activity.content.discord_status.description" = "Show the current Discord connection state.";
 "settings.import_export.export.title" = "Export Settings";
 "settings.import_export.export.description" = "Save presets, schedules, and app preferences as a JSON backup.";
 "settings.import_export.export.action" = "Export settings";

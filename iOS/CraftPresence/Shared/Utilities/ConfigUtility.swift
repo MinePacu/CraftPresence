@@ -18,6 +18,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var preferredLanguage: AppLanguage = .system
     public var presencePriorityEnabled: Bool = true
     public var presenceLiveActivityEnabled: Bool = true
+    public var liveActivityContentOptions: LiveActivityContentOptions = LiveActivityContentOptions()
     public var resetElapsedTimeOnScheduledPresetRestore: Bool = false
     
     nonisolated init() { }
@@ -43,6 +44,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case preferredLanguage
         case presencePriorityEnabled
         case presenceLiveActivityEnabled
+        case liveActivityContentOptions
         case resetElapsedTimeOnScheduledPresetRestore
     }
 
@@ -71,6 +73,10 @@ public struct AppSettings: Codable, Sendable, Equatable {
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
         self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
         self.presenceLiveActivityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presenceLiveActivityEnabled) ?? true
+        self.liveActivityContentOptions = try container.decodeIfPresent(
+            LiveActivityContentOptions.self,
+            forKey: .liveActivityContentOptions
+        ) ?? LiveActivityContentOptions()
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -90,6 +96,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
         try container.encode(presencePriorityEnabled, forKey: .presencePriorityEnabled)
         try container.encode(presenceLiveActivityEnabled, forKey: .presenceLiveActivityEnabled)
+        try container.encode(liveActivityContentOptions, forKey: .liveActivityContentOptions)
         try container.encode(resetElapsedTimeOnScheduledPresetRestore, forKey: .resetElapsedTimeOnScheduledPresetRestore)
     }
 }
@@ -1114,6 +1121,11 @@ public actor ConfigUtility {
         settings.presenceLiveActivityEnabled
     }
 
+    /// Returns which fields should appear on ActivityKit Live Activity surfaces.
+    public func liveActivityContentOptions() -> LiveActivityContentOptions {
+        settings.liveActivityContentOptions
+    }
+
     @discardableResult
     /// Persists whether the app should keep its last published custom Presence authoritative.
     public func setPresencePriorityEnabled(_ enabled: Bool) async throws -> AppSettings {
@@ -1126,6 +1138,14 @@ public actor ConfigUtility {
     /// Persists whether the app should show the current Presence as an ActivityKit Live Activity.
     public func setPresenceLiveActivityEnabled(_ enabled: Bool) async throws -> AppSettings {
         settings.presenceLiveActivityEnabled = enabled
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Persists which fields should appear on ActivityKit Live Activity surfaces.
+    public func setLiveActivityContentOptions(_ options: LiveActivityContentOptions) async throws -> AppSettings {
+        settings.liveActivityContentOptions = options
         try persist()
         return settings
     }

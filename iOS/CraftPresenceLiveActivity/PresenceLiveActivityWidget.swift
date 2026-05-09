@@ -20,12 +20,14 @@ struct PresenceLiveActivityWidget: Widget {
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
-                    ElapsedTimeView(startedAt: context.state.startedAt)
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .padding(.top, 2)
-                        .padding(.trailing, 6)
-                        .frame(width: 68, alignment: .trailing)
-                        .layoutPriority(2)
+                    if context.state.contentOptions.elapsedTime {
+                        ElapsedTimeView(startedAt: context.state.startedAt)
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .padding(.top, 2)
+                            .padding(.trailing, 6)
+                            .frame(width: 68, alignment: .trailing)
+                            .layoutPriority(2)
+                    }
                 }
 
                 DynamicIslandExpandedRegion(.center) {
@@ -59,9 +61,14 @@ struct PresenceLiveActivityWidget: Widget {
                 Image(systemName: context.state.isLive ? "paperplane.fill" : "paperplane")
                     .foregroundStyle(context.state.isLive ? .green : .secondary)
             } compactTrailing: {
-                ElapsedTimeView(startedAt: context.state.startedAt)
-                    .font(.caption2.monospacedDigit().weight(.semibold))
-                    .frame(maxWidth: 44)
+                if context.state.contentOptions.elapsedTime {
+                    ElapsedTimeView(startedAt: context.state.startedAt)
+                        .font(.caption2.monospacedDigit().weight(.semibold))
+                        .frame(maxWidth: 44)
+                } else if context.state.contentOptions.discordStatus {
+                    Image(systemName: context.state.isLive ? "checkmark.circle.fill" : "xmark.circle")
+                        .foregroundStyle(context.state.isLive ? .green : .secondary)
+                }
             } minimal: {
                 Image(systemName: context.state.isLive ? "paperplane.fill" : "paperplane")
                     .foregroundStyle(context.state.isLive ? .green : .secondary)
@@ -80,7 +87,10 @@ struct PresenceLiveActivityWidget: Widget {
     }
 
     private func subtitle(for state: PresenceActivityAttributes.ContentState) -> String {
-        [summary(for: state), state.connectionStatus]
+        [
+            state.contentOptions.presenceSummary ? summary(for: state) : "",
+            state.contentOptions.discordStatus ? state.connectionStatus : ""
+        ]
             .compactMap { value in
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 return trimmed.isEmpty ? nil : trimmed
@@ -122,19 +132,25 @@ private struct LockScreenPresenceView: View {
                         .font(.headline)
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    ElapsedTimeView(startedAt: state.startedAt)
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    if state.contentOptions.elapsedTime {
+                        ElapsedTimeView(startedAt: state.startedAt)
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                Text([state.details, state.state].compactMap(\.self).filter { !$0.isEmpty }.joined(separator: " - "))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                if state.contentOptions.presenceSummary {
+                    Text([state.details, state.state].compactMap(\.self).filter { !$0.isEmpty }.joined(separator: " - "))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
 
-                Text(state.connectionStatus)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                if state.contentOptions.discordStatus {
+                    Text(state.connectionStatus)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 4)

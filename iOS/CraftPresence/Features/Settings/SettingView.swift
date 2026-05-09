@@ -16,6 +16,7 @@ struct SettingView: View {
     @EnvironmentObject private var localizationManager: LocalizationManager
     @State private var presencePriorityEnabled: Bool = true
     @State private var presenceLiveActivityEnabled: Bool = true
+    @State private var liveActivityContentOptions = LiveActivityContentOptions()
 #if os(iOS)
     @State private var settingsExportDocument = SettingsBackupDocument()
     @State private var showingSettingsExporter = false
@@ -87,6 +88,53 @@ struct SettingView: View {
                     }
                     .help(t("settings.live_activity.help"))
                     .accessibilityIdentifier("settings.liveActivity")
+
+                    if presenceLiveActivityEnabled {
+                        CPSectionDivider()
+                        CPSettingsRow(
+                            title: t("settings.live_activity.content.summary.title"),
+                            subtitle: t("settings.live_activity.content.summary.description"),
+                            systemImage: "text.alignleft",
+                            tint: .green
+                        ) {
+                            Toggle(
+                                t("settings.live_activity.content.summary.title"),
+                                isOn: liveActivityContentBinding(\.presenceSummary)
+                            )
+                            .labelsHidden()
+                        }
+                        .accessibilityIdentifier("settings.liveActivity.content.summary")
+
+                        CPSectionDivider()
+                        CPSettingsRow(
+                            title: t("settings.live_activity.content.elapsed.title"),
+                            subtitle: t("settings.live_activity.content.elapsed.description"),
+                            systemImage: "timer",
+                            tint: .green
+                        ) {
+                            Toggle(
+                                t("settings.live_activity.content.elapsed.title"),
+                                isOn: liveActivityContentBinding(\.elapsedTime)
+                            )
+                            .labelsHidden()
+                        }
+                        .accessibilityIdentifier("settings.liveActivity.content.elapsed")
+
+                        CPSectionDivider()
+                        CPSettingsRow(
+                            title: t("settings.live_activity.content.discord_status.title"),
+                            subtitle: t("settings.live_activity.content.discord_status.description"),
+                            systemImage: "network",
+                            tint: .green
+                        ) {
+                            Toggle(
+                                t("settings.live_activity.content.discord_status.title"),
+                                isOn: liveActivityContentBinding(\.discordStatus)
+                            )
+                            .labelsHidden()
+                        }
+                        .accessibilityIdentifier("settings.liveActivity.content.discordStatus")
+                    }
                     #endif
                 }
 
@@ -204,6 +252,7 @@ struct SettingView: View {
                 Task {
                     presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
                     presenceLiveActivityEnabled = await ConfigUtility.shared.isPresenceLiveActivityEnabled()
+                    liveActivityContentOptions = await ConfigUtility.shared.liveActivityContentOptions()
                 }
             }
         }
@@ -276,6 +325,7 @@ struct SettingView: View {
                     self.pendingSettingsImport = nil
                     presencePriorityEnabled = imported.presencePriorityEnabled
                     presenceLiveActivityEnabled = imported.presenceLiveActivityEnabled
+                    liveActivityContentOptions = imported.liveActivityContentOptions
                     toastMessage = CPToastMessage(text: t("settings.import_export.import.success"))
                 }
             } catch {
@@ -353,6 +403,39 @@ struct SettingView: View {
             }
         }
     }
+
+    #if os(iOS)
+    private func liveActivityContentBinding(
+        _ keyPath: WritableKeyPath<LiveActivityContentOptions, Bool>
+    ) -> Binding<Bool> {
+        Binding(
+            get: { liveActivityContentOptions[keyPath: keyPath] },
+            set: { newValue in
+                var updated = liveActivityContentOptions
+                updated[keyPath: keyPath] = newValue
+                liveActivityContentOptions = updated
+                liveActivityContentOptionsChanged(updated)
+            }
+        )
+    }
+
+    private func liveActivityContentOptionsChanged(_ options: LiveActivityContentOptions) {
+        Task {
+            do {
+                _ = try await ConfigUtility.shared.setLiveActivityContentOptions(options)
+                if presenceLiveActivityEnabled,
+                   let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() {
+                    await PresenceLiveActivityController.shared.publish(
+                        appliedPresence,
+                        connectionStatus: t(DiscordSDKManager.shared.dashboardStatus.localizationKey)
+                    )
+                }
+            } catch {
+                liveActivityContentOptions = await ConfigUtility.shared.liveActivityContentOptions()
+            }
+        }
+    }
+    #endif
 
     /// Two-way binding that saves language changes asynchronously through the localization manager.
     private var languageBinding: Binding<AppLanguage> {

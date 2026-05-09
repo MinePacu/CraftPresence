@@ -156,6 +156,49 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertEqual(settings.activeCustomPresencePresetID?.uuidString, "11111111-1111-1111-1111-111111111111")
     }
 
+    func testDynamicIslandContentOptionsDefaultToCurrentLiveActivityOutput() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+
+        XCTAssertTrue(settings.liveActivityContentOptions.presenceSummary)
+        XCTAssertTrue(settings.liveActivityContentOptions.elapsedTime)
+        XCTAssertTrue(settings.liveActivityContentOptions.discordStatus)
+    }
+
+    func testDynamicIslandContentOptionsCodableRoundTrip() throws {
+        var settings = AppSettings()
+        settings.liveActivityContentOptions = LiveActivityContentOptions(
+            presenceSummary: true,
+            elapsedTime: false,
+            discordStatus: true
+        )
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+
+        XCTAssertEqual(decoded.liveActivityContentOptions, settings.liveActivityContentOptions)
+    }
+
+    #if canImport(ActivityKit)
+    func testPresenceActivityContentStateDefaultsMissingContentOptions() throws {
+        let json = """
+        {
+          "title": "Focus",
+          "details": "Deep work",
+          "state": "Writing",
+          "connectionStatus": "Ready",
+          "isLive": true
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(
+            PresenceActivityAttributes.ContentState.self,
+            from: Data(json.utf8)
+        )
+
+        XCTAssertEqual(decoded.contentOptions, LiveActivityContentOptions())
+    }
+    #endif
+
     func testAppliedPresencePayloadCodableRoundTrip() throws {
         let payload = AppliedPresencePayload(
             name: "Apple Music",

@@ -138,14 +138,17 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
 
+internal val LightStatusBarScrim: Int = 0xE6FBFDF8.toInt()
+internal val DarkStatusBarScrim: Int = 0xE6101411.toInt()
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DiscordSocialSdkInit.setEngineActivity(this)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(
-                lightScrim = android.graphics.Color.TRANSPARENT,
-                darkScrim = android.graphics.Color.TRANSPARENT,
+                lightScrim = LightStatusBarScrim,
+                darkScrim = DarkStatusBarScrim,
             ),
             navigationBarStyle = SystemBarStyle.auto(
                 lightScrim = android.graphics.Color.TRANSPARENT,
@@ -156,8 +159,6 @@ class MainActivity : ComponentActivity() {
             window.isStatusBarContrastEnforced = false
             window.isNavigationBarContrastEnforced = false
         }
-        @Suppress("DEPRECATION")
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
         setContent {
             CraftPresenceTheme {
                 CraftPresenceApp()
