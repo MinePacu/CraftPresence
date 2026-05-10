@@ -107,6 +107,7 @@ final class CraftPresenceTests: XCTestCase {
 
         XCTAssertEqual(payload.name, "Focus")
         XCTAssertEqual(payload.activityType, .watching)
+        XCTAssertNil(payload.streamingURL)
         XCTAssertEqual(payload.details, "Deep work")
         XCTAssertEqual(payload.state, "Writing")
         XCTAssertEqual(payload.largeImageKey, "focus")
@@ -118,6 +119,56 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertEqual(payload.partyMax, 5)
         XCTAssertEqual(payload.start, startDate)
         XCTAssertNil(payload.end)
+    }
+
+    func testStreamingPresenceRequiresYoutubeOrTwitchURL() {
+        let youtubePreset = CustomPresencePreset(
+            title: "Live",
+            activityType: .streaming,
+            details: "Building",
+            state: "On air",
+            streamingURL: " https://www.youtube.com/watch?v=abc123 "
+        )
+        let twitchPreset = CustomPresencePreset(
+            title: "Live",
+            activityType: .streaming,
+            details: "Building",
+            state: "On air",
+            streamingURL: "https://twitch.tv/example"
+        )
+        let missingURLPreset = CustomPresencePreset(
+            title: "Live",
+            activityType: .streaming,
+            details: "Building",
+            state: "On air",
+            streamingURL: ""
+        )
+        let unsupportedURLPreset = CustomPresencePreset(
+            title: "Live",
+            activityType: .streaming,
+            details: "Building",
+            state: "On air",
+            streamingURL: "https://example.com/live"
+        )
+
+        XCTAssertNil(youtubePreset.streamingURLValidationError)
+        XCTAssertEqual(youtubePreset.normalized.streamingURL, "https://www.youtube.com/watch?v=abc123")
+        XCTAssertNil(twitchPreset.streamingURLValidationError)
+        XCTAssertEqual(missingURLPreset.streamingURLValidationError, .missing)
+        XCTAssertEqual(unsupportedURLPreset.streamingURLValidationError, .unsupportedHost)
+    }
+
+    func testNonStreamingPresenceIgnoresStreamingURLValidation() {
+        let preset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Building",
+            state: "Working",
+            streamingURL: "https://example.com/live"
+        )
+
+        XCTAssertNil(preset.streamingURLValidationError)
+        XCTAssertEqual(preset.normalized.streamingURL, "")
     }
 
     func testDefaultPresencePresetsUseStableSharedIDs() {

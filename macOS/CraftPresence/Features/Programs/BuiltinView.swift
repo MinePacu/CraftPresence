@@ -184,7 +184,7 @@ struct AppleMusicDetailView: View {
     private func clearDiscordActivity() {
         Task {
             do {
-                try await DiscordSDKManager.shared.clearActivity()
+                try await DiscordSDKManager.shared.clearAppliedPresence()
                 await MainActor.run {
                     clearErrorMessage = nil
                 }
@@ -304,7 +304,7 @@ struct XcodeDetailView: View {
     private func clearDiscordActivity() {
         Task {
             do {
-                try await DiscordSDKManager.shared.clearActivity()
+                try await DiscordSDKManager.shared.clearAppliedPresence()
                 await MainActor.run {
                     clearErrorMessage = nil
                 }

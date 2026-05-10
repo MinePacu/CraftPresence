@@ -229,6 +229,25 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var isDefault: Bool = false
     public var updatedAt: Date = defaultUpdatedAt
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case activityType
+        case details
+        case state
+        case largeImageKey
+        case largeImageText
+        case smallImageKey
+        case smallImageText
+        case usesElapsedTime
+        case resetsElapsedTimeOnPublish
+        case usesParty
+        case partyCurrent
+        case partyMax
+        case isDefault
+        case updatedAt
+    }
+
     nonisolated public init() {}
 
     nonisolated public init(
@@ -265,6 +284,48 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.partyMax = partyMax
         self.isDefault = isDefault
         self.updatedAt = updatedAt
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            title: try container.decodeIfPresent(String.self, forKey: .title) ?? "",
+            activityType: try container.decodeIfPresent(ProgramPresenceSettings.ActivityType.self, forKey: .activityType) ?? .playing,
+            details: try container.decodeIfPresent(String.self, forKey: .details) ?? "",
+            state: try container.decodeIfPresent(String.self, forKey: .state) ?? "",
+            largeImageKey: try container.decodeIfPresent(String.self, forKey: .largeImageKey) ?? "",
+            largeImageText: try container.decodeIfPresent(String.self, forKey: .largeImageText) ?? "",
+            smallImageKey: try container.decodeIfPresent(String.self, forKey: .smallImageKey) ?? "",
+            smallImageText: try container.decodeIfPresent(String.self, forKey: .smallImageText) ?? "",
+            usesElapsedTime: try container.decodeIfPresent(Bool.self, forKey: .usesElapsedTime) ?? true,
+            resetsElapsedTimeOnPublish: try container.decodeIfPresent(Bool.self, forKey: .resetsElapsedTimeOnPublish) ?? true,
+            usesParty: try container.decodeIfPresent(Bool.self, forKey: .usesParty) ?? false,
+            partyCurrent: try container.decodeIfPresent(Int.self, forKey: .partyCurrent) ?? 1,
+            partyMax: try container.decodeIfPresent(Int.self, forKey: .partyMax) ?? 1,
+            isDefault: try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false,
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Self.defaultUpdatedAt
+        )
+    }
+
+    nonisolated public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(activityType, forKey: .activityType)
+        try container.encode(details, forKey: .details)
+        try container.encode(state, forKey: .state)
+        try container.encode(largeImageKey, forKey: .largeImageKey)
+        try container.encode(largeImageText, forKey: .largeImageText)
+        try container.encode(smallImageKey, forKey: .smallImageKey)
+        try container.encode(smallImageText, forKey: .smallImageText)
+        try container.encode(usesElapsedTime, forKey: .usesElapsedTime)
+        try container.encode(resetsElapsedTimeOnPublish, forKey: .resetsElapsedTimeOnPublish)
+        try container.encode(usesParty, forKey: .usesParty)
+        try container.encode(partyCurrent, forKey: .partyCurrent)
+        try container.encode(partyMax, forKey: .partyMax)
+        try container.encode(isDefault, forKey: .isDefault)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 
     nonisolated public static let defaultUpdatedAt = Date(timeIntervalSince1970: 1_778_198_400)
@@ -324,6 +385,14 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
 }
 
 /// Discord Rich Presence payload last successfully applied by CraftPresence.
+public enum AppliedPresenceSource: String, Codable, Sendable, Equatable {
+    case manual
+    case program
+    case appleMusic
+    case xcode
+    case schedule
+}
+
 public struct AppliedPresencePayload: Codable, Sendable, Equatable {
     public var name: String = ""
     public var state: String?
@@ -338,6 +407,24 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
     public var start: Date?
     public var end: Date?
     public var activityType: ProgramPresenceSettings.ActivityType = .playing
+    public var source: AppliedPresenceSource = .manual
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case state
+        case details
+        case largeImageKey
+        case largeImageText
+        case smallImageKey
+        case smallImageText
+        case partyID
+        case partyCurrent
+        case partyMax
+        case start
+        case end
+        case activityType
+        case source
+    }
 
     nonisolated public init(
         name: String,
@@ -352,7 +439,8 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
         partyMax: Int? = nil,
         start: Date? = nil,
         end: Date? = nil,
-        activityType: ProgramPresenceSettings.ActivityType = .playing
+        activityType: ProgramPresenceSettings.ActivityType = .playing,
+        source: AppliedPresenceSource = .manual
     ) {
         self.name = Self.trimmed(name) ?? "CraftPresence"
         self.state = Self.trimmed(state)
@@ -367,9 +455,10 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
         self.start = start
         self.end = end
         self.activityType = activityType
+        self.source = source
     }
 
-    nonisolated public init(presencePreset preset: PresencePreset) {
+    nonisolated public init(presencePreset preset: PresencePreset, source: AppliedPresenceSource = .manual) {
         let partyID = preset.usesParty && preset.partyCurrent > 0 && preset.partyMax >= preset.partyCurrent
             ? "preset:\(preset.id.uuidString)"
             : nil
@@ -386,13 +475,61 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
             partyCurrent: partyID == nil ? nil : preset.partyCurrent,
             partyMax: partyID == nil ? nil : preset.partyMax,
             start: preset.usesElapsedTime ? Date() : nil,
-            activityType: preset.activityType
+            activityType: preset.activityType,
+            source: source
         )
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            name: try container.decodeIfPresent(String.self, forKey: .name) ?? "CraftPresence",
+            state: try container.decodeIfPresent(String.self, forKey: .state),
+            details: try container.decodeIfPresent(String.self, forKey: .details),
+            largeImageKey: try container.decodeIfPresent(String.self, forKey: .largeImageKey),
+            largeImageText: try container.decodeIfPresent(String.self, forKey: .largeImageText),
+            smallImageKey: try container.decodeIfPresent(String.self, forKey: .smallImageKey),
+            smallImageText: try container.decodeIfPresent(String.self, forKey: .smallImageText),
+            partyID: try container.decodeIfPresent(String.self, forKey: .partyID),
+            partyCurrent: try container.decodeIfPresent(Int.self, forKey: .partyCurrent),
+            partyMax: try container.decodeIfPresent(Int.self, forKey: .partyMax),
+            start: try container.decodeIfPresent(Date.self, forKey: .start),
+            end: try container.decodeIfPresent(Date.self, forKey: .end),
+            activityType: try container.decodeIfPresent(ProgramPresenceSettings.ActivityType.self, forKey: .activityType) ?? .playing,
+            source: try container.decodeIfPresent(AppliedPresenceSource.self, forKey: .source) ?? .manual
+        )
+    }
+
+    nonisolated public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(state, forKey: .state)
+        try container.encodeIfPresent(details, forKey: .details)
+        try container.encodeIfPresent(largeImageKey, forKey: .largeImageKey)
+        try container.encodeIfPresent(largeImageText, forKey: .largeImageText)
+        try container.encodeIfPresent(smallImageKey, forKey: .smallImageKey)
+        try container.encodeIfPresent(smallImageText, forKey: .smallImageText)
+        try container.encodeIfPresent(partyID, forKey: .partyID)
+        try container.encodeIfPresent(partyCurrent, forKey: .partyCurrent)
+        try container.encodeIfPresent(partyMax, forKey: .partyMax)
+        try container.encodeIfPresent(start, forKey: .start)
+        try container.encodeIfPresent(end, forKey: .end)
+        try container.encode(activityType, forKey: .activityType)
+        try container.encode(source, forKey: .source)
     }
 
     nonisolated private static func trimmed(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == true ? nil : trimmed
+    }
+}
+
+public extension AppSettings {
+    @discardableResult
+    nonisolated mutating func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) -> Bool {
+        guard appliedPresence?.source == source else { return false }
+        appliedPresence = nil
+        return true
     }
 }
 
@@ -685,6 +822,20 @@ public actor ConfigUtility {
     public func setAppliedPresence(_ payload: AppliedPresencePayload?) async throws -> AppSettings {
         settings.appliedPresence = payload
         try persist()
+        return settings
+    }
+
+    /// Returns the latest app-owned Presence payload that should be considered authoritative.
+    public func currentAppliedPresence() -> AppliedPresencePayload? {
+        settings.appliedPresence
+    }
+
+    @discardableResult
+    /// Clears the latest app-owned Presence only when it belongs to the given source.
+    public func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) async throws -> AppSettings {
+        if settings.clearAppliedPresence(ifOwnedBy: source) {
+            try persist()
+        }
         return settings
     }
 

@@ -1,6 +1,7 @@
 # Exclude specific Discord SDK files
 cdiscord.h
 discordpp.h
+discord_partner_sdk.h
 DiscordppWrapper.cpp.backup
 
 # Exclude other C/C++ files except the ones we want to keep
@@ -10,6 +11,12 @@ DiscordppWrapper.cpp.backup
 # *.hpp - handled by specific rules below
 *.dylib
 *.modulemap
+*.xcframework/
+CraftPresence/ThirdParty/DIscordSDK/lib/
+CraftPresence/ThirdParty/DIscordSDK/modules/
+CraftPresence/ThirdParty/DIscordSDK/include/cdiscord.h
+CraftPresence/ThirdParty/DIscordSDK/include/discordpp.h
+CraftPresence/ThirdParty/DIscordSDK/include/discord_partner_sdk.h
 
 # Include specific files (negation must come after the pattern)
 !DiscordppWrapper.cpp

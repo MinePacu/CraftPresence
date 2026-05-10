@@ -198,6 +198,11 @@
 "presets.editor.identity" = "基本情報";
 "presets.editor.title" = "プリセット名";
 "presets.editor.text" = "表示テキスト";
+"presets.editor.streaming_url" = "配信 URL";
+"presets.editor.streaming_url_help" = "YouTube または Twitch の HTTPS リンクを入力してください。";
+"presets.editor.streaming_url_error_missing" = "配信アクティビティには YouTube または Twitch の URL が必要です。";
+"presets.editor.streaming_url_error_invalid" = "配信 URL は有効な HTTPS リンクである必要があります。";
+"presets.editor.streaming_url_error_unsupported" = "配信 URL は YouTube または Twitch のリンクである必要があります。";
 "presets.editor.elapsed_time" = "経過時間を表示";
 "presets.editor.reset_elapsed_time_on_publish" = "公開時に経過時間をリセット";
 "presets.editor.assets" = "画像アセット";

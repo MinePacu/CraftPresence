@@ -5,7 +5,9 @@
 //  Created by 노현수 on 10/31/25.
 //
 
+import Foundation
 import Testing
+@testable import CraftPresence
 
 struct CraftPresenceTests {
 
@@ -60,12 +62,44 @@ struct CraftPresenceTests {
         let payload = AppliedPresencePayload(presencePreset: preset)
 
         #expect(payload.name == "Focus")
+        #expect(payload.source == .manual)
         #expect(payload.activityType == .watching)
         #expect(payload.details == "Deep work")
         #expect(payload.state == "Writing")
         #expect(payload.partyID == "preset:11111111-1111-1111-1111-111111111111")
         #expect(payload.partyCurrent == 2)
         #expect(payload.partyMax == 5)
+    }
+
+    @Test func appliedPresencePayloadDecodesLegacySourceAsManual() async throws {
+        let json = """
+        {
+          "name": "Focus",
+          "state": "Writing",
+          "details": "Deep work",
+          "activityType": "Watching"
+        }
+        """
+
+        let payload = try JSONDecoder().decode(AppliedPresencePayload.self, from: Data(json.utf8))
+
+        #expect(payload.source == .manual)
+    }
+
+    @Test func settingsOnlyClearsAppliedPresenceForMatchingSource() async throws {
+        var settings = AppSettings()
+        settings.appliedPresence = AppliedPresencePayload(
+            name: "Focus",
+            state: "Writing",
+            details: "Deep work",
+            source: .manual
+        )
+
+        #expect(settings.clearAppliedPresence(ifOwnedBy: .appleMusic) == false)
+        #expect(settings.appliedPresence?.name == "Focus")
+
+        #expect(settings.clearAppliedPresence(ifOwnedBy: .manual) == true)
+        #expect(settings.appliedPresence == nil)
     }
 
     @Test func settingsBackupRoundTripIncludesPlatformExtensionsAndSummary() async throws {

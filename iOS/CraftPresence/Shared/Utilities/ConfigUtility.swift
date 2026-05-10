@@ -223,6 +223,34 @@ public enum ConfigUtilityError: Error, LocalizedError, Equatable {
     }
 }
 
+public enum StreamingURLValidationError: Error, LocalizedError, Equatable, Sendable {
+    case missing
+    case invalidURL
+    case unsupportedHost
+
+    public var localizationKey: String {
+        switch self {
+        case .missing:
+            return "presets.editor.streaming_url_error_missing"
+        case .invalidURL:
+            return "presets.editor.streaming_url_error_invalid"
+        case .unsupportedHost:
+            return "presets.editor.streaming_url_error_unsupported"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .missing:
+            return "Streaming activity requires a YouTube or Twitch URL."
+        case .invalidURL:
+            return "Streaming URL must be a valid HTTPS link."
+        case .unsupportedHost:
+            return "Streaming URL must be from YouTube or Twitch."
+        }
+    }
+}
+
 /// Supported language choices for the app's manual localization override.
 public enum AppLanguage: String, Codable, CaseIterable, Identifiable, Sendable {
     case system
@@ -306,6 +334,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var activityType: ProgramPresenceSettings.ActivityType = .playing
     public var details: String = ""
     public var state: String = ""
+    public var streamingURL: String = ""
     public var largeImageKey: String = ""
     public var largeImageText: String = ""
     public var smallImageKey: String = ""
@@ -327,6 +356,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         case activityType
         case details
         case state
+        case streamingURL
         case largeImageKey
         case largeImageText
         case smallImageKey
@@ -348,6 +378,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.activityType = try container.decodeIfPresent(ProgramPresenceSettings.ActivityType.self, forKey: .activityType) ?? .playing
         self.details = try container.decodeIfPresent(String.self, forKey: .details) ?? ""
         self.state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
+        self.streamingURL = try container.decodeIfPresent(String.self, forKey: .streamingURL) ?? ""
         self.largeImageKey = try container.decodeIfPresent(String.self, forKey: .largeImageKey) ?? ""
         self.largeImageText = try container.decodeIfPresent(String.self, forKey: .largeImageText) ?? ""
         self.smallImageKey = try container.decodeIfPresent(String.self, forKey: .smallImageKey) ?? ""
@@ -369,6 +400,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         try container.encode(activityType, forKey: .activityType)
         try container.encode(details, forKey: .details)
         try container.encode(state, forKey: .state)
+        try container.encode(streamingURL, forKey: .streamingURL)
         try container.encode(largeImageKey, forKey: .largeImageKey)
         try container.encode(largeImageText, forKey: .largeImageText)
         try container.encode(smallImageKey, forKey: .smallImageKey)
@@ -389,6 +421,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         activityType: ProgramPresenceSettings.ActivityType,
         details: String,
         state: String,
+        streamingURL: String = "",
         largeImageKey: String = "",
         largeImageText: String = "",
         smallImageKey: String = "",
@@ -407,6 +440,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.activityType = activityType
         self.details = details
         self.state = state
+        self.streamingURL = streamingURL
         self.largeImageKey = largeImageKey
         self.largeImageText = largeImageText
         self.smallImageKey = smallImageKey
@@ -494,6 +528,7 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
     public var start: Date?
     public var end: Date?
     public var activityType: ProgramPresenceSettings.ActivityType = .playing
+    public var streamingURL: String?
 
     nonisolated public init(
         name: String,
@@ -508,7 +543,8 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
         partyMax: Int? = nil,
         start: Date? = nil,
         end: Date? = nil,
-        activityType: ProgramPresenceSettings.ActivityType = .playing
+        activityType: ProgramPresenceSettings.ActivityType = .playing,
+        streamingURL: String? = nil
     ) {
         self.name = Self.trimmed(name) ?? "CraftPresence"
         self.state = Self.trimmed(state)
@@ -523,6 +559,7 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
         self.start = start
         self.end = end
         self.activityType = activityType
+        self.streamingURL = activityType == .streaming ? Self.trimmed(streamingURL) : nil
     }
 
     nonisolated public init(customPresencePreset preset: CustomPresencePreset) {
@@ -542,7 +579,8 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
             partyCurrent: partyID == nil ? nil : preset.partyCurrent,
             partyMax: partyID == nil ? nil : preset.partyMax,
             start: preset.usesElapsedTime ? preset.elapsedStartDate : nil,
-            activityType: preset.activityType
+            activityType: preset.activityType,
+            streamingURL: preset.streamingURL
         )
     }
 

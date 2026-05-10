@@ -198,6 +198,11 @@
 "presets.editor.identity" = "기본 정보";
 "presets.editor.title" = "프리셋 이름";
 "presets.editor.text" = "표시 문구";
+"presets.editor.streaming_url" = "스트리밍 URL";
+"presets.editor.streaming_url_help" = "YouTube 또는 Twitch HTTPS 링크를 입력하세요.";
+"presets.editor.streaming_url_error_missing" = "스트리밍 활동에는 YouTube 또는 Twitch URL이 필요합니다.";
+"presets.editor.streaming_url_error_invalid" = "스트리밍 URL은 올바른 HTTPS 링크여야 합니다.";
+"presets.editor.streaming_url_error_unsupported" = "스트리밍 URL은 YouTube 또는 Twitch 링크여야 합니다.";
 "presets.editor.elapsed_time" = "경과 시간 표시";
 "presets.editor.reset_elapsed_time_on_publish" = "게시 시 경과 시간 초기화";
 "presets.editor.assets" = "이미지 에셋";

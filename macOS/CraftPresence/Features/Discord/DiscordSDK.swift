@@ -651,10 +651,42 @@ extension DiscordSDKManager {
         }
     }
 
+    /// Publishes and records the app-owned Presence payload after Discord accepts it.
+    func publishAppliedPresence(_ payload: AppliedPresencePayload) async throws {
+        try await updateActivity(
+            name: payload.name,
+            state: payload.state,
+            details: payload.details,
+            largeImageKey: payload.largeImageKey,
+            largeImageText: payload.largeImageText,
+            smallImageKey: payload.smallImageKey,
+            smallImageText: payload.smallImageText,
+            partyID: payload.partyID,
+            partyCurrent: payload.partyCurrent,
+            partyMax: payload.partyMax,
+            start: payload.start,
+            end: payload.end,
+            activityType: payload.activityType.discordActivityType
+        )
+        _ = try await ConfigUtility.shared.setAppliedPresence(payload)
+    }
+
     func clearActivity() async throws {
         try await withCheckedThrowingContinuation { cont in
             clearActivity { cont.resume(with: $0.mapError { $0 }) }
         }
+    }
+
+    /// Clears Discord Rich Presence and removes the recorded app-owned Presence.
+    func clearAppliedPresence() async throws {
+        try await clearActivity()
+        _ = try await ConfigUtility.shared.setAppliedPresence(nil)
+    }
+
+    /// Clears Discord Rich Presence only if the recorded app-owned Presence belongs to the given source.
+    func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) async throws {
+        guard await ConfigUtility.shared.currentAppliedPresence()?.source == source else { return }
+        try await clearAppliedPresence()
     }
 }
 

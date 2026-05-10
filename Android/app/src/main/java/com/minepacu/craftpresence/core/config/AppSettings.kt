@@ -189,24 +189,52 @@ data class PresencePreset(
         .put("isDefault", isDefault)
         .put("updatedAt", updatedAt)
 
-    fun toDiscordActivity(nowEpochSeconds: Long): DiscordActivity {
+    fun toDiscordActivity(
+        nowEpochSeconds: Long,
+        previousPayload: AppliedPresencePayload? = null,
+    ): DiscordActivity {
         val partyID = if (usesParty && partyCurrent > 0 && partyMax >= partyCurrent) {
             "preset:$id"
         } else {
             null
         }
+        val normalizedState = state.takeIf { it.isNotBlank() }
+        val normalizedDetails = details.takeIf { it.isNotBlank() }
+        val normalizedLargeImageKey = largeImageKey.takeIf { it.isNotBlank() }
+        val normalizedLargeImageText = largeImageText.takeIf { it.isNotBlank() }
+        val normalizedSmallImageKey = smallImageKey.takeIf { it.isNotBlank() }
+        val normalizedSmallImageText = smallImageText.takeIf { it.isNotBlank() }
+        val startEpochSeconds = resolveCustomPresenceStartEpochSeconds(
+            nowEpochSeconds = nowEpochSeconds,
+            previousPayload = previousPayload,
+            nextPayload = AppliedPresencePayload(
+                name = title,
+                state = normalizedState,
+                details = normalizedDetails,
+                largeImageKey = normalizedLargeImageKey,
+                largeImageText = normalizedLargeImageText,
+                smallImageKey = normalizedSmallImageKey,
+                smallImageText = normalizedSmallImageText,
+                partyID = partyID,
+                partyCurrent = partyID?.let { partyCurrent },
+                partyMax = partyID?.let { partyMax },
+                activityType = activityType,
+            ),
+            usesElapsedTime = usesElapsedTime,
+            resetsElapsedTimeOnPublish = resetsElapsedTimeOnPublish,
+        )
         return DiscordActivity(
             name = title,
-            state = state.takeIf { it.isNotBlank() },
-            details = details.takeIf { it.isNotBlank() },
-            largeImageKey = largeImageKey.takeIf { it.isNotBlank() },
-            largeImageText = largeImageText.takeIf { it.isNotBlank() },
-            smallImageKey = smallImageKey.takeIf { it.isNotBlank() },
-            smallImageText = smallImageText.takeIf { it.isNotBlank() },
+            state = normalizedState,
+            details = normalizedDetails,
+            largeImageKey = normalizedLargeImageKey,
+            largeImageText = normalizedLargeImageText,
+            smallImageKey = normalizedSmallImageKey,
+            smallImageText = normalizedSmallImageText,
             partyId = partyID,
             partyCurrent = partyID?.let { partyCurrent },
             partyMax = partyID?.let { partyMax },
-            startEpochSeconds = if (usesElapsedTime) nowEpochSeconds else null,
+            startEpochSeconds = startEpochSeconds,
             activityType = activityType,
         )
     }
@@ -319,8 +347,15 @@ data class AppliedPresencePayload(
         .put("activityType", activityType.sharedSchemaValue)
 
     companion object {
-        fun fromPreset(preset: PresencePreset, nowEpochSeconds: Long): AppliedPresencePayload {
-            val activity = preset.toDiscordActivity(nowEpochSeconds)
+        fun fromPreset(
+            preset: PresencePreset,
+            nowEpochSeconds: Long,
+            previousPayload: AppliedPresencePayload? = null,
+        ): AppliedPresencePayload {
+            val activity = preset.toDiscordActivity(
+                nowEpochSeconds = nowEpochSeconds,
+                previousPayload = previousPayload,
+            )
             return AppliedPresencePayload(
                 name = activity.name.orEmpty(),
                 state = activity.state,
@@ -354,6 +389,35 @@ data class AppliedPresencePayload(
             activityType = parseActivityType(json.optString("activityType")),
         )
     }
+
+    fun payloadKeyWithoutTimestamps(): String = listOf(
+        name,
+        state,
+        details,
+        largeImageKey,
+        largeImageText,
+        smallImageKey,
+        smallImageText,
+        partyID,
+        partyCurrent,
+        partyMax,
+        activityType,
+    ).joinToString("|") { it?.toString().orEmpty() }
+}
+
+private fun resolveCustomPresenceStartEpochSeconds(
+    nowEpochSeconds: Long,
+    previousPayload: AppliedPresencePayload?,
+    nextPayload: AppliedPresencePayload,
+    usesElapsedTime: Boolean,
+    resetsElapsedTimeOnPublish: Boolean,
+): Long? {
+    if (!usesElapsedTime) return null
+    if (resetsElapsedTimeOnPublish) return nowEpochSeconds
+    return previousPayload
+        ?.takeIf { it.payloadKeyWithoutTimestamps() == nextPayload.payloadKeyWithoutTimestamps() }
+        ?.startEpochSeconds
+        ?: nowEpochSeconds
 }
 
 private val DiscordActivity.ActivityType.sharedSchemaValue: String

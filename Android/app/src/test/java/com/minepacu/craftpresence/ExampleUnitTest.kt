@@ -211,6 +211,84 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun presencePresetReusesPreviousStartWhenSamePayloadIsRepublishedWithoutReset() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            details = "Deep work",
+            state = "Writing",
+            resetsElapsedTimeOnPublish = false,
+        )
+        val previous = AppliedPresencePayload.fromPreset(preset, nowEpochSeconds = 1_000L)
+
+        val activity = preset.toDiscordActivity(
+            nowEpochSeconds = 2_000L,
+            previousPayload = previous,
+        )
+
+        assertEquals(1_000L, activity.startEpochSeconds)
+    }
+
+    @Test
+    fun presencePresetStartsNewElapsedTimeWhenPayloadChanges() {
+        val previousPreset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            details = "Deep work",
+            state = "Writing",
+            resetsElapsedTimeOnPublish = false,
+        )
+        val nextPreset = previousPreset.copy(state = "Reviewing")
+        val previous = AppliedPresencePayload.fromPreset(previousPreset, nowEpochSeconds = 1_000L)
+
+        val activity = nextPreset.toDiscordActivity(
+            nowEpochSeconds = 2_000L,
+            previousPayload = previous,
+        )
+
+        assertEquals(2_000L, activity.startEpochSeconds)
+    }
+
+    @Test
+    fun presencePresetStartsNewElapsedTimeWhenResetOnPublishIsEnabled() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            details = "Deep work",
+            state = "Writing",
+            resetsElapsedTimeOnPublish = true,
+        )
+        val previous = AppliedPresencePayload.fromPreset(preset, nowEpochSeconds = 1_000L)
+
+        val activity = preset.toDiscordActivity(
+            nowEpochSeconds = 2_000L,
+            previousPayload = previous,
+        )
+
+        assertEquals(2_000L, activity.startEpochSeconds)
+    }
+
+    @Test
+    fun appliedPresenceFromPresetUsesResolvedElapsedTime() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            details = "Deep work",
+            state = "Writing",
+            resetsElapsedTimeOnPublish = false,
+        )
+        val previous = AppliedPresencePayload.fromPreset(preset, nowEpochSeconds = 1_000L)
+
+        val payload = AppliedPresencePayload.fromPreset(
+            preset = preset,
+            nowEpochSeconds = 2_000L,
+            previousPayload = previous,
+        )
+
+        assertEquals(1_000L, payload.startEpochSeconds)
+    }
+
+    @Test
     fun appliedPresenceRoundTripPreservesSharedPayloadFields() {
         val payload = AppliedPresencePayload(
             name = "Focus",

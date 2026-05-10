@@ -210,11 +210,12 @@ struct ProgramsView: View {
     @MainActor
     private func savePreset(_ preset: CustomPresencePreset) async {
         do {
+            try preset.normalized.validateStreamingURLIfNeeded()
             _ = try await ConfigUtility.shared.upsertCustomPresencePreset(preset)
             await reloadPresets()
             showToast(t("presets.saved"))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -225,7 +226,7 @@ struct ProgramsView: View {
             await reloadPresets()
             showToast(t("presets.deleted"))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -254,6 +255,7 @@ struct ProgramsView: View {
             let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
             let startDate = publishedPreset.elapsedStartDateForPublish(preserving: appliedPresence)
             publishedPreset.elapsedStartDate = startDate
+            try publishedPreset.validateStreamingURLIfNeeded()
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
             }
@@ -269,7 +271,8 @@ struct ProgramsView: View {
                 partyCurrent: partyCurrent(for: publishedPreset),
                 partyMax: partyMax(for: publishedPreset),
                 start: startDate,
-                activityType: publishedPreset.activityType
+                activityType: publishedPreset.activityType,
+                streamingURL: publishedPreset.streamingURL
             )
             try await DiscordSDKManager.shared.updateActivity(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(publishedPreset)
@@ -284,7 +287,7 @@ struct ProgramsView: View {
             await reloadPresets()
             showToast(String(format: t("presets.published_format"), publishedPreset.title))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -296,7 +299,7 @@ struct ProgramsView: View {
             await PresenceScheduleManager.shared.evaluate()
             showToast(t("presets.schedule.saved"))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -319,6 +322,13 @@ struct ProgramsView: View {
 
     private func showError(_ message: String) {
         errorMessage = message
+    }
+
+    private func localizedErrorDescription(_ error: Error) -> String {
+        if let streamingError = error as? StreamingURLValidationError {
+            return t(streamingError.localizationKey)
+        }
+        return error.localizedDescription
     }
 
     @MainActor
@@ -1020,7 +1030,7 @@ private struct PresencePresetEditor: View {
                         onSave(normalizedPreset)
                         dismiss()
                     }
-                    .disabled(normalizedPreset.title.isEmpty)
+                    .disabled(normalizedPreset.title.isEmpty || normalizedPreset.streamingURLValidationError != nil)
                 }
             }
         }
@@ -1059,6 +1069,22 @@ private struct PresencePresetForm: View {
                 .accessibilityIdentifier("presenceForm.details")
             TextField(t("programs.sheet.state_message"), text: $preset.state, axis: .vertical)
                 .accessibilityIdentifier("presenceForm.state")
+            if preset.activityType == .streaming {
+                TextField(t("presets.editor.streaming_url"), text: $preset.streamingURL, axis: .vertical)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .accessibilityIdentifier("presenceForm.streamingURL")
+                if let error = preset.streamingURLValidationError {
+                    Text(t(error.localizationKey))
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("presenceForm.streamingURLError")
+                } else {
+                    Text(t("presets.editor.streaming_url_help"))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Toggle(t("presets.editor.elapsed_time"), isOn: $preset.usesElapsedTime)
                 .accessibilityIdentifier("presenceForm.elapsedTime")
             Toggle(t("presets.editor.reset_elapsed_time_on_publish"), isOn: $preset.resetsElapsedTimeOnPublish)
@@ -1355,7 +1381,7 @@ struct CustomPresenceView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
-            .disabled(draft.normalized.title.isEmpty)
+            .disabled(draft.normalized.title.isEmpty || draft.normalized.streamingURLValidationError != nil)
             .accessibilityIdentifier("customPresence.publish")
 
             Button {
@@ -1366,7 +1392,7 @@ struct CustomPresenceView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)
-            .disabled(draft.normalized.title.isEmpty)
+            .disabled(draft.normalized.title.isEmpty || draft.normalized.streamingURLValidationError != nil)
             .accessibilityIdentifier("customPresence.saveAsPreset")
 
             Button {
@@ -1436,6 +1462,7 @@ struct CustomPresenceView: View {
             let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
             let startDate = preset.elapsedStartDateForPublish(preserving: appliedPresence)
             preset.elapsedStartDate = startDate
+            try preset.validateStreamingURLIfNeeded()
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
             }
@@ -1451,7 +1478,8 @@ struct CustomPresenceView: View {
                 partyCurrent: preset.partyCurrentValue,
                 partyMax: preset.partyMaxValue,
                 start: startDate,
-                activityType: preset.activityType
+                activityType: preset.activityType,
+                streamingURL: preset.streamingURL
             )
             try await DiscordSDKManager.shared.updateActivity(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
@@ -1467,7 +1495,7 @@ struct CustomPresenceView: View {
             hasLoadedInitialDraft = true
             showToast(String(format: t("custom_presence.published_format"), preset.title))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -1475,6 +1503,7 @@ struct CustomPresenceView: View {
     private func saveDraftAsPreset() async {
         do {
             let preset = draft.normalized
+            try preset.validateStreamingURLIfNeeded()
             _ = try await ConfigUtility.shared.upsertCustomPresencePreset(preset)
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(preset)
@@ -1482,7 +1511,7 @@ struct CustomPresenceView: View {
             hasLoadedInitialDraft = true
             showToast(t("presets.saved"))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -1496,7 +1525,7 @@ struct CustomPresenceView: View {
             await PresenceLiveActivityController.shared.end()
             showToast(t("presets.cleared"))
         } catch {
-            showError(error.localizedDescription)
+            showError(localizedErrorDescription(error))
         }
     }
 
@@ -1507,6 +1536,13 @@ struct CustomPresenceView: View {
 
     private func showError(_ message: String) {
         errorMessage = message
+    }
+
+    private func localizedErrorDescription(_ error: Error) -> String {
+        if let streamingError = error as? StreamingURLValidationError {
+            return t(streamingError.localizationKey)
+        }
+        return error.localizedDescription
     }
 
     @MainActor
@@ -1567,6 +1603,25 @@ private struct PresencePresetInlineForm: View {
                 TextField(t("programs.sheet.state_message"), text: $preset.state, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityIdentifier("presenceForm.state")
+
+                if preset.activityType == .streaming {
+                    TextField(t("presets.editor.streaming_url"), text: $preset.streamingURL, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.URL)
+                        .accessibilityIdentifier("presenceForm.streamingURL")
+
+                    if let error = preset.streamingURLValidationError {
+                        Text(t(error.localizationKey))
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("presenceForm.streamingURLError")
+                    } else {
+                        Text(t("presets.editor.streaming_url_help"))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 Toggle(t("presets.editor.elapsed_time"), isOn: $preset.usesElapsedTime)
                     .accessibilityIdentifier("presenceForm.elapsedTime")
@@ -1696,6 +1751,7 @@ extension CustomPresencePreset {
             activityType: ProgramPresenceSettings.ActivityType(discordActivityType: discordActivity.type),
             details: discordActivity.details ?? "",
             state: discordActivity.state ?? "",
+            streamingURL: "",
             largeImageKey: discordActivity.assets.largeImage ?? "",
             largeImageText: discordActivity.assets.largeText ?? "",
             smallImageKey: discordActivity.assets.smallImage ?? "",
@@ -1714,14 +1770,45 @@ extension CustomPresencePreset {
         copy.title = copy.title.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.details = copy.details.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.state = copy.state.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.streamingURL = copy.streamingURL.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.largeImageKey = copy.largeImageKey.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.largeImageText = copy.largeImageText.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.smallImageKey = copy.smallImageKey.trimmingCharacters(in: .whitespacesAndNewlines)
         copy.smallImageText = copy.smallImageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if copy.activityType != .streaming {
+            copy.streamingURL = ""
+        }
         if !copy.usesElapsedTime {
             copy.elapsedStartDate = nil
         }
         return copy
+    }
+
+    var streamingURLValidationError: StreamingURLValidationError? {
+        guard activityType == .streaming else { return nil }
+
+        let value = streamingURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return .missing }
+        guard let components = URLComponents(string: value),
+              components.scheme?.lowercased() == "https",
+              let host = components.host?.lowercased() else {
+            return .invalidURL
+        }
+
+        let normalizedHost = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        let isYouTube = normalizedHost == "youtube.com"
+            || normalizedHost.hasSuffix(".youtube.com")
+            || normalizedHost == "youtu.be"
+        let isTwitch = normalizedHost == "twitch.tv"
+            || normalizedHost.hasSuffix(".twitch.tv")
+
+        return isYouTube || isTwitch ? nil : .unsupportedHost
+    }
+
+    func validateStreamingURLIfNeeded() throws {
+        if let streamingURLValidationError {
+            throw streamingURLValidationError
+        }
     }
 
     func elapsedStartDateForPublish(
@@ -1775,6 +1862,7 @@ extension CustomPresencePreset {
             && activityType == other.activityType
             && normalizedString(details) == normalizedString(other.details)
             && normalizedString(state) == normalizedString(other.state)
+            && normalizedString(streamingURL) == normalizedString(other.streamingURL)
             && normalizedString(largeImageKey) == normalizedString(other.largeImageKey)
             && normalizedString(largeImageText) == normalizedString(other.largeImageText)
             && normalizedString(smallImageKey) == normalizedString(other.smallImageKey)

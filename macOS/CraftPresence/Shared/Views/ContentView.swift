@@ -399,7 +399,7 @@ struct ContentView: View {
             if lastProgramPresenceBundleID != nil {
                 lastProgramPresenceBundleID = nil
                 lastProgramPresenceSignature = nil
-                try? await DiscordSDKManager.shared.clearActivity()
+                try? await DiscordSDKManager.shared.clearAppliedPresence(ifOwnedBy: .program)
             }
             return
         }
@@ -454,7 +454,7 @@ struct ContentView: View {
         guard signature != lastProgramPresenceSignature else { return }
 
         do {
-            try await DiscordSDKManager.shared.updateActivity(
+            let payload = AppliedPresencePayload(
                 name: appName ?? bundleID,
                 state: renderedState,
                 details: renderedDetails,
@@ -467,8 +467,10 @@ struct ContentView: View {
                 partyMax: resolvedParty.maxSize,
                 start: nil,
                 end: nil,
-                activityType: settings.activityType.discordActivityType
+                activityType: settings.activityType,
+                source: .program
             )
+            try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             lastProgramPresenceBundleID = bundleID
             lastProgramPresenceSignature = signature
         } catch {
@@ -519,7 +521,7 @@ struct ContentView: View {
     }
 }
 
-private extension ProgramPresenceSettings.ActivityType {
+extension ProgramPresenceSettings.ActivityType {
     var discordActivityType: DiscordActivity.ActivityType {
         switch self {
         case .playing:

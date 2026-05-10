@@ -198,6 +198,11 @@
 "presets.editor.identity" = "Identity";
 "presets.editor.title" = "Preset name";
 "presets.editor.text" = "Display text";
+"presets.editor.streaming_url" = "Streaming URL";
+"presets.editor.streaming_url_help" = "Use a YouTube or Twitch HTTPS link.";
+"presets.editor.streaming_url_error_missing" = "Streaming activity requires a YouTube or Twitch URL.";
+"presets.editor.streaming_url_error_invalid" = "Streaming URL must be a valid HTTPS link.";
+"presets.editor.streaming_url_error_unsupported" = "Streaming URL must be from YouTube or Twitch.";
 "presets.editor.elapsed_time" = "Show elapsed time";
 "presets.editor.reset_elapsed_time_on_publish" = "Reset elapsed time on publish";
 "presets.editor.assets" = "Image assets";

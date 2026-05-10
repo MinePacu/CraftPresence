@@ -1686,12 +1686,22 @@ private fun PresenceScreen(
         scope.launch {
             val now = System.currentTimeMillis() / 1000L
             val normalizedPreset = preset.normalizedForStorage()
+            val previousPayload = settings.appliedPresence
             runCatching {
                 discord.updateActivity(
-                    normalizedPreset.toDiscordActivity(now),
+                    normalizedPreset.toDiscordActivity(
+                        nowEpochSeconds = now,
+                        previousPayload = previousPayload,
+                    ),
                     DiscordPresenceSource.APP,
                 )
-                config.setAppliedPresence(AppliedPresencePayload.fromPreset(normalizedPreset, now))
+                config.setAppliedPresence(
+                    AppliedPresencePayload.fromPreset(
+                        preset = normalizedPreset,
+                        nowEpochSeconds = now,
+                        previousPayload = previousPayload,
+                    ),
+                )
                 config.setActivePresencePresetID(activePresetID)
             }.onSuccess {
                 if (activePresetID != null) {
