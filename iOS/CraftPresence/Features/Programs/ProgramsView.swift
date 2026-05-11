@@ -272,7 +272,8 @@ struct ProgramsView: View {
                 partyMax: partyMax(for: publishedPreset),
                 start: startDate,
                 activityType: publishedPreset.activityType,
-                streamingURL: publishedPreset.streamingURL
+                streamingURL: publishedPreset.streamingURL,
+                source: .manual
             )
             try await DiscordSDKManager.shared.updateActivity(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(publishedPreset)
@@ -1479,7 +1480,8 @@ struct CustomPresenceView: View {
                 partyMax: preset.partyMaxValue,
                 start: startDate,
                 activityType: preset.activityType,
-                streamingURL: preset.streamingURL
+                streamingURL: preset.streamingURL,
+                source: .manual
             )
             try await DiscordSDKManager.shared.updateActivity(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)

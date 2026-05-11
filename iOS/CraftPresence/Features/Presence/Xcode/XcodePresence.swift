@@ -78,7 +78,7 @@ class XcodePresenceManager: ObservableObject {
         
         // Discord presence 제거
         Task {
-            try? await DiscordSDKManager.shared.clearAppliedPresence()
+            try? await DiscordSDKManager.shared.clearAppliedPresence(ifOwnedBy: .xcode)
         }
         
         currentProject = ""
@@ -342,7 +342,8 @@ class XcodePresenceManager: ObservableObject {
                 smallImageKey: nil,
                 start: startDate,
                 end: nil,
-                activityType: .playing
+                activityType: .playing,
+                source: .xcode
             )
             try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             

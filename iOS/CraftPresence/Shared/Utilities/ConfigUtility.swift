@@ -1,5 +1,8 @@
 import Foundation
 import UniformTypeIdentifiers
+#if os(iOS) && canImport(BackgroundTasks)
+import BackgroundTasks
+#endif
 
 // MARK: - Settings Model
 /// Persisted root settings model stored on disk for tracked apps, localization, and per-program presence options.
@@ -15,6 +18,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var activeCustomPresencePresetID: UUID?
     public var presenceScheduleRules: [PresenceScheduleRule] = []
     public var activePresenceScheduleState: ActivePresenceScheduleState?
+    public var completedPresenceScheduleActivationKeys: [String: String] = [:]
     public var preferredLanguage: AppLanguage = .system
     public var presencePriorityEnabled: Bool = true
     public var presenceLiveActivityEnabled: Bool = true
@@ -41,6 +45,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case activePresencePresetID
         case presenceScheduleRules
         case activePresenceScheduleState
+        case completedPresenceScheduleActivationKeys
         case preferredLanguage
         case presencePriorityEnabled
         case presenceLiveActivityEnabled
@@ -70,6 +75,10 @@ public struct AppSettings: Codable, Sendable, Equatable {
                 return migratedRule
             }
         self.activePresenceScheduleState = try container.decodeIfPresent(ActivePresenceScheduleState.self, forKey: .activePresenceScheduleState)
+        self.completedPresenceScheduleActivationKeys = try container.decodeIfPresent(
+            [String: String].self,
+            forKey: .completedPresenceScheduleActivationKeys
+        ) ?? [:]
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
         self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
         self.presenceLiveActivityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presenceLiveActivityEnabled) ?? true
@@ -93,6 +102,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encodeIfPresent(activeCustomPresencePresetID, forKey: .activePresencePresetID)
         try container.encode(presenceScheduleRules, forKey: .presenceScheduleRules)
         try container.encodeIfPresent(activePresenceScheduleState, forKey: .activePresenceScheduleState)
+        try container.encode(completedPresenceScheduleActivationKeys, forKey: .completedPresenceScheduleActivationKeys)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
         try container.encode(presencePriorityEnabled, forKey: .presencePriorityEnabled)
         try container.encode(presenceLiveActivityEnabled, forKey: .presenceLiveActivityEnabled)
@@ -513,6 +523,15 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
 
 public typealias PresencePreset = CustomPresencePreset
 
+/// Identifies which CraftPresence feature currently owns the applied Discord Presence.
+public enum AppliedPresenceSource: String, Codable, Sendable, Equatable {
+    case manual
+    case schedule
+    case program
+    case appleMusic
+    case xcode
+}
+
 /// Discord Rich Presence payload last successfully applied by CraftPresence.
 public struct AppliedPresencePayload: Codable, Sendable, Equatable {
     public var name: String = ""
@@ -529,6 +548,25 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
     public var end: Date?
     public var activityType: ProgramPresenceSettings.ActivityType = .playing
     public var streamingURL: String?
+    public var source: AppliedPresenceSource = .manual
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+        case state
+        case details
+        case largeImageKey
+        case largeImageText
+        case smallImageKey
+        case smallImageText
+        case partyID
+        case partyCurrent
+        case partyMax
+        case start
+        case end
+        case activityType
+        case streamingURL
+        case source
+    }
 
     nonisolated public init(
         name: String,
@@ -544,7 +582,8 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
         start: Date? = nil,
         end: Date? = nil,
         activityType: ProgramPresenceSettings.ActivityType = .playing,
-        streamingURL: String? = nil
+        streamingURL: String? = nil,
+        source: AppliedPresenceSource = .manual
     ) {
         self.name = Self.trimmed(name) ?? "CraftPresence"
         self.state = Self.trimmed(state)
@@ -560,9 +599,14 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
         self.end = end
         self.activityType = activityType
         self.streamingURL = activityType == .streaming ? Self.trimmed(streamingURL) : nil
+        self.source = source
     }
 
     nonisolated public init(customPresencePreset preset: CustomPresencePreset) {
+        self.init(customPresencePreset: preset, source: .manual)
+    }
+
+    nonisolated public init(customPresencePreset preset: CustomPresencePreset, source: AppliedPresenceSource) {
         let partyID = preset.usesParty && preset.partyCurrent > 0 && preset.partyMax >= preset.partyCurrent
             ? "preset:\(preset.id.uuidString)"
             : nil
@@ -580,8 +624,32 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
             partyMax: partyID == nil ? nil : preset.partyMax,
             start: preset.usesElapsedTime ? preset.elapsedStartDate : nil,
             activityType: preset.activityType,
-            streamingURL: preset.streamingURL
+            streamingURL: preset.streamingURL,
+            source: source
         )
+    }
+
+    nonisolated public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .name)) ?? "CraftPresence"
+        self.state = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .state))
+        self.details = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .details))
+        self.largeImageKey = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .largeImageKey))
+        self.largeImageText = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .largeImageText))
+        self.smallImageKey = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .smallImageKey))
+        self.smallImageText = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .smallImageText))
+        self.partyID = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .partyID))
+        self.partyCurrent = try container.decodeIfPresent(Int.self, forKey: .partyCurrent)
+        self.partyMax = try container.decodeIfPresent(Int.self, forKey: .partyMax)
+        self.start = try container.decodeIfPresent(Date.self, forKey: .start)
+        self.end = try container.decodeIfPresent(Date.self, forKey: .end)
+        self.activityType = try container.decodeIfPresent(
+            ProgramPresenceSettings.ActivityType.self,
+            forKey: .activityType
+        ) ?? .playing
+        let decodedStreamingURL = Self.trimmed(try container.decodeIfPresent(String.self, forKey: .streamingURL))
+        self.streamingURL = activityType == .streaming ? decodedStreamingURL : nil
+        self.source = try container.decodeIfPresent(AppliedPresenceSource.self, forKey: .source) ?? .manual
     }
 
     nonisolated private static func trimmed(_ value: String?) -> String? {
@@ -1146,7 +1214,9 @@ public actor ConfigUtility {
 
     /// Returns the Presence payload that priority enforcement should keep authoritative.
     public func currentAppliedPresence() -> AppliedPresencePayload? {
-        settings.appliedPresence ?? settings.appliedCustomPresence.map(AppliedPresencePayload.init(customPresencePreset:))
+        settings.appliedPresence ?? settings.appliedCustomPresence.map {
+            AppliedPresencePayload(customPresencePreset: $0)
+        }
     }
 
     /// Returns whether CraftPresence should reapply its last published custom Presence when another client changes it.
@@ -1257,7 +1327,9 @@ public actor ConfigUtility {
     /// Stores the latest custom Presence that was actually published to Discord.
     public func setAppliedCustomPresence(_ preset: CustomPresencePreset?) async throws -> AppSettings {
         settings.appliedCustomPresence = preset
-        settings.appliedPresence = preset.map(AppliedPresencePayload.init(customPresencePreset:))
+        settings.appliedPresence = preset.map {
+            AppliedPresencePayload(customPresencePreset: $0)
+        }
         try persist()
         return settings
     }
@@ -1266,6 +1338,19 @@ public actor ConfigUtility {
     /// Stores the latest app-owned Presence payload that was actually published to Discord.
     public func setAppliedPresence(_ payload: AppliedPresencePayload?) async throws -> AppSettings {
         settings.appliedPresence = payload
+        settings.appliedCustomPresence = nil
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Clears the stored app-owned Presence only when it belongs to the supplied source.
+    public func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) async throws -> AppSettings {
+        let currentPayload = settings.appliedPresence ?? settings.appliedCustomPresence.map {
+            AppliedPresencePayload(customPresencePreset: $0)
+        }
+        guard currentPayload?.source == source else { return settings }
+        settings.appliedPresence = nil
         settings.appliedCustomPresence = nil
         try persist()
         return settings
@@ -1325,7 +1410,9 @@ public actor ConfigUtility {
         } else {
             settings.presenceScheduleRules.append(next)
         }
+        settings.completedPresenceScheduleActivationKeys.removeValue(forKey: rule.id.uuidString)
         try persist()
+        await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
         return next
     }
 
@@ -1333,10 +1420,12 @@ public actor ConfigUtility {
     /// Deletes a schedule rule and clears active schedule state if that rule is running.
     public func removePresenceScheduleRule(id: UUID) async throws -> AppSettings {
         settings.presenceScheduleRules.removeAll { $0.id == id }
+        settings.completedPresenceScheduleActivationKeys.removeValue(forKey: id.uuidString)
         if settings.activePresenceScheduleState?.ruleID == id {
             settings.activePresenceScheduleState = nil
         }
         try persist()
+        await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
         return settings
     }
 
@@ -1349,6 +1438,14 @@ public actor ConfigUtility {
     /// Stores or clears the schedule state currently owned by the automatic scheduler.
     public func setActivePresenceScheduleState(_ state: ActivePresenceScheduleState?) async throws -> AppSettings {
         settings.activePresenceScheduleState = state
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Records a completed schedule activation so catch-up windows do not apply it more than once.
+    public func recordCompletedPresenceScheduleActivation(ruleID: UUID, activationKey: String) async throws -> AppSettings {
+        settings.completedPresenceScheduleActivationKeys[ruleID.uuidString] = activationKey
         try persist()
         return settings
     }
@@ -1404,6 +1501,7 @@ public actor ConfigUtility {
         sanitized.appliedPresence = nil
         sanitized.activeCustomPresencePresetID = nil
         sanitized.activePresenceScheduleState = nil
+        sanitized.completedPresenceScheduleActivationKeys = [:]
         return sanitized
     }
 
@@ -1423,6 +1521,8 @@ public actor ConfigUtility {
 
 /// Pure schedule evaluation helpers separated from Discord publishing side effects.
 public enum PresenceScheduleEvaluator {
+    public static let singleTimeGraceInterval: TimeInterval = 10 * 60
+
     public struct Match: Sendable, Equatable {
         public var rule: PresenceScheduleRule
         public var preset: CustomPresencePreset
@@ -1445,10 +1545,16 @@ public enum PresenceScheduleEvaluator {
                     return nil
                 }
 
+                let activationKey = activationKey(for: rule, occurrenceStart: interval.start, calendar: calendar)
+                if rule.mode == .singleTime,
+                   settings.completedPresenceScheduleActivationKeys[rule.id.uuidString] == activationKey {
+                    return nil
+                }
+
                 return Match(
                     rule: rule,
                     preset: preset,
-                    activationKey: activationKey(for: rule, intervalStart: interval.start, calendar: calendar),
+                    activationKey: activationKey,
                     expectedEnd: interval.end
                 )
             }
@@ -1480,11 +1586,10 @@ public enum PresenceScheduleEvaluator {
     ) -> (start: Date, end: Date?)? {
         let weekday = calendar.component(.weekday, from: now)
         guard rule.weekdays.contains(where: { $0.rawValue == weekday }) else { return nil }
-        let components = calendar.dateComponents([.hour, .minute], from: now)
-        guard components.hour == rule.startTime.hour, components.minute == rule.startTime.minute else {
-            return nil
-        }
-        return (start: date(onSameDayAs: now, time: rule.startTime, calendar: calendar), end: nil)
+        let start = date(onSameDayAs: now, time: rule.startTime, calendar: calendar)
+        let end = start.addingTimeInterval(singleTimeGraceInterval)
+        guard now >= start, now <= end else { return nil }
+        return (start: start, end: end)
     }
 
     private static func timeRangeInterval(
@@ -1541,12 +1646,12 @@ public enum PresenceScheduleEvaluator {
         )
     }
 
-    private static func activationKey(
+    public static func activationKey(
         for rule: PresenceScheduleRule,
-        intervalStart: Date,
+        occurrenceStart: Date,
         calendar: Calendar
     ) -> String {
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: intervalStart)
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: occurrenceStart)
         let year = String(components.year ?? 0)
         let month = String(components.month ?? 0)
         let day = String(components.day ?? 0)
@@ -1619,6 +1724,91 @@ public enum PresenceHolidayCalendar {
     }
 }
 
+/// Computes the next useful scheduler wakeup from persisted schedule rules.
+public enum PresenceScheduleBackgroundPlan {
+    public static func nextWakeDate(
+        in settings: AppSettings,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> Date? {
+        let presetsByID = Set(settings.customPresencePresets.map(\.id))
+        let candidates = settings.presenceScheduleRules
+            .filter { $0.isEnabled && presetsByID.contains($0.presetID) }
+            .flatMap { wakeCandidates(for: $0, settings: settings, now: now, calendar: calendar) }
+            .filter { $0 >= now }
+        return candidates.min()
+    }
+
+    private static func wakeCandidates(
+        for rule: PresenceScheduleRule,
+        settings: AppSettings,
+        now: Date,
+        calendar: Calendar
+    ) -> [Date] {
+        var dates: [Date] = []
+        for dayOffset in 0...7 {
+            guard let day = calendar.date(byAdding: .day, value: dayOffset, to: now) else { continue }
+            let weekday = calendar.component(.weekday, from: day)
+            guard rule.weekdays.contains(where: { $0.rawValue == weekday }),
+                  !isExcludedHoliday(rule: rule, day: day, calendar: calendar) else {
+                continue
+            }
+
+            let start = date(onSameDayAs: day, time: rule.startTime, calendar: calendar)
+            switch rule.mode {
+            case .singleTime:
+                let activationKey = PresenceScheduleEvaluator.activationKey(
+                    for: rule,
+                    occurrenceStart: start,
+                    calendar: calendar
+                )
+                if settings.completedPresenceScheduleActivationKeys[rule.id.uuidString] != activationKey {
+                    dates.append(max(now, start))
+                }
+            case .timeRange:
+                dates.append(start)
+                if let endTime = rule.endTime {
+                    let end = endDate(for: rule, day: day, endTime: endTime, calendar: calendar)
+                    dates.append(end)
+                }
+            }
+        }
+        return dates
+    }
+
+    private static func endDate(
+        for rule: PresenceScheduleRule,
+        day: Date,
+        endTime: PresenceScheduleTime,
+        calendar: Calendar
+    ) -> Date {
+        let end = date(onSameDayAs: day, time: endTime, calendar: calendar)
+        guard rule.startTime.minutesFromStartOfDay >= endTime.minutesFromStartOfDay else { return end }
+        return calendar.date(byAdding: .day, value: 1, to: end) ?? end
+    }
+
+    private static func isExcludedHoliday(
+        rule: PresenceScheduleRule,
+        day: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard rule.excludesHolidays else { return false }
+        return PresenceHolidayCalendar.isHoliday(
+            day,
+            region: PresenceHolidayRegion(rawValue: rule.holidayRegion) ?? .system,
+            calendar: calendar
+        )
+    }
+
+    private static func date(
+        onSameDayAs date: Date,
+        time: PresenceScheduleTime,
+        calendar: Calendar
+    ) -> Date {
+        calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: date) ?? date
+    }
+}
+
 /// Periodically evaluates Presence schedules and publishes or restores Presence when rules change state.
 @MainActor
 public final class PresenceScheduleManager {
@@ -1631,6 +1821,9 @@ public final class PresenceScheduleManager {
 
     public func start() {
         guard scheduleTask == nil, !AutomationLaunchOptions.isUITesting else { return }
+        Task {
+            await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
+        }
         scheduleTask = Task { [weak self] in
             guard let self else { return }
             await evaluate()
@@ -1676,7 +1869,7 @@ public final class PresenceScheduleManager {
             preset.elapsedStartDate = nil
         }
 
-        let payload = AppliedPresencePayload(customPresencePreset: preset)
+        let payload = AppliedPresencePayload(customPresencePreset: preset, source: .schedule)
         let previousPresence = settings.activePresenceScheduleState?.previousPresence ?? settings.currentAppliedPresencePayload
         let previousPresetID = settings.activePresenceScheduleState?.previousPresetID ?? settings.activeCustomPresencePresetID
 
@@ -1684,6 +1877,12 @@ public final class PresenceScheduleManager {
             try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             _ = try await ConfigUtility.shared.setLastCustomPresence(preset)
             _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: preset.id)
+            if match.rule.mode == .singleTime {
+                _ = try await ConfigUtility.shared.recordCompletedPresenceScheduleActivation(
+                    ruleID: match.rule.id,
+                    activationKey: match.activationKey
+                )
+            }
             _ = try await ConfigUtility.shared.setActivePresenceScheduleState(
                 ActivePresenceScheduleState(
                     ruleID: match.rule.id,
@@ -1702,6 +1901,7 @@ public final class PresenceScheduleManager {
                 preset,
                 connectionStatus: LocalizationManager.shared.string(DiscordSDKManager.shared.dashboardStatus.localizationKey)
             )
+            await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
         } catch {
             #if DEBUG
             print("Failed to apply scheduled Presence: \(error)")
@@ -1712,6 +1912,7 @@ public final class PresenceScheduleManager {
     private func end(_ active: ActivePresenceScheduleState, now: Date) async {
         if active.mode == .singleTime {
             _ = try? await ConfigUtility.shared.setActivePresenceScheduleState(nil)
+            await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
             return
         }
 
@@ -1723,12 +1924,17 @@ public final class PresenceScheduleManager {
                 }
                 try await DiscordSDKManager.shared.publishAppliedPresence(restoredPresence)
                 _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: active.previousPresetID)
+                await PresenceLiveActivityController.shared.publish(
+                    restoredPresence,
+                    connectionStatus: LocalizationManager.shared.string(DiscordSDKManager.shared.dashboardStatus.localizationKey)
+                )
             } else {
-                try await DiscordSDKManager.shared.clearAppliedPresence()
+                try await DiscordSDKManager.shared.clearAppliedPresence(ifOwnedBy: .schedule)
                 _ = try await ConfigUtility.shared.setActiveCustomPresencePreset(id: nil)
                 await PresenceLiveActivityController.shared.end()
             }
             _ = try await ConfigUtility.shared.setActivePresenceScheduleState(nil)
+            await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
         } catch {
             #if DEBUG
             print("Failed to restore scheduled Presence: \(error)")
@@ -1737,8 +1943,72 @@ public final class PresenceScheduleManager {
     }
 }
 
+@MainActor
+public final class PresenceScheduleBackgroundScheduler {
+    public static let shared = PresenceScheduleBackgroundScheduler()
+    public static let taskIdentifier = "com.minepacu.CraftPresence.presence-schedule-refresh"
+
+    private var isRegistered = false
+
+    private init() {}
+
+    public func register() {
+        guard !isRegistered, !AutomationLaunchOptions.isUITesting else { return }
+        isRegistered = true
+
+        #if os(iOS) && canImport(BackgroundTasks)
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.taskIdentifier, using: nil) { task in
+            Task { @MainActor in
+                await self.handle(task: task)
+            }
+        }
+        #endif
+    }
+
+    public func scheduleNextWake(now: Date = Date()) async {
+        guard !AutomationLaunchOptions.isUITesting else { return }
+        let settings = await ConfigUtility.shared.currentSettings()
+        guard let wakeDate = PresenceScheduleBackgroundPlan.nextWakeDate(in: settings, now: now) else {
+            #if os(iOS) && canImport(BackgroundTasks)
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.taskIdentifier)
+            #endif
+            return
+        }
+
+        #if os(iOS) && canImport(BackgroundTasks)
+        let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
+        request.earliestBeginDate = wakeDate
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            #if DEBUG
+            print("Failed to schedule Presence background refresh: \(error)")
+            #endif
+        }
+        #else
+        _ = wakeDate
+        #endif
+    }
+
+    #if os(iOS) && canImport(BackgroundTasks)
+    private func handle(task: BGTask) async {
+        task.expirationHandler = {
+            Task { @MainActor in
+                await self.scheduleNextWake()
+            }
+        }
+        await PresenceScheduleManager.shared.evaluate()
+        await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
+        await scheduleNextWake()
+        task.setTaskCompleted(success: true)
+    }
+    #endif
+}
+
 private extension AppSettings {
     var currentAppliedPresencePayload: AppliedPresencePayload? {
-        appliedPresence ?? appliedCustomPresence.map(AppliedPresencePayload.init(customPresencePreset:))
+        appliedPresence ?? appliedCustomPresence.map {
+            AppliedPresencePayload(customPresencePreset: $0)
+        }
     }
 }

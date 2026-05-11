@@ -11,7 +11,7 @@ final class PresenceLiveActivityController {
     private init() {}
 
     func restoreAppliedPresence(connectionStatus: String) async {
-        guard let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence() else {
+        guard let appliedPresence = await ConfigUtility.shared.currentAppliedPresence() else {
             return
         }
 
@@ -19,6 +19,11 @@ final class PresenceLiveActivityController {
     }
 
     func publish(_ preset: CustomPresencePreset, connectionStatus: String) async {
+        let payload = AppliedPresencePayload(customPresencePreset: preset)
+        await publish(payload, connectionStatus: connectionStatus)
+    }
+
+    func publish(_ payload: AppliedPresencePayload, connectionStatus: String) async {
         guard await ConfigUtility.shared.isPresenceLiveActivityEnabled() else {
             await end()
             return
@@ -30,8 +35,8 @@ final class PresenceLiveActivityController {
         }
 
         let contentOptions = await ConfigUtility.shared.liveActivityContentOptions()
-        let state = contentState(
-            for: preset,
+        let state = PresenceLiveActivityContentBuilder.contentState(
+            for: payload,
             connectionStatus: connectionStatus,
             isLive: true,
             contentOptions: contentOptions
@@ -85,25 +90,30 @@ final class PresenceLiveActivityController {
         Activity<PresenceActivityAttributes>.activities.first
     }
 
-    private func contentState(
-        for preset: CustomPresencePreset,
+    #endif
+}
+
+#if canImport(ActivityKit)
+enum PresenceLiveActivityContentBuilder {
+    @available(iOS 16.2, *)
+    static func contentState(
+        for payload: AppliedPresencePayload,
         connectionStatus: String,
         isLive: Bool,
         contentOptions: LiveActivityContentOptions
     ) -> PresenceActivityAttributes.ContentState {
-        let normalized = preset.normalized
         return PresenceActivityAttributes.ContentState(
-            title: normalized.title.nilIfEmpty ?? "CraftPresence",
-            details: normalized.details.nilIfEmpty,
-            state: normalized.state.nilIfEmpty,
+            title: payload.name.nilIfEmpty ?? "CraftPresence",
+            details: payload.details?.nilIfEmpty,
+            state: payload.state?.nilIfEmpty,
             connectionStatus: connectionStatus,
-            startedAt: normalized.usesElapsedTime ? normalized.elapsedStartDate : nil,
+            startedAt: contentOptions.elapsedTime ? payload.start : nil,
             isLive: isLive,
             contentOptions: contentOptions
         )
     }
-    #endif
 }
+#endif
 
 private extension String {
     var nilIfEmpty: String? {

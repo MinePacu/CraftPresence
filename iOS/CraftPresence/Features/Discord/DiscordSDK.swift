@@ -626,6 +626,12 @@ final class DiscordSDKManager: ObservableObject {
         _ = try await ConfigUtility.shared.setAppliedPresence(nil)
     }
 
+    /// Clears Discord Rich Presence only if the saved app-owned Presence belongs to the supplied source.
+    func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) async throws {
+        guard await ConfigUtility.shared.currentAppliedPresence()?.source == source else { return }
+        try await clearAppliedPresence()
+    }
+
     /// Async wrapper around `clearActivity(completion:)`.
     func clearActivity() async throws {
         try await withCheckedThrowingContinuation { continuation in

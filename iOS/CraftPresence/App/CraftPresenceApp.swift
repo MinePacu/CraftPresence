@@ -20,6 +20,11 @@ struct CraftPresenceApp: App {
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
+
+    init() {
+        PresenceScheduleBackgroundScheduler.shared.register()
+    }
+
     /// Reads the Discord application identifier from configuration and initializes the SDK where supported.
     private func configureDiscordSDK() {
 #if os(iOS) || targetEnvironment(macCatalyst)
@@ -61,7 +66,14 @@ struct CraftPresenceApp: App {
                 updateDiscordOnboardingPresentation()
             }
             .onChange(of: scenePhase) { _, newPhase in
-                guard newPhase == .active else { return }
+                guard newPhase == .active else {
+                    if newPhase == .background {
+                        Task {
+                            await PresenceScheduleBackgroundScheduler.shared.scheduleNextWake()
+                        }
+                    }
+                    return
+                }
                 #if os(macOS)
                 permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: false)
                 #endif

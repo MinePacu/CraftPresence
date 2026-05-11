@@ -787,7 +787,7 @@ struct ContentView: View {
             if lastProgramPresenceBundleID != nil {
                 lastProgramPresenceBundleID = nil
                 lastProgramPresenceSignature = nil
-                try? await DiscordSDKManager.shared.clearAppliedPresence()
+                try? await DiscordSDKManager.shared.clearAppliedPresence(ifOwnedBy: .program)
             }
             return
         }
@@ -855,7 +855,8 @@ struct ContentView: View {
                 partyMax: resolvedParty.maxSize,
                 start: nil,
                 end: nil,
-                activityType: settings.activityType
+                activityType: settings.activityType,
+                source: .program
             )
             try await DiscordSDKManager.shared.publishAppliedPresence(payload)
             lastProgramPresenceBundleID = bundleID

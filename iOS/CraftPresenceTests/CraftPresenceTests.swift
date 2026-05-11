@@ -258,7 +258,8 @@ final class CraftPresenceTests: XCTestCase {
             largeImageKey: "https://example.com/art.png",
             start: Date(timeIntervalSince1970: 1_000),
             end: Date(timeIntervalSince1970: 1_200),
-            activityType: .listening
+            activityType: .listening,
+            source: .appleMusic
         )
 
         let data = try JSONEncoder().encode(payload)
@@ -266,6 +267,186 @@ final class CraftPresenceTests: XCTestCase {
 
         XCTAssertEqual(decoded, payload)
     }
+
+    func testAppliedPresencePayloadDefaultsLegacyDecodeToManualSource() throws {
+        let json = """
+        {
+          "name": "Focus",
+          "state": "Writing",
+          "details": "Deep work",
+          "activityType": "playing"
+        }
+        """
+
+        let decoded = try JSONDecoder().decode(AppliedPresencePayload.self, from: Data(json.utf8))
+
+        XCTAssertEqual(decoded.source, .manual)
+    }
+
+    func testGuardedAppliedPresenceClearDoesNotRemoveManualPayloadForOtherSource() async throws {
+        let originalSettings = await ConfigUtility.shared.currentSettings()
+        do {
+            let payload = AppliedPresencePayload(
+                name: "Focus",
+                details: "Deep work",
+                activityType: .playing,
+                source: .manual
+            )
+            var settings = AppSettings()
+            settings.appliedPresence = payload
+            _ = try await ConfigUtility.shared.setSettings(settings)
+
+            _ = try await ConfigUtility.shared.clearAppliedPresence(ifOwnedBy: .appleMusic)
+
+            let current = await ConfigUtility.shared.currentAppliedPresence()
+            XCTAssertEqual(current, payload)
+            _ = try await ConfigUtility.shared.setSettings(originalSettings)
+        } catch {
+            _ = try? await ConfigUtility.shared.setSettings(originalSettings)
+            throw error
+        }
+    }
+
+    func testGuardedAppliedPresenceClearRemovesPayloadForMatchingSource() async throws {
+        let originalSettings = await ConfigUtility.shared.currentSettings()
+        do {
+            let payload = AppliedPresencePayload(
+                name: "Apple Music",
+                details: "Track",
+                activityType: .listening,
+                source: .appleMusic
+            )
+            var settings = AppSettings()
+            settings.appliedPresence = payload
+            _ = try await ConfigUtility.shared.setSettings(settings)
+
+            _ = try await ConfigUtility.shared.clearAppliedPresence(ifOwnedBy: .appleMusic)
+
+            let current = await ConfigUtility.shared.currentAppliedPresence()
+            XCTAssertNil(current)
+            _ = try await ConfigUtility.shared.setSettings(originalSettings)
+        } catch {
+            _ = try? await ConfigUtility.shared.setSettings(originalSettings)
+            throw error
+        }
+    }
+
+    func testSingleTimeScheduleMatchesLateWakeWithinGraceWindow() {
+        let presetID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        let ruleID = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        let preset = CustomPresencePreset(
+            id: presetID,
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing"
+        )
+        var settings = AppSettings()
+        settings.customPresencePresets = [preset]
+        settings.presenceScheduleRules = [
+            PresenceScheduleRule(
+                id: ruleID,
+                presetID: presetID,
+                mode: .singleTime,
+                weekdays: [.monday],
+                startTime: PresenceScheduleTime(hour: 9, minute: 0)
+            )
+        ]
+        let now = testDate(year: 2026, month: 5, day: 4, hour: 9, minute: 4)
+
+        let match = PresenceScheduleEvaluator.activeMatch(in: settings, now: now, calendar: testCalendar)
+
+        XCTAssertEqual(match?.rule.id, ruleID)
+    }
+
+    func testSingleTimeScheduleDoesNotMatchAfterActivationWasRecorded() {
+        let presetID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        let ruleID = UUID(uuidString: "33333333-3333-3333-3333-333333333333")!
+        let preset = CustomPresencePreset(
+            id: presetID,
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing"
+        )
+        let rule = PresenceScheduleRule(
+            id: ruleID,
+            presetID: presetID,
+            mode: .singleTime,
+            weekdays: [.monday],
+            startTime: PresenceScheduleTime(hour: 9, minute: 0)
+        )
+        var settings = AppSettings()
+        settings.customPresencePresets = [preset]
+        settings.presenceScheduleRules = [rule]
+        let now = testDate(year: 2026, month: 5, day: 4, hour: 9, minute: 4)
+        let activationKey = PresenceScheduleEvaluator.activationKey(
+            for: rule,
+            occurrenceStart: testDate(year: 2026, month: 5, day: 4, hour: 9, minute: 0),
+            calendar: testCalendar
+        )
+        settings.completedPresenceScheduleActivationKeys = [ruleID.uuidString: activationKey]
+
+        let match = PresenceScheduleEvaluator.activeMatch(in: settings, now: now, calendar: testCalendar)
+
+        XCTAssertNil(match)
+    }
+
+    func testBackgroundSchedulePlannerReturnsNextEnabledScheduleDate() {
+        let presetID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        var settings = AppSettings()
+        settings.customPresencePresets = [
+            CustomPresencePreset(
+                id: presetID,
+                title: "Focus",
+                activityType: .playing,
+                details: "Deep work",
+                state: "Writing"
+            )
+        ]
+        settings.presenceScheduleRules = [
+            PresenceScheduleRule(
+                presetID: presetID,
+                mode: .timeRange,
+                weekdays: [.monday],
+                startTime: PresenceScheduleTime(hour: 9, minute: 0),
+                endTime: PresenceScheduleTime(hour: 18, minute: 0)
+            )
+        ]
+        let now = testDate(year: 2026, month: 5, day: 4, hour: 8, minute: 30)
+
+        let wakeDate = PresenceScheduleBackgroundPlan.nextWakeDate(in: settings, now: now, calendar: testCalendar)
+
+        XCTAssertEqual(wakeDate, testDate(year: 2026, month: 5, day: 4, hour: 9, minute: 0))
+    }
+
+    #if canImport(ActivityKit)
+    func testLiveActivityContentStateCanBeBuiltFromAppliedPresencePayload() {
+        let startDate = Date(timeIntervalSince1970: 1_000)
+        let payload = AppliedPresencePayload(
+            name: " Focus ",
+            state: " Writing ",
+            details: " Deep work ",
+            start: startDate,
+            activityType: .playing
+        )
+        let options = LiveActivityContentOptions(presenceSummary: true, elapsedTime: false, discordStatus: true)
+
+        let state = PresenceLiveActivityContentBuilder.contentState(
+            for: payload,
+            connectionStatus: "Connected",
+            isLive: true,
+            contentOptions: options
+        )
+
+        XCTAssertEqual(state.title, "Focus")
+        XCTAssertEqual(state.details, "Deep work")
+        XCTAssertEqual(state.state, "Writing")
+        XCTAssertEqual(state.connectionStatus, "Connected")
+        XCTAssertNil(state.startedAt)
+        XCTAssertEqual(state.contentOptions, options)
+    }
+    #endif
 
     func testSettingsBackupCodableRoundTripPreservesUserSettings() throws {
         let presetID = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
@@ -531,5 +712,24 @@ final class CraftPresenceTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? ConfigUtilityError, .invalidPresetReorder)
         }
+    }
+
+    private var testCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    private func testDate(year: Int, month: Int, day: Int, hour: Int, minute: Int) -> Date {
+        testCalendar.date(
+            from: DateComponents(
+                timeZone: TimeZone(secondsFromGMT: 0)!,
+                year: year,
+                month: month,
+                day: day,
+                hour: hour,
+                minute: minute
+            )
+        )!
     }
 }
