@@ -23,6 +23,7 @@ struct ContentView: View {
         case customPresence
         case programs
         case builtin
+        case settings
         case about
         case item(Item)
         case discordTest
@@ -35,6 +36,7 @@ struct ContentView: View {
             case (.customPresence, .customPresence): return true
             case (.programs, .programs): return true
             case (.builtin, .builtin): return true
+            case (.settings, .settings): return true
             case (.about, .about): return true
             case (.discordTest, .discordTest): return true
             case (.nowPlayingTest, .nowPlayingTest): return true
@@ -54,6 +56,8 @@ struct ContentView: View {
                 hasher.combine("programs")
             case .builtin:
                 hasher.combine("builtin")
+            case .settings:
+                hasher.combine("settings")
             case .about:
                 hasher.combine("about")
             case .discordTest:
@@ -166,6 +170,7 @@ struct ContentView: View {
                 case .customPresence: return "customPresence"
                 case .programs: return "programs"
                 case .builtin: return "builtin"
+                case .settings: return "settings"
                 case .about: return "about"
                 case .discordTest: return "discordTest"
                 case .nowPlayingTest: return "nowPlayingTest"
@@ -178,6 +183,7 @@ struct ContentView: View {
                 else if key == "customPresence" { selection = .customPresence }
                 else if key == "programs" { selection = .programs }
                 else if key == "builtin" { selection = .builtin }
+                else if key == "settings" { selection = .settings }
                 else if key == "about" { selection = .about }
                 else if key == "discordTest" { selection = .discordTest }
                 else if key == "nowPlayingTest" { selection = .nowPlayingTest }
@@ -382,9 +388,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSettings = true
-                    } label: {
+                    NavigationLink(value: DetailSelection.settings) {
                         Label(t("toolbar.settings"), systemImage: "gearshape")
                     }
                     .accessibilityIdentifier("toolbar.settings")
@@ -394,9 +398,6 @@ struct ContentView: View {
                 detailContent(for: selection)
                     .navigationTitle(title(for: selection))
             }
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingView()
         }
     }
 
@@ -414,7 +415,7 @@ struct ContentView: View {
                         HStack {
                             Spacer()
                             Button {
-                                showingSettings = true
+                                selection = .settings
                             } label: {
                                 Image(systemName: "gearshape")
                                     .imageScale(.large)
@@ -437,9 +438,6 @@ struct ContentView: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 28)
             .background(CPStyle.pageBackground.ignoresSafeArea())
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingView()
         }
     }
 
@@ -577,6 +575,8 @@ struct ContentView: View {
             }
         case .builtin:
             BuiltinView()
+        case .settings:
+            SettingView()
         case .about:
             AboutView(
                 activeAppName: activeAppName,
@@ -604,6 +604,8 @@ struct ContentView: View {
             return t("sidebar.programs")
         case .builtin:
             return t("sidebar.builtin")
+        case .settings:
+            return t("toolbar.settings")
         case .about:
             return t("sidebar.about")
         case .discordTest:
@@ -627,6 +629,8 @@ struct ContentView: View {
             return "sidebar.programs"
         case .builtin:
             return "sidebar.builtin"
+        case .settings:
+            return "toolbar.settings"
         case .about:
             return "sidebar.about"
         case .discordTest:

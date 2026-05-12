@@ -86,6 +86,12 @@ struct CraftPresenceTests {
         #expect(payload.source == .manual)
     }
 
+    @Test func settingsDecodeMissingPresencePriorityAsEnabled() async throws {
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+
+        #expect(settings.presencePriorityEnabled == true)
+    }
+
     @Test func settingsOnlyClearsAppliedPresenceForMatchingSource() async throws {
         var settings = AppSettings()
         settings.appliedPresence = AppliedPresencePayload(
@@ -106,6 +112,7 @@ struct CraftPresenceTests {
         var settings = AppSettings()
         settings.bundleIDs = ["com.apple.dt.Xcode"]
         settings.preferredLanguage = .english
+        settings.presencePriorityEnabled = false
 
         let data = try ConfigUtility.encodeSettingsBackup(
             settings: settings,
@@ -120,6 +127,7 @@ struct CraftPresenceTests {
         #expect(summary.platform == "macOS")
         #expect(summary.presetCount == 5)
         #expect(summary.trackedProgramCount == 1)
+        #expect(backup.settings.presencePriorityEnabled == false)
         #expect(summary.ignoredPlatformExtensionKeys == ["macOS"])
     }
 
@@ -140,6 +148,50 @@ struct CraftPresenceTests {
         let filename = ConfigUtility.defaultSettingsBackupFilename(now: Date(timeIntervalSince1970: 1_000))
 
         #expect(filename.hasSuffix(".craftpresence.json"))
+    }
+
+    @Test func settingsDuplicatePresencePresetCreatesEditableCopy() async throws {
+        var settings = AppSettings()
+        let sourceID = PresencePreset.defaults[0].id
+
+        let copy = settings.duplicatePresencePreset(id: sourceID, title: "Coding Copy")
+
+        #expect(copy != nil)
+        #expect(copy?.id != sourceID)
+        #expect(copy?.title == "Coding Copy")
+        #expect(copy?.isDefault == false)
+        #expect(settings.presencePresets.contains { $0.id == copy?.id })
+    }
+
+    @Test func settingsRemovePresencePresetClearsActiveAndAppliedPresetState() async throws {
+        var settings = AppSettings()
+        let sourceID = PresencePreset.defaults[0].id
+        settings.activePresencePresetID = sourceID
+        settings.appliedPresence = AppliedPresencePayload(presencePreset: PresencePreset.defaults[0])
+
+        settings.removePresencePreset(id: sourceID)
+
+        #expect(settings.presencePresets.contains { $0.id == sourceID } == false)
+        #expect(settings.activePresencePresetID == nil)
+        #expect(settings.appliedPresence == nil)
+    }
+
+    @Test func settingsRestoreDefaultPresencePresetsOnlyAddsMissingDefaults() async throws {
+        var settings = AppSettings()
+        let removedDefaultID = PresencePreset.defaults[0].id
+        let customPreset = PresencePreset(
+            title: "Custom",
+            activityType: .playing,
+            details: "Custom details",
+            state: "Custom state"
+        )
+        settings.presencePresets = Array(PresencePreset.defaults.dropFirst()) + [customPreset]
+
+        settings.restoreDefaultPresencePresets()
+
+        #expect(settings.presencePresets.contains { $0.id == removedDefaultID })
+        #expect(settings.presencePresets.contains { $0.id == customPreset.id })
+        #expect(settings.presencePresets.count == PresencePreset.defaults.count + 1)
     }
 
 }

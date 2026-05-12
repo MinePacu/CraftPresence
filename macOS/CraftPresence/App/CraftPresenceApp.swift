@@ -76,6 +76,9 @@ struct CraftPresenceApp: App {
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
                 permissionsService.refreshAccessibilityPrivileges(promptIfNeeded: false)
+                Task {
+                    await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
+                }
             }
             #endif
             .onChange(of: permissionsService.isTrusted) { _, _ in
@@ -159,6 +162,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let masked = appID.count > 6 ? String(appID.prefix(3)) + String(repeating: "*", count: max(0, appID.count - 6)) + String(appID.suffix(3)) : String(repeating: "*", count: appID.count)
             print("[DiscordSDK] Loaded APPLICATION_ID (macOS): \(masked)")
             DiscordSDKManager.shared.configure(applicationId: appID,  autoAuthorize: false)
+            PresencePriorityController.shared.start()
             print("[DiscordSDK] SDK configured (macOS)")
         }
     }

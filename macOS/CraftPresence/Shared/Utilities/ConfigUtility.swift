@@ -11,6 +11,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var activePresencePresetID: UUID?
     public var appliedPresence: AppliedPresencePayload?
     public var preferredLanguage: AppLanguage = .system
+    public var presencePriorityEnabled: Bool = true
     
     nonisolated init() { }
 
@@ -28,6 +29,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case activeCustomPresencePresetID
         case appliedPresence
         case preferredLanguage
+        case presencePriorityEnabled
     }
 
     nonisolated public init(from decoder: Decoder) throws {
@@ -41,6 +43,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
             ?? container.decodeIfPresent(UUID.self, forKey: .activeCustomPresencePresetID)
         self.appliedPresence = try container.decodeIfPresent(AppliedPresencePayload.self, forKey: .appliedPresence)
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
+        self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
     }
 
     nonisolated public func encode(to encoder: Encoder) throws {
@@ -53,6 +56,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encodeIfPresent(activePresencePresetID, forKey: .activeCustomPresencePresetID)
         try container.encodeIfPresent(appliedPresence, forKey: .appliedPresence)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
+        try container.encode(presencePriorityEnabled, forKey: .presencePriorityEnabled)
     }
 }
 
@@ -531,6 +535,38 @@ public extension AppSettings {
         appliedPresence = nil
         return true
     }
+
+    @discardableResult
+    nonisolated mutating func duplicatePresencePreset(id: UUID, title: String? = nil, now: Date = Date()) -> PresencePreset? {
+        guard let source = presencePresets.first(where: { $0.id == id }) else { return nil }
+        var copy = source
+        copy.id = UUID()
+        copy.title = title ?? source.title
+        copy.isDefault = false
+        copy.updatedAt = now
+        presencePresets.append(copy)
+        return copy
+    }
+
+    nonisolated mutating func removePresencePreset(id: UUID) {
+        let isRemovingActivePreset = activePresencePresetID == id
+        presencePresets.removeAll { $0.id == id }
+        if isRemovingActivePreset {
+            activePresencePresetID = nil
+        }
+        if isRemovingActivePreset || appliedPresence?.partyID == "preset:\(id.uuidString)" {
+            appliedPresence = nil
+        }
+    }
+
+    @discardableResult
+    nonisolated mutating func restoreDefaultPresencePresets() -> Bool {
+        let existingIDs = Set(presencePresets.map(\.id))
+        let missingDefaults = PresencePreset.defaults.filter { !existingIDs.contains($0.id) }
+        guard !missingDefaults.isEmpty else { return false }
+        presencePresets.append(contentsOf: missingDefaults)
+        return true
+    }
 }
 
 // MARK: - Config Utility (Actor for thread-safety)
@@ -784,13 +820,7 @@ public actor ConfigUtility {
     @discardableResult
     /// Creates a copy of a preset with a new identifier so users can edit it independently.
     public func duplicatePresencePreset(id: UUID, title: String? = nil) async throws -> PresencePreset? {
-        guard let source = settings.presencePresets.first(where: { $0.id == id }) else { return nil }
-        var copy = source
-        copy.id = UUID()
-        copy.title = title ?? source.title
-        copy.isDefault = false
-        copy.updatedAt = Date()
-        settings.presencePresets.append(copy)
+        guard let copy = settings.duplicatePresencePreset(id: id, title: title) else { return nil }
         try persist()
         return copy
     }
@@ -798,13 +828,7 @@ public actor ConfigUtility {
     @discardableResult
     /// Removes a preset and clears active state if that preset was published.
     public func removePresencePreset(id: UUID) async throws -> AppSettings {
-        settings.presencePresets.removeAll { $0.id == id }
-        if settings.activePresencePresetID == id {
-            settings.activePresencePresetID = nil
-        }
-        if settings.appliedPresence?.partyID == "preset:\(id.uuidString)" {
-            settings.appliedPresence = nil
-        }
+        settings.removePresencePreset(id: id)
         try persist()
         return settings
     }
@@ -830,6 +854,19 @@ public actor ConfigUtility {
         settings.appliedPresence
     }
 
+    /// Returns whether CraftPresence should reapply its last app-owned Presence while it remains running.
+    public func isPresencePriorityEnabled() -> Bool {
+        settings.presencePriorityEnabled
+    }
+
+    @discardableResult
+    /// Enables or disables runtime reapplication of the last app-owned Presence.
+    public func setPresencePriorityEnabled(_ enabled: Bool) async throws -> AppSettings {
+        settings.presencePriorityEnabled = enabled
+        try persist()
+        return settings
+    }
+
     @discardableResult
     /// Clears the latest app-owned Presence only when it belongs to the given source.
     public func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) async throws -> AppSettings {
@@ -842,10 +879,7 @@ public actor ConfigUtility {
     @discardableResult
     /// Restores only missing built-in Presence presets while leaving user edits and deletions intact.
     public func restoreDefaultPresencePresets() async throws -> AppSettings {
-        let existingIDs = Set(settings.presencePresets.map(\.id))
-        let missingDefaults = PresencePreset.defaults.filter { !existingIDs.contains($0.id) }
-        guard !missingDefaults.isEmpty else { return settings }
-        settings.presencePresets.append(contentsOf: missingDefaults)
+        guard settings.restoreDefaultPresencePresets() else { return settings }
         try persist()
         return settings
     }

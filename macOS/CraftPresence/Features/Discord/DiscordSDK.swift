@@ -653,6 +653,12 @@ extension DiscordSDKManager {
 
     /// Publishes and records the app-owned Presence payload after Discord accepts it.
     func publishAppliedPresence(_ payload: AppliedPresencePayload) async throws {
+        try await updateActivity(payload)
+        _ = try await ConfigUtility.shared.setAppliedPresence(payload)
+    }
+
+    /// Reapplies a previously stored app-owned Presence without changing persisted ownership metadata.
+    func updateActivity(_ payload: AppliedPresencePayload) async throws {
         try await updateActivity(
             name: payload.name,
             state: payload.state,
@@ -668,7 +674,6 @@ extension DiscordSDKManager {
             end: payload.end,
             activityType: payload.activityType.discordActivityType
         )
-        _ = try await ConfigUtility.shared.setAppliedPresence(payload)
     }
 
     func clearActivity() async throws {
@@ -1012,6 +1017,52 @@ public struct DiscordActivity: Sendable, Equatable {
 
     /// Creates an empty Rich Presence activity.
     public init() {}
+}
+
+/// Periodically reapplies the last app-owned Presence while CraftPresence is running.
+@MainActor
+final class PresencePriorityController {
+    static let shared = PresencePriorityController()
+
+    private var enforcementTask: Task<Void, Never>?
+    private var isReapplying = false
+    private let enforcementIntervalNanoseconds: UInt64 = 8_000_000_000
+
+    private init() {}
+
+    func start() {
+        guard enforcementTask == nil, !AutomationLaunchOptions.isUITesting else { return }
+        enforcementTask = Task { [weak self] in
+            guard let self else { return }
+            await enforceAppliedPresenceIfNeeded()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: enforcementIntervalNanoseconds)
+                await enforceAppliedPresenceIfNeeded()
+            }
+        }
+    }
+
+    func stop() {
+        enforcementTask?.cancel()
+        enforcementTask = nil
+    }
+
+    func enforceAppliedPresenceIfNeeded() async {
+        guard !isReapplying else { return }
+        guard await ConfigUtility.shared.isPresencePriorityEnabled() else { return }
+        guard let appliedPresence = await ConfigUtility.shared.currentAppliedPresence() else { return }
+
+        isReapplying = true
+        defer { isReapplying = false }
+
+        do {
+            try await DiscordSDKManager.shared.updateActivity(appliedPresence)
+        } catch {
+            #if DEBUG
+            print("Failed to enforce applied Presence priority on macOS: \(error)")
+            #endif
+        }
+    }
 }
 
 /// Errors surfaced by the Discord SDK integration layer.

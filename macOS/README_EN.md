@@ -82,18 +82,21 @@ git clone https://github.com/MinePacu/CraftPresence.git
 cd CraftPresence
 ```
 
-### 2. Verify Discord SDK Library
+### 2. Restore Discord SDK Library
 
-The project includes Discord Partner SDK:
+Discord Partner SDK headers and binaries are required locally, but they are intentionally ignored by Git. Restore them before building:
 ```
 CraftPresence/ThirdParty/DIscordSDK/
 ├── include/
 │   ├── discordpp.h
+│   ├── cdiscord.h
 │   ├── DiscordppWrapper.hpp
 │   └── DiscordppWrapper.cpp
 └── lib/
     └── libdiscord_partner_sdk.dylib
 ```
+
+If you keep the SDK in `~/Downloads/discord_social_sdk`, copy the needed headers and library into the paths above. Do not stage the SDK headers or binaries; `macOS/.gitignore` keeps them local-only.
 
 ### 3. Open Project in Xcode
 
@@ -134,6 +137,10 @@ The app requires Accessibility permissions to detect running applications:
 2. Navigate to `System Settings > Privacy & Security > Accessibility`
 3. Enable CraftPresence
 4. Restart the app
+
+### Presence Priority
+
+Settings includes **Keep CraftPresence active**. When enabled, CraftPresence periodically reapplies the last Presence it published while the app process is still running. Menu bar only mode is the recommended macOS way to keep the app available in the background. If you explicitly quit CraftPresence, Presence assertion stops.
 
 ## Usage
 

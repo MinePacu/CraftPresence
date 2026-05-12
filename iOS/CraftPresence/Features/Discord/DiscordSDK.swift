@@ -517,10 +517,19 @@ final class DiscordSDKManager: ObservableObject {
     /// Returns the activity currently visible on the authenticated Discord user, when available.
     func currentPresenceActivity() async throws -> DiscordActivity? {
         if authorizationStatus != .authorized {
+            Log.d(
+                "Restoring authorization before reading current Presence. status=\(authorizationStatus)",
+                category: "PresencePriority"
+            )
             _ = try await restoreAuthorizationIfPossible()
         }
         #if canImport(discord_partner_sdk)
-        return currentPresenceActivityFromAuthenticatedClient()
+        let activity = currentPresenceActivityFromAuthenticatedClient()
+        Log.d(
+            "Read current Discord Presence: \(activity?.debugSummary ?? "nil")",
+            category: "PresencePriority"
+        )
+        return activity
         #else
         throw DiscordSDKError.unsupportedPlatform
         #endif
@@ -616,19 +625,38 @@ final class DiscordSDKManager: ObservableObject {
     ///
     /// - Parameter payload: App-owned Rich Presence payload to persist for priority restoration.
     func publishAppliedPresence(_ payload: AppliedPresencePayload) async throws {
+        Log.d("Publishing applied Presence: \(payload.debugSummary)", category: "PresencePriority")
         try await updateActivity(payload)
         _ = try await ConfigUtility.shared.setAppliedPresence(payload)
+        Log.d("Stored applied Presence after publish: \(payload.debugSummary)", category: "PresencePriority")
     }
 
     /// Clears Discord Rich Presence and removes the priority restoration target.
     func clearAppliedPresence() async throws {
+        let currentPayload = await ConfigUtility.shared.currentAppliedPresence()
+        Log.d(
+            "Clearing applied Presence unconditionally. stored=\(currentPayload?.debugSummary ?? "nil")",
+            category: "PresencePriority"
+        )
         try await clearActivity()
         _ = try await ConfigUtility.shared.setAppliedPresence(nil)
+        Log.d("Cleared applied Presence storage", category: "PresencePriority")
     }
 
     /// Clears Discord Rich Presence only if the saved app-owned Presence belongs to the supplied source.
     func clearAppliedPresence(ifOwnedBy source: AppliedPresenceSource) async throws {
-        guard await ConfigUtility.shared.currentAppliedPresence()?.source == source else { return }
+        let currentPayload = await ConfigUtility.shared.currentAppliedPresence()
+        guard currentPayload?.source == source else {
+            Log.d(
+                "Skipped guarded clear for source=\(source.rawValue). stored=\(currentPayload?.debugSummary ?? "nil")",
+                category: "PresencePriority"
+            )
+            return
+        }
+        Log.d(
+            "Guarded clear matched source=\(source.rawValue). stored=\(currentPayload?.debugSummary ?? "nil")",
+            category: "PresencePriority"
+        )
         try await clearAppliedPresence()
     }
 
@@ -1361,6 +1389,18 @@ struct DiscordActivity: Sendable, Equatable {
     var type: ActivityType = .playing
 }
 
+/// Defines which app-owned Presence sources should be periodically reasserted.
+enum PresencePriorityPolicy {
+    nonisolated static func shouldPeriodicallyReassert(_ payload: AppliedPresencePayload) -> Bool {
+        switch payload.source {
+        case .manual, .schedule:
+            return true
+        case .program, .appleMusic, .xcode:
+            return false
+        }
+    }
+}
+
 /// Periodically reapplies the selected presence so it stays ahead of lower-priority updates.
 @MainActor
 final class PresencePriorityController {
@@ -1373,20 +1413,26 @@ final class PresencePriorityController {
     /// Reentrancy guard for priority enforcement.
     private var isReapplying = false
 
-    /// Interval between priority reapply checks, in nanoseconds.
-    private let enforcementIntervalNanoseconds: UInt64 = 8_000_000_000
-
     /// Prevents external construction so all callers share one priority controller.
     private init() {}
 
     /// Starts periodic priority enforcement unless UI tests are running.
     func start() {
-        guard enforcementTask == nil, !AutomationLaunchOptions.isUITesting else { return }
+        guard enforcementTask == nil, !AutomationLaunchOptions.isUITesting else {
+            Log.d(
+                "Skipped starting priority controller. alreadyStarted=\(enforcementTask != nil) uiTesting=\(AutomationLaunchOptions.isUITesting)",
+                category: "PresencePriority"
+            )
+            return
+        }
+        Log.d("Starting priority controller", category: "PresencePriority")
         enforcementTask = Task { [weak self] in
             guard let self else { return }
             await enforceAppliedPresenceIfNeeded()
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: enforcementIntervalNanoseconds)
+                let intervalSeconds = await ConfigUtility.shared.presencePriorityReapplyIntervalSeconds()
+                Log.d("Sleeping before next priority reassertion intervalSeconds=\(intervalSeconds)", category: "PresencePriority")
+                try? await Task.sleep(nanoseconds: UInt64(intervalSeconds) * 1_000_000_000)
                 await enforceAppliedPresenceIfNeeded()
             }
         }
@@ -1394,28 +1440,43 @@ final class PresencePriorityController {
 
     /// Stops periodic priority enforcement.
     func stop() {
+        Log.d("Stopping priority controller", category: "PresencePriority")
         enforcementTask?.cancel()
         enforcementTask = nil
     }
 
-    /// Reapplies the last app-owned Presence when Discord currently shows a different activity.
+    /// Reapplies the last persistent app-owned Presence without depending on external Presence detection.
     func enforceAppliedPresenceIfNeeded() async {
-        guard !isReapplying else { return }
-        guard await ConfigUtility.shared.isPresencePriorityEnabled() else { return }
-        guard let appliedPresence = await ConfigUtility.shared.currentAppliedPresence() else { return }
+        guard !isReapplying else {
+            Log.d("Skipped enforcement because a reapply is already in progress", category: "PresencePriority")
+            return
+        }
+        let isPriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+        guard isPriorityEnabled else {
+            Log.d("Skipped enforcement because Presence priority is disabled", category: "PresencePriority")
+            return
+        }
+        guard let appliedPresence = await ConfigUtility.shared.currentAppliedPresence() else {
+            Log.d("Skipped enforcement because no applied Presence is stored", category: "PresencePriority")
+            return
+        }
+        guard PresencePriorityPolicy.shouldPeriodicallyReassert(appliedPresence) else {
+            Log.d(
+                "Skipped periodic reassertion for transient source=\(appliedPresence.source.rawValue)",
+                category: "PresencePriority"
+            )
+            return
+        }
 
         do {
-            let currentActivity = try await DiscordSDKManager.shared.currentPresenceActivity()
-            guard currentActivity?.matches(appliedPresence) != true else { return }
-
             isReapplying = true
             defer { isReapplying = false }
 
+            Log.d("Periodically reasserting stored Presence target: \(appliedPresence.debugSummary)", category: "PresencePriority")
             try await DiscordSDKManager.shared.updateActivity(appliedPresence)
+            Log.d("Finished periodic Presence reassertion", category: "PresencePriority")
         } catch {
-            #if DEBUG
-            print("Failed to enforce applied Presence priority: \(error)")
-            #endif
+            Log.d("Failed to enforce applied Presence priority: \(error)", category: "PresencePriority")
         }
     }
 }
@@ -1454,63 +1515,45 @@ enum DiscordSDKError: Error, LocalizedError, Sendable, Equatable {
     }
 }
 
-/// Matching helpers for comparing Discord activity payloads with saved app-owned payloads.
+/// Compact debug summaries for Presence priority diagnostics.
+private extension AppliedPresencePayload {
+    var debugSummary: String {
+        [
+            "source=\(source.rawValue)",
+            "type=\(activityType.rawValue)",
+            "name=\(debugValue(name))",
+            "details=\(debugValue(details))",
+            "state=\(debugValue(state))",
+            "large=\(debugValue(largeImageKey))",
+            "small=\(debugValue(smallImageKey))",
+            "start=\(start.map { String(Int($0.timeIntervalSince1970)) } ?? "nil")",
+            "end=\(end.map { String(Int($0.timeIntervalSince1970)) } ?? "nil")",
+            "party=\(debugValue(partyID))/\(partyCurrent.map(String.init) ?? "nil")/\(partyMax.map(String.init) ?? "nil")"
+        ].joined(separator: " ")
+    }
+
+    private func debugValue(_ value: String?) -> String {
+        value?.nilIfEmpty ?? "nil"
+    }
+}
+
 private extension DiscordActivity {
-    /// Returns whether this activity already matches a saved app-owned Presence payload.
-    ///
-    /// - Parameter payload: Saved Presence payload to compare against this activity.
-    func matches(_ payload: AppliedPresencePayload) -> Bool {
-        stringValue(name) == stringValue(payload.name)
-            && stringValue(details) == stringValue(payload.details)
-            && stringValue(state) == stringValue(payload.state)
-            && stringValue(assets.largeImage) == stringValue(payload.largeImageKey)
-            && stringValue(assets.largeText) == stringValue(payload.largeImageText)
-            && stringValue(assets.smallImage) == stringValue(payload.smallImageKey)
-            && stringValue(assets.smallText) == stringValue(payload.smallImageText)
-            && type == payload.activityType.discordActivityType
-            && timestampsMatch(payload)
-            && partyMatches(payload)
+    var debugSummary: String {
+        [
+            "type=\(type.displayName)",
+            "name=\(debugValue(name))",
+            "details=\(debugValue(details))",
+            "state=\(debugValue(state))",
+            "large=\(debugValue(assets.largeImage))",
+            "small=\(debugValue(assets.smallImage))",
+            "start=\(timestamps.start.map { String(Int($0.timeIntervalSince1970)) } ?? "nil")",
+            "end=\(timestamps.end.map { String(Int($0.timeIntervalSince1970)) } ?? "nil")",
+            "party=\(debugValue(party.id))/\(party.currentSize.map(String.init) ?? "nil")/\(party.maxSize.map(String.init) ?? "nil")"
+        ].joined(separator: " ")
     }
 
-    /// Compares timestamp fields while allowing small SDK timestamp precision drift.
-    ///
-    /// - Parameter payload: Saved Presence payload whose timestamp fields are expected.
-    private func timestampsMatch(_ payload: AppliedPresencePayload) -> Bool {
-        datesMatch(actual: timestamps.start, expected: payload.start)
-            && datesMatch(actual: timestamps.end, expected: payload.end)
-    }
-
-    /// Compares party metadata against a saved Presence payload.
-    ///
-    /// - Parameter payload: Saved Presence payload whose party fields are expected.
-    private func partyMatches(_ payload: AppliedPresencePayload) -> Bool {
-        guard let expectedPartyID = stringValue(payload.partyID) else {
-            return party.currentSize == nil && party.maxSize == nil
-        }
-        if let actualPartyID = stringValue(party.id), actualPartyID != expectedPartyID {
-            return false
-        }
-        return party.currentSize == payload.partyCurrent
-            && party.maxSize == payload.partyMax
-    }
-
-    /// Compares optional timestamps while allowing a small difference from SDK rounding.
-    private func datesMatch(actual: Date?, expected: Date?) -> Bool {
-        switch (actual, expected) {
-        case (nil, nil):
-            return true
-        case let (actual?, expected?):
-            return abs(actual.timeIntervalSince(expected)) < 2
-        default:
-            return false
-        }
-    }
-
-    /// Normalizes blank strings to nil before comparing activity fields.
-    ///
-    /// - Parameter value: Optional string to normalize before comparison.
-    private func stringValue(_ value: String?) -> String? {
-        value?.nilIfEmpty
+    private func debugValue(_ value: String?) -> String {
+        value?.nilIfEmpty ?? "nil"
     }
 }
 

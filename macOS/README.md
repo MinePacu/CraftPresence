@@ -78,18 +78,21 @@ git clone https://github.com/MinePacu/CraftPresence.git
 cd CraftPresence
 ```
 
-### 2. Discord SDK 라이브러리 확인
+### 2. Discord SDK 라이브러리 복원
 
-프로젝트에는 Discord Partner SDK가 포함되어 있습니다:
+Discord Partner SDK 헤더와 바이너리는 로컬 빌드에 필요하지만 Git에는 포함하지 않습니다. 빌드 전에 아래 경로에 파일을 복원하세요:
 ```
 CraftPresence/ThirdParty/DIscordSDK/
 ├── include/
 │   ├── discordpp.h
+│   ├── cdiscord.h
 │   ├── DiscordppWrapper.hpp
 │   └── DiscordppWrapper.cpp
 └── lib/
     └── libdiscord_partner_sdk.dylib
 ```
+
+SDK를 `~/Downloads/discord_social_sdk`에 보관하고 있다면 필요한 헤더와 라이브러리를 위 경로로 복사하면 됩니다. SDK 헤더와 바이너리는 커밋하지 마세요. `macOS/.gitignore`가 해당 파일을 로컬 전용으로 유지합니다.
 
 ### 3. Xcode에서 프로젝트 열기
 
@@ -130,6 +133,10 @@ export APPLICATION_ID="YOUR_DISCORD_APPLICATION_ID"
 2. `시스템 설정 > 개인 정보 보호 및 보안 > 손쉬운 사용` 이동
 3. CraftPresence 앱 활성화
 4. 앱 재시작
+
+### Presence Priority
+
+설정의 **CraftPresence 유지**를 켜면 앱 프로세스가 실행 중인 동안 마지막으로 게시한 Presence를 주기적으로 다시 적용합니다. macOS에서는 메뉴 막대 전용 모드가 앱을 백그라운드에 유지하는 권장 방식입니다. 사용자가 CraftPresence를 명시적으로 종료하면 Presence 재적용도 중지됩니다.
 
 ## 사용 방법
 

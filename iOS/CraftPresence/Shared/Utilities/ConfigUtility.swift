@@ -21,6 +21,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
     public var completedPresenceScheduleActivationKeys: [String: String] = [:]
     public var preferredLanguage: AppLanguage = .system
     public var presencePriorityEnabled: Bool = true
+    public var presencePriorityReapplyIntervalSeconds: Int = PresencePriorityReapplyInterval.defaultSeconds
     public var presenceLiveActivityEnabled: Bool = true
     public var liveActivityContentOptions: LiveActivityContentOptions = LiveActivityContentOptions()
     public var resetElapsedTimeOnScheduledPresetRestore: Bool = false
@@ -48,6 +49,7 @@ public struct AppSettings: Codable, Sendable, Equatable {
         case completedPresenceScheduleActivationKeys
         case preferredLanguage
         case presencePriorityEnabled
+        case presencePriorityReapplyIntervalSeconds
         case presenceLiveActivityEnabled
         case liveActivityContentOptions
         case resetElapsedTimeOnScheduledPresetRestore
@@ -81,6 +83,9 @@ public struct AppSettings: Codable, Sendable, Equatable {
         ) ?? [:]
         self.preferredLanguage = try container.decodeIfPresent(AppLanguage.self, forKey: .preferredLanguage) ?? .system
         self.presencePriorityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presencePriorityEnabled) ?? true
+        self.presencePriorityReapplyIntervalSeconds = PresencePriorityReapplyInterval.clamped(
+            try container.decodeIfPresent(Int.self, forKey: .presencePriorityReapplyIntervalSeconds)
+        )
         self.presenceLiveActivityEnabled = try container.decodeIfPresent(Bool.self, forKey: .presenceLiveActivityEnabled) ?? true
         self.liveActivityContentOptions = try container.decodeIfPresent(
             LiveActivityContentOptions.self,
@@ -105,9 +110,21 @@ public struct AppSettings: Codable, Sendable, Equatable {
         try container.encode(completedPresenceScheduleActivationKeys, forKey: .completedPresenceScheduleActivationKeys)
         try container.encode(preferredLanguage, forKey: .preferredLanguage)
         try container.encode(presencePriorityEnabled, forKey: .presencePriorityEnabled)
+        try container.encode(presencePriorityReapplyIntervalSeconds, forKey: .presencePriorityReapplyIntervalSeconds)
         try container.encode(presenceLiveActivityEnabled, forKey: .presenceLiveActivityEnabled)
         try container.encode(liveActivityContentOptions, forKey: .liveActivityContentOptions)
         try container.encode(resetElapsedTimeOnScheduledPresetRestore, forKey: .resetElapsedTimeOnScheduledPresetRestore)
+    }
+}
+
+/// Supported interval bounds for reasserting app-owned Presence through Discord.
+public enum PresencePriorityReapplyInterval {
+    nonisolated public static let minimumSeconds = 10
+    nonisolated public static let defaultSeconds = 30
+    nonisolated public static let maximumSeconds = 300
+
+    nonisolated public static func clamped(_ seconds: Int?) -> Int {
+        min(max(seconds ?? defaultSeconds, minimumSeconds), maximumSeconds)
     }
 }
 
@@ -1224,6 +1241,11 @@ public actor ConfigUtility {
         settings.presencePriorityEnabled
     }
 
+    /// Returns the interval between periodic app-owned Presence reassertions.
+    public func presencePriorityReapplyIntervalSeconds() -> Int {
+        settings.presencePriorityReapplyIntervalSeconds
+    }
+
     /// Returns whether current Presence should be mirrored to ActivityKit Live Activity surfaces.
     public func isPresenceLiveActivityEnabled() -> Bool {
         settings.presenceLiveActivityEnabled
@@ -1238,6 +1260,14 @@ public actor ConfigUtility {
     /// Persists whether the app should keep its last published custom Presence authoritative.
     public func setPresencePriorityEnabled(_ enabled: Bool) async throws -> AppSettings {
         settings.presencePriorityEnabled = enabled
+        try persist()
+        return settings
+    }
+
+    @discardableResult
+    /// Persists the interval between periodic app-owned Presence reassertions.
+    public func setPresencePriorityReapplyIntervalSeconds(_ seconds: Int) async throws -> AppSettings {
+        settings.presencePriorityReapplyIntervalSeconds = PresencePriorityReapplyInterval.clamped(seconds)
         try persist()
         return settings
     }

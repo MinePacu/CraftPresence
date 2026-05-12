@@ -229,6 +229,38 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertEqual(decoded.liveActivityContentOptions, settings.liveActivityContentOptions)
     }
 
+    func testPresencePriorityReapplyIntervalDefaultsToThirtySeconds() throws {
+        let settings = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+
+        XCTAssertEqual(settings.presencePriorityReapplyIntervalSeconds, 30)
+    }
+
+    func testPresencePriorityReapplyIntervalClampsToSupportedRange() async throws {
+        let originalSettings = await ConfigUtility.shared.currentSettings()
+        do {
+            _ = try await ConfigUtility.shared.setPresencePriorityReapplyIntervalSeconds(2)
+            var settings = await ConfigUtility.shared.currentSettings()
+            XCTAssertEqual(settings.presencePriorityReapplyIntervalSeconds, 10)
+
+            _ = try await ConfigUtility.shared.setPresencePriorityReapplyIntervalSeconds(999)
+            settings = await ConfigUtility.shared.currentSettings()
+            XCTAssertEqual(settings.presencePriorityReapplyIntervalSeconds, 300)
+
+            _ = try await ConfigUtility.shared.setSettings(originalSettings)
+        } catch {
+            _ = try? await ConfigUtility.shared.setSettings(originalSettings)
+            throw error
+        }
+    }
+
+    func testPresencePriorityPolicyOnlyReassertsPersistentUserTargets() {
+        XCTAssertTrue(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Manual", source: .manual)))
+        XCTAssertTrue(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Schedule", source: .schedule)))
+        XCTAssertFalse(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Program", source: .program)))
+        XCTAssertFalse(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Music", source: .appleMusic)))
+        XCTAssertFalse(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Xcode", source: .xcode)))
+    }
+
     #if canImport(ActivityKit)
     func testPresenceActivityContentStateDefaultsMissingContentOptions() throws {
         let json = """

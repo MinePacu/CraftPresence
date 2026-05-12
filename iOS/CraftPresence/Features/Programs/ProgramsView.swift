@@ -1212,108 +1212,112 @@ struct CustomPresenceView: View {
     }
 
     private var previewPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(draft.normalized.activityType.rawValue)
-                    .font(.caption.weight(.bold))
-                    .lineLimit(1)
+        CPSettingsSection(
+            t("custom_presence.section.preview"),
+            footer: t("custom_presence.section.preview.description")
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(draft.normalized.activityType.rawValue)
+                        .font(.caption.weight(.bold))
+                        .lineLimit(1)
 
-                Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-                Image(systemName: "ellipsis")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.primary)
-
-                    Image(systemName: previewAssetSymbol)
-                        .font(.system(size: 26, weight: .bold))
-                        .foregroundStyle(CPStyle.cardBackground)
-                        .imageScale(.large)
+                    Image(systemName: "ellipsis")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
-                .frame(width: 48, height: 48)
-                .overlay(alignment: .bottomTrailing) {
-                    if previewSmallAssetText != nil {
-                        Circle()
-                            .fill(CPStyle.cardBackground)
-                            .frame(width: 18, height: 18)
-                            .overlay(
-                                Text(previewSmallAssetInitial)
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(Color.primary)
-                            )
+
+                HStack(alignment: .top, spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.primary)
+
+                        Image(systemName: previewAssetSymbol)
+                            .font(.system(size: 26, weight: .bold))
+                            .foregroundStyle(CPStyle.cardBackground)
+                            .imageScale(.large)
                     }
-                }
+                    .frame(width: 48, height: 48)
+                    .overlay(alignment: .bottomTrailing) {
+                        if previewSmallAssetText != nil {
+                            Circle()
+                                .fill(CPStyle.cardBackground)
+                                .frame(width: 18, height: 18)
+                                .overlay(
+                                    Text(previewSmallAssetInitial)
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(Color.primary)
+                                )
+                        }
+                    }
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(previewTitleText)
-                        .font(.subheadline.weight(.bold))
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(previewTitleText)
+                            .font(.subheadline.weight(.bold))
+                            .lineLimit(1)
 
-                    Text(previewDetailsText)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-
-                    if previewPartyText == nil {
-                        Text(previewStateText)
+                        Text(previewDetailsText)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
                             .lineLimit(1)
-                    }
 
-                    if let largeAssetText = previewLargeAssetText {
-                        Text(largeAssetText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    if let smallAssetText = previewSmallAssetText {
-                        Text(smallAssetText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if draft.normalized.usesElapsedTime {
-                            HStack(spacing: 3) {
-                                Image(systemName: "desktopcomputer")
-                                    .font(.caption2.weight(.bold))
-                                Text(previewElapsedText)
-                                    .font(.caption.monospacedDigit().weight(.semibold))
-                            }
-                            .foregroundStyle(.green)
-                            .lineLimit(1)
+                        if previewPartyText == nil {
+                            Text(previewStateText)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
 
-                        if let previewPartyText {
-                            HStack(spacing: 3) {
-                                Image(systemName: "person.2.fill")
-                                    .font(.caption2.weight(.bold))
-                                Text(previewPartyText)
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                            }
-                            .foregroundStyle(.primary)
-                            .layoutPriority(1)
+                        if let largeAssetText = previewLargeAssetText {
+                            Text(largeAssetText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
+
+                        if let smallAssetText = previewSmallAssetText {
+                            Text(smallAssetText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            if draft.normalized.usesElapsedTime {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "desktopcomputer")
+                                        .font(.caption2.weight(.bold))
+                                    Text(previewElapsedText)
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                }
+                                .foregroundStyle(.green)
+                                .lineLimit(1)
+                            }
+
+                            if let previewPartyText {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "person.2.fill")
+                                        .font(.caption2.weight(.bold))
+                                    Text(previewPartyText)
+                                        .font(.caption.weight(.semibold))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                                .foregroundStyle(.primary)
+                                .layoutPriority(1)
+                            }
+                        }
+                        .padding(.top, 1)
                     }
-                    .padding(.top, 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var previewActivityHeaderText: String {
@@ -1373,56 +1377,62 @@ struct CustomPresenceView: View {
     }()
 
     private var actionPanel: some View {
-        LazyVGrid(columns: actionColumns, alignment: .leading, spacing: 10) {
-            Button {
-                Task { await publishDraft() }
-            } label: {
-                Label(t("custom_presence.publish_now"), systemImage: "paperplane.fill")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .disabled(draft.normalized.title.isEmpty || draft.normalized.streamingURLValidationError != nil)
-            .accessibilityIdentifier("customPresence.publish")
+        CPSettingsSection(
+            t("custom_presence.section.actions"),
+            footer: t("custom_presence.section.actions.description")
+        ) {
+            LazyVGrid(columns: actionColumns, alignment: .leading, spacing: 10) {
+                Button {
+                    Task { await publishDraft() }
+                } label: {
+                    Label(t("custom_presence.publish_now"), systemImage: "paperplane.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(draft.normalized.title.isEmpty || draft.normalized.streamingURLValidationError != nil)
+                .accessibilityIdentifier("customPresence.publish")
 
-            Button {
-                Task { await saveDraftAsPreset() }
-            } label: {
-                Label(t("custom_presence.save_as_preset"), systemImage: "square.and.arrow.down")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .disabled(draft.normalized.title.isEmpty || draft.normalized.streamingURLValidationError != nil)
-            .accessibilityIdentifier("customPresence.saveAsPreset")
+                Button {
+                    Task { await saveDraftAsPreset() }
+                } label: {
+                    Label(t("custom_presence.save_as_preset"), systemImage: "square.and.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(draft.normalized.title.isEmpty || draft.normalized.streamingURLValidationError != nil)
+                .accessibilityIdentifier("customPresence.saveAsPreset")
 
-            Button {
-                Task { await clearPresence() }
-            } label: {
-                Label(t("presets.clear_presence"), systemImage: "xmark.circle")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .tint(.red)
-            .accessibilityIdentifier("customPresence.clear")
+                Button {
+                    Task { await clearPresence() }
+                } label: {
+                    Label(t("presets.clear_presence"), systemImage: "xmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .tint(.red)
+                .accessibilityIdentifier("customPresence.clear")
 
-            Button {
-                draft = CustomPresencePreset.makeDraft()
-                showToast(t("custom_presence.reset"))
-            } label: {
-                Label(t("custom_presence.reset_button"), systemImage: "arrow.counterclockwise")
-                    .frame(maxWidth: .infinity)
+                Button {
+                    draft = CustomPresencePreset.makeDraft()
+                    showToast(t("custom_presence.reset"))
+                } label: {
+                    Label(t("custom_presence.reset_button"), systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .accessibilityIdentifier("customPresence.reset")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .accessibilityIdentifier("customPresence.reset")
+            .labelStyle(.titleAndIcon)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .buttonBorderShape(.roundedRectangle(radius: 8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
         }
-        .labelStyle(.titleAndIcon)
-        .lineLimit(1)
-        .minimumScaleFactor(0.82)
-        .buttonBorderShape(.roundedRectangle(radius: 8))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var actionColumns: [GridItem] {
@@ -1676,24 +1686,15 @@ private struct PresencePresetInlineForm: View {
     private func formSection<Content: View>(
         title: String,
         footer: String? = nil,
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.headline)
-
-            content()
-
-            if let footer {
-                Text(footer)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        CPSettingsSection(title, footer: footer) {
+            VStack(alignment: .leading, spacing: 10) {
+                content()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(CPStyle.cardBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func t(_ key: String) -> String {

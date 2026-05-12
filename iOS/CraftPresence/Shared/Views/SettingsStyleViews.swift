@@ -98,6 +98,43 @@ struct CPGroupedSection<Content: View>: View {
     }
 }
 
+struct CPSettingsSection<Content: View>: View {
+    let title: String
+    let footer: String?
+    @ViewBuilder var content: () -> Content
+
+    init(
+        _ title: String,
+        footer: String? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.footer = footer
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+
+            CPGroupedSection {
+                content()
+            }
+
+            if let footer, !footer.isEmpty {
+                Text(footer)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
+            }
+        }
+    }
+}
+
 struct CPSettingsRow<Accessory: View>: View {
     let title: String
     let subtitle: String?

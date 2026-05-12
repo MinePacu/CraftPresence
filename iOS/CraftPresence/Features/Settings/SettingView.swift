@@ -15,6 +15,7 @@ struct SettingView: View {
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
     @State private var presencePriorityEnabled: Bool = true
+    @State private var presencePriorityReapplyIntervalSeconds: Int = PresencePriorityReapplyInterval.defaultSeconds
     @State private var presenceLiveActivityEnabled: Bool = true
     @State private var liveActivityContentOptions = LiveActivityContentOptions()
 #if os(iOS)
@@ -28,17 +29,31 @@ struct SettingView: View {
 #endif
 
     var body: some View {
+        #if os(iOS)
+        settingsContent
+        #else
         NavigationStack {
+            settingsContent
+        }
+        #endif
+    }
+
+    private var settingsContent: some View {
             CPSettingsPage {
                 CPHeaderCard(
                     title: t("settings.title"),
-                    subtitle: t("settings.presence_priority.description"),
+                    subtitle: t("settings.description"),
                     systemImage: "gearshape",
                     tint: .gray
                 )
 
-                CPGroupedSection {
-                    CPSettingsRow(title: t("settings.language"), systemImage: "globe", tint: .blue) {
+                CPSettingsSection(t("settings.section.general")) {
+                    CPSettingsRow(
+                        title: t("settings.language"),
+                        subtitle: t("settings.language.description"),
+                        systemImage: "globe",
+                        tint: .blue
+                    ) {
                         Picker(t("settings.language"), selection: languageBinding) {
                             ForEach(AppLanguage.allCases) { language in
                                 Text(languageLabel(for: language)).tag(language)
@@ -62,7 +77,7 @@ struct SettingView: View {
 #endif
                 }
 
-                CPGroupedSection {
+                CPSettingsSection(t("settings.section.presence_control")) {
                     CPSettingsRow(
                         title: t("settings.presence_priority.title"),
                         subtitle: t("settings.presence_priority.description"),
@@ -75,8 +90,44 @@ struct SettingView: View {
                     .help(t("settings.presence_priority.help"))
                     .accessibilityIdentifier("settings.presencePriority")
 
-                    #if os(iOS)
-                    CPSectionDivider()
+                    if presencePriorityEnabled {
+                        CPSectionDivider()
+                        CPSettingsRow(
+                            title: t("settings.presence_priority.interval.title"),
+                            subtitle: String(
+                                format: t("settings.presence_priority.interval.description_format"),
+                                presencePriorityReapplyIntervalSeconds
+                            ),
+                            systemImage: "clock.arrow.circlepath",
+                            tint: .pink
+                        ) {
+                            HStack(spacing: 8) {
+                                Text(
+                                    String(
+                                        format: t("settings.presence_priority.interval.value_format"),
+                                        presencePriorityReapplyIntervalSeconds
+                                    )
+                                )
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+
+                                Stepper(
+                                    value: $presencePriorityReapplyIntervalSeconds.onChange(presencePriorityReapplyIntervalChanged),
+                                    in: PresencePriorityReapplyInterval.minimumSeconds...PresencePriorityReapplyInterval.maximumSeconds,
+                                    step: 10
+                                ) {
+                                    EmptyView()
+                                }
+                                .labelsHidden()
+                            }
+                        }
+                        .accessibilityIdentifier("settings.presencePriority.interval")
+                    }
+                }
+
+                #if os(iOS)
+                CPSettingsSection(t("settings.section.live_activity")) {
                     CPSettingsRow(
                         title: t("settings.live_activity.title"),
                         subtitle: t("settings.live_activity.description"),
@@ -135,11 +186,11 @@ struct SettingView: View {
                         }
                         .accessibilityIdentifier("settings.liveActivity.content.discordStatus")
                     }
-                    #endif
                 }
+                #endif
 
 #if os(iOS)
-                CPGroupedSection {
+                CPSettingsSection(t("settings.section.settings_transfer")) {
                     CPSettingsRow(
                         title: t("settings.import_export.export.title"),
                         subtitle: t("settings.import_export.export.description"),
@@ -177,7 +228,7 @@ struct SettingView: View {
 #endif
 
                 #if DEBUG
-                CPGroupedSection {
+                CPSettingsSection(t("settings.section.debug"), footer: t("settings.debug_logging.footer")) {
                     CPSettingsRow(
                         title: t("settings.debug_logging.title"),
                         subtitle: t("settings.debug_logging.description"),
@@ -188,11 +239,6 @@ struct SettingView: View {
                             .labelsHidden()
                     }
                 }
-
-                Text(t("settings.debug_logging.footer"))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
                 #endif
             }
             .navigationTitle(t("settings.title"))
@@ -251,11 +297,11 @@ struct SettingView: View {
                 applyMenuBarMode(menuBarOnlyEnabled)
                 Task {
                     presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+                    presencePriorityReapplyIntervalSeconds = await ConfigUtility.shared.presencePriorityReapplyIntervalSeconds()
                     presenceLiveActivityEnabled = await ConfigUtility.shared.isPresenceLiveActivityEnabled()
                     liveActivityContentOptions = await ConfigUtility.shared.liveActivityContentOptions()
                 }
             }
-        }
     }
 
 #if os(iOS)
@@ -324,6 +370,7 @@ struct SettingView: View {
                 await MainActor.run {
                     self.pendingSettingsImport = nil
                     presencePriorityEnabled = imported.presencePriorityEnabled
+                    presencePriorityReapplyIntervalSeconds = imported.presencePriorityReapplyIntervalSeconds
                     presenceLiveActivityEnabled = imported.presenceLiveActivityEnabled
                     liveActivityContentOptions = imported.liveActivityContentOptions
                     toastMessage = CPToastMessage(text: t("settings.import_export.import.success"))
@@ -381,6 +428,19 @@ struct SettingView: View {
                 }
             } catch {
                 presencePriorityEnabled.toggle()
+            }
+        }
+    }
+
+    /// Saves the interval between periodic app-owned Presence reassertions.
+    private func presencePriorityReapplyIntervalChanged(_ seconds: Int) {
+        let clampedSeconds = PresencePriorityReapplyInterval.clamped(seconds)
+        presencePriorityReapplyIntervalSeconds = clampedSeconds
+        Task {
+            do {
+                _ = try await ConfigUtility.shared.setPresencePriorityReapplyIntervalSeconds(clampedSeconds)
+            } catch {
+                presencePriorityReapplyIntervalSeconds = await ConfigUtility.shared.presencePriorityReapplyIntervalSeconds()
             }
         }
     }

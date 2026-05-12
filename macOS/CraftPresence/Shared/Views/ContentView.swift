@@ -19,6 +19,7 @@ struct ContentView: View {
     private enum DetailSelection: Equatable {
         case overview
         case programs
+        case presets
         case builtin
         case about
         case item(Item)
@@ -30,6 +31,7 @@ struct ContentView: View {
             switch (lhs, rhs) {
             case (.overview, .overview): return true
             case (.programs, .programs): return true
+            case (.presets, .presets): return true
             case (.builtin, .builtin): return true
             case (.about, .about): return true
             case (.discordTest, .discordTest): return true
@@ -75,6 +77,7 @@ struct ContentView: View {
                 switch selection {
                 case .overview: return "overview"
                 case .programs: return "programs"
+                case .presets: return "presets"
                 case .builtin: return "builtin"
                 case .about: return "about"
                 case .discordTest: return "discordTest"
@@ -87,6 +90,7 @@ struct ContentView: View {
                 let previousSelection = selection
                 if key == "overview" { selection = .overview }
                 else if key == "programs" { selection = .programs }
+                else if key == "presets" { selection = .presets }
                 else if key == "builtin" { selection = .builtin }
                 else if key == "about" { selection = .about }
                 else if key == "discordTest" { selection = .discordTest }
@@ -108,6 +112,9 @@ struct ContentView: View {
                     Label(t("sidebar.programs"), systemImage: "list.bullet.rectangle")
                         .tag("programs")
                         .accessibilityIdentifier("sidebar.programs")
+                    Label(t("sidebar.presets"), systemImage: "rectangle.stack")
+                        .tag("presets")
+                        .accessibilityIdentifier("sidebar.presets")
                     Label(t("sidebar.builtin"), systemImage: "bolt.fill")
                         .tag("builtin")
                         .accessibilityIdentifier("sidebar.builtin")
@@ -159,6 +166,9 @@ struct ContentView: View {
                         }
                         isLoadingPrograms = false
                     }
+                // MARK: Detail - Presets
+                case .presets:
+                    PresencePresetsView()
                 // MARK: Detail - Built-in
                 case .builtin:
                     BuiltinView()

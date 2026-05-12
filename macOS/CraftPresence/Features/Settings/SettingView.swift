@@ -12,6 +12,7 @@ struct SettingView: View {
     // Persist toggles with AppStorage so they survive restarts
     @AppStorage("debugLoggingEnabled") private var debugLoggingEnabled: Bool = false
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
+    @State private var presencePriorityEnabled: Bool = true
     @EnvironmentObject private var localizationManager: LocalizationManager
 
     var body: some View {
@@ -33,6 +34,16 @@ struct SettingView: View {
                         }
                     }
                     .help(t("settings.menu_bar_only.help"))
+
+                    Toggle(isOn: $presencePriorityEnabled.onChange(presencePriorityToggleChanged)) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(t("settings.presence_priority.title"))
+                            Text(t("settings.presence_priority.description"))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .help(t("settings.presence_priority.help"))
                 }
 
                 #if DEBUG
@@ -58,12 +69,32 @@ struct SettingView: View {
                 // 설정 화면 진입 시 현재 저장된 상태를 보장 적용
                 applyMenuBarMode(menuBarOnlyEnabled)
             }
+            .task {
+                presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+            }
         }
     }
 
     /// Responds to menu bar mode changes immediately so the app chrome matches the stored preference.
     private func menuBarToggleChanged(_ newValue: Bool) {
         applyMenuBarMode(newValue)
+    }
+
+    /// Persists priority changes and immediately enforces the saved Presence when re-enabled.
+    private func presencePriorityToggleChanged(_ newValue: Bool) {
+        Task {
+            do {
+                _ = try await ConfigUtility.shared.setPresencePriorityEnabled(newValue)
+                if newValue {
+                    PresencePriorityController.shared.start()
+                    await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
+                } else {
+                    PresencePriorityController.shared.stop()
+                }
+            } catch {
+                presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+            }
+        }
     }
 
     /// Applies the current menu-bar-only mode using the shared AppKit controller on macOS.
