@@ -5,6 +5,36 @@ import UniformTypeIdentifiers
 import UIKit
 #endif
 
+struct PresencePresetPage: Equatable {
+    let pageIndex: Int
+    let pageCount: Int
+    let range: Range<Int>
+}
+
+enum PresencePresetPagination {
+    static let mobilePageSize = 6
+
+    static func resolve(
+        itemCount: Int,
+        requestedPageIndex: Int,
+        pageSize: Int
+    ) -> PresencePresetPage {
+        precondition(pageSize > 0, "pageSize must be greater than zero.")
+
+        let safeItemCount = max(0, itemCount)
+        let pageCount = max(1, Int(ceil(Double(safeItemCount) / Double(pageSize))))
+        let pageIndex = min(max(0, requestedPageIndex), pageCount - 1)
+        let fromIndex = min(pageIndex * pageSize, safeItemCount)
+        let toIndex = min(fromIndex + pageSize, safeItemCount)
+
+        return PresencePresetPage(
+            pageIndex: pageIndex,
+            pageCount: pageCount,
+            range: fromIndex..<toIndex
+        )
+    }
+}
+
 /// Manual Rich Presence preset manager. Users choose exactly what Discord should display.
 struct ProgramsView: View {
     @Binding var programIDs: [String]
@@ -29,6 +59,7 @@ struct ProgramsView: View {
     @State private var autoScrollDirection: PresencePresetAutoScrollDirection?
     @State private var autoScrollAnchorPresetID: UUID?
     @State private var lastAutoScrollUpdate = Date.distantPast
+    @State private var presetPageIndex = 0
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -85,6 +116,9 @@ struct ProgramsView: View {
         .onDisappear {
             stopPresetAutoScroll()
         }
+        .onChange(of: presets.count) { _, _ in
+            clampPresetPage()
+        }
     }
 
     private var presetActions: some View {
@@ -115,59 +149,110 @@ struct ProgramsView: View {
                     description: Text(t("presets.empty_description"))
                 )
             } else {
-                LazyVStack(spacing: 12) {
-                    ForEach(presets) { preset in
-                        PresencePresetRow(
-                            preset: preset,
-                            isActive: preset.id == activePresetID,
-                            scheduleRules: scheduleRulesByPresetID[preset.id] ?? [],
-                            onReorderStarted: {
-                                draggedPresetID = preset.id
-                            },
-                            onPublish: { Task { await publish(preset) } },
-                            onEdit: {
-                                editingPreset = preset
-                            },
-                            onSchedule: {
-                                schedulingPreset = preset
-                            },
-                            onDelete: { Task { await deletePreset(preset) } }
-                        )
-                        .id(preset.id)
-                        .accessibilityIdentifier("programs.row.\(preset.id.uuidString)")
-                        .background(
-                            GeometryReader { geometry in
-                                Color.clear.preference(
-                                    key: PresencePresetRowFramePreferenceKey.self,
-                                    value: [preset.id: geometry.frame(in: .global)]
-                                )
-                            }
-                        )
-                        .onDrop(
-                            of: [UTType.text],
-                            delegate: PresencePresetDropDelegate(
-                                targetPreset: preset,
-                                presets: $presets,
-                                draggedPresetID: $draggedPresetID,
-                                didReorderPresets: $didReorderPresets,
-                                onDropUpdated: {
-                                    handlePresetReorderDropUpdated(
-                                        targetPresetID: preset.id,
-                                        scrollProxy: scrollProxy
-                                    )
+                VStack(spacing: 12) {
+                    LazyVStack(spacing: 12) {
+                        ForEach(visiblePresets) { preset in
+                            PresencePresetRow(
+                                preset: preset,
+                                isActive: preset.id == activePresetID,
+                                scheduleRules: scheduleRulesByPresetID[preset.id] ?? [],
+                                onReorderStarted: {
+                                    draggedPresetID = preset.id
                                 },
-                                onDropCompleted: {
-                                    stopPresetAutoScroll()
-                                    Task { await persistPresetOrderIfNeeded() }
+                                onPublish: { Task { await publish(preset) } },
+                                onEdit: {
+                                    editingPreset = preset
+                                },
+                                onSchedule: {
+                                    schedulingPreset = preset
+                                },
+                                onDelete: { Task { await deletePreset(preset) } }
+                            )
+                            .id(preset.id)
+                            .accessibilityIdentifier("programs.row.\(preset.id.uuidString)")
+                            .background(
+                                GeometryReader { geometry in
+                                    Color.clear.preference(
+                                        key: PresencePresetRowFramePreferenceKey.self,
+                                        value: [preset.id: geometry.frame(in: .global)]
+                                    )
                                 }
                             )
-                        )
+                            .onDrop(
+                                of: [UTType.text],
+                                delegate: PresencePresetDropDelegate(
+                                    targetPreset: preset,
+                                    presets: $presets,
+                                    draggedPresetID: $draggedPresetID,
+                                    didReorderPresets: $didReorderPresets,
+                                    onDropUpdated: {
+                                        handlePresetReorderDropUpdated(
+                                            targetPresetID: preset.id,
+                                            scrollProxy: scrollProxy
+                                        )
+                                    },
+                                    onDropCompleted: {
+                                        stopPresetAutoScroll()
+                                        Task { await persistPresetOrderIfNeeded() }
+                                    }
+                                )
+                            )
+                        }
+                    }
+                    .onPreferenceChange(PresencePresetRowFramePreferenceKey.self) { frames in
+                        presetRowFrames = frames
+                    }
+
+                    if presets.count > PresencePresetPagination.mobilePageSize {
+                        presetPaginationControls
                     }
                 }
-                .onPreferenceChange(PresencePresetRowFramePreferenceKey.self) { frames in
-                    presetRowFrames = frames
-                }
             }
+        }
+    }
+
+    private var presetPage: PresencePresetPage {
+        PresencePresetPagination.resolve(
+            itemCount: presets.count,
+            requestedPageIndex: presetPageIndex,
+            pageSize: PresencePresetPagination.mobilePageSize
+        )
+    }
+
+    private var visiblePresets: ArraySlice<CustomPresencePreset> {
+        presets[presetPage.range]
+    }
+
+    private var presetPaginationControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                presetPageIndex -= 1
+            } label: {
+                Label(t("common.previous"), systemImage: "chevron.left")
+            }
+            .buttonStyle(.bordered)
+            .disabled(presetPage.pageIndex == 0)
+
+            Text(String(format: t("presets.page_format"), presetPage.pageIndex + 1, presetPage.pageCount))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            Button {
+                presetPageIndex += 1
+            } label: {
+                Label(t("common.next"), systemImage: "chevron.right")
+            }
+            .buttonStyle(.bordered)
+            .disabled(presetPage.pageIndex >= presetPage.pageCount - 1)
+        }
+        .padding(.top, 4)
+    }
+
+    private func clampPresetPage() {
+        let page = presetPage
+        if presetPageIndex != page.pageIndex {
+            presetPageIndex = page.pageIndex
         }
     }
 
@@ -253,8 +338,10 @@ struct ProgramsView: View {
         do {
             var publishedPreset = preset.normalized
             let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
-            let startDate = publishedPreset.elapsedStartDateForPublish(preserving: appliedPresence)
+            let publishTime = Date()
+            let startDate = publishedPreset.elapsedStartDateForPublish(now: publishTime, preserving: appliedPresence)
             publishedPreset.elapsedStartDate = startDate
+            publishedPreset.pausedElapsedDuration = publishedPreset.pausedElapsedDurationForPublish(now: publishTime)
             try publishedPreset.validateStreamingURLIfNeeded()
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
@@ -276,6 +363,9 @@ struct ProgramsView: View {
                 source: .manual
             )
             try await DiscordSDKManager.shared.updateActivity(payload)
+            if presets.contains(where: { $0.id == publishedPreset.id }) {
+                _ = try await ConfigUtility.shared.upsertCustomPresencePreset(publishedPreset)
+            }
             _ = try await ConfigUtility.shared.setLastCustomPresence(publishedPreset)
             _ = try await ConfigUtility.shared.setAppliedCustomPresence(publishedPreset)
             _ = try await ConfigUtility.shared.setCustomPresenceDraft(publishedPreset)
@@ -538,21 +628,42 @@ private struct PresencePresetRow: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             if hasMetadataSummary {
-                HStack(spacing: 12) {
-                    if let partySummary {
-                        Label(partySummary, systemImage: "person.2.fill")
-                    }
-
-                    if !scheduleRules.isEmpty {
-                        Label(scheduleSummary, systemImage: "calendar")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                metadataSummary
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var metadataSummary: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                metadataItems
+            }
+            .lineLimit(1)
+
+            VStack(alignment: .leading, spacing: 4) {
+                metadataItems
+            }
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var metadataItems: some View {
+        if let partySummary {
+            Label(partySummary, systemImage: "person.2.fill")
+        }
+
+        if !scheduleRules.isEmpty {
+            Label(scheduleSummary, systemImage: "calendar")
+        }
+
+        if let pausedElapsedDurationSummary {
+            Label(pausedElapsedDurationSummary, systemImage: "clock")
+        }
     }
 
     private var actionRow: some View {
@@ -629,8 +740,30 @@ private struct PresencePresetRow: View {
         return String(format: t("presets.party.summary_format"), current, max)
     }
 
+    private var pausedElapsedDurationSummary: String? {
+        guard let pausedDuration = preset.pausedElapsedDurationForDisplay else { return nil }
+        return String(
+            format: t("presets.paused_elapsed_duration_format"),
+            formatElapsedDuration(pausedDuration)
+        )
+    }
+
     private var hasMetadataSummary: Bool {
-        partySummary != nil || !scheduleRules.isEmpty
+        partySummary != nil || !scheduleRules.isEmpty || pausedElapsedDurationSummary != nil
+    }
+
+    private func formatElapsedDuration(_ duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        if minutes > 0 {
+            return "\(minutes)m"
+        }
+        return "\(seconds)s"
     }
 
     private func t(_ key: String) -> String {
@@ -1471,8 +1604,10 @@ struct CustomPresenceView: View {
         do {
             var preset = draft.normalized
             let appliedPresence = await ConfigUtility.shared.currentAppliedCustomPresence()
-            let startDate = preset.elapsedStartDateForPublish(preserving: appliedPresence)
+            let publishTime = Date()
+            let startDate = preset.elapsedStartDateForPublish(now: publishTime, preserving: appliedPresence)
             preset.elapsedStartDate = startDate
+            preset.pausedElapsedDuration = preset.pausedElapsedDurationForPublish(now: publishTime)
             try preset.validateStreamingURLIfNeeded()
             if discordManager.authorizationStatus != .authorized {
                 _ = try await DiscordSDKManager.shared.authorizeIfNeeded()
@@ -1783,6 +1918,7 @@ extension CustomPresencePreset {
         }
         if !copy.usesElapsedTime {
             copy.elapsedStartDate = nil
+            copy.pausedElapsedDuration = nil
         }
         return copy
     }
@@ -1830,6 +1966,24 @@ extension CustomPresencePreset {
             return fallbackStartDate
         }
         return now
+    }
+
+    var pausedElapsedDurationForDisplay: TimeInterval? {
+        guard usesElapsedTime,
+              !resetsElapsedTimeOnPublish,
+              let pausedElapsedDuration else {
+            return nil
+        }
+        return pausedElapsedDuration
+    }
+
+    func pausedElapsedDurationForPublish(now: Date = Date()) -> TimeInterval? {
+        guard usesElapsedTime,
+              !resetsElapsedTimeOnPublish,
+              let elapsedStartDate else {
+            return nil
+        }
+        return max(0, now.timeIntervalSince(elapsedStartDate))
     }
 
     func preservingElapsedTime(from fallback: CustomPresencePreset?) -> CustomPresencePreset {

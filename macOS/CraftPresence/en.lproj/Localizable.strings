@@ -19,6 +19,7 @@
 "common.duplicate" = "Duplicate";
 "common.cancel" = "Cancel";
 "common.save" = "Save";
+"common.done" = "Done";
 "common.loading" = "Loading...";
 "common.none" = "None";
 "common.unknown" = "Unknown";
@@ -151,7 +152,7 @@
 "presets.metadata.reset_off" = "Keeps elapsed time";
 "presets.metadata.party_format" = "Party %d/%d";
 "presets.metadata.party_off" = "Party off";
-"presets.metadata.paused_timestamp_placeholder" = "Paused timestamp pending";
+"presets.metadata.paused_duration_format" = "Paused after %@ elapsed";
 "presets.copy_title_format" = "%@ Copy";
 "presets.default_delete_disabled_help" = "Default presets can be restored, but cannot be deleted from the library.";
 "presets.confirm_delete.title" = "Delete this preset?";

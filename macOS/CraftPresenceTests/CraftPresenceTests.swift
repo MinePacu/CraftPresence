@@ -48,12 +48,17 @@ struct CraftPresenceTests {
     }
 
     @Test func appliedPresencePayloadPreservesPresetFields() async throws {
+        let startDate = Date(timeIntervalSince1970: 1_000)
         let preset = PresencePreset(
             id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
             title: " Focus ",
             activityType: .watching,
             details: " Deep work ",
             state: " Writing ",
+            usesElapsedTime: true,
+            elapsedStartDate: startDate,
+            pausedElapsedDuration: 3_900,
+            resetsElapsedTimeOnPublish: false,
             usesParty: true,
             partyCurrent: 2,
             partyMax: 5
@@ -69,6 +74,46 @@ struct CraftPresenceTests {
         #expect(payload.partyID == "preset:11111111-1111-1111-1111-111111111111")
         #expect(payload.partyCurrent == 2)
         #expect(payload.partyMax == 5)
+        #expect(payload.start == startDate)
+    }
+
+    @Test func presencePresetRoundTripPreservesElapsedStartDate() async throws {
+        let startDate = Date(timeIntervalSince1970: 1_000)
+        let preset = PresencePreset(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            title: "Focus",
+            activityType: .watching,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: startDate,
+            pausedElapsedDuration: 3_900,
+            resetsElapsedTimeOnPublish: false
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let decoded = try decoder.decode(PresencePreset.self, from: encoder.encode(preset))
+
+        #expect(decoded.elapsedStartDate == startDate)
+        #expect(decoded.pausedElapsedDurationForDisplay == 3_900)
+    }
+
+    @Test func presencePresetCapturesPausedElapsedDurationAtPublishTime() async throws {
+        let preset = PresencePreset(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            title: "Focus",
+            activityType: .watching,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: Date(timeIntervalSince1970: 1_000),
+            resetsElapsedTimeOnPublish: false
+        )
+
+        #expect(preset.pausedElapsedDurationForPublish(now: Date(timeIntervalSince1970: 4_900)) == 3_900)
     }
 
     @Test func appliedPresencePayloadDecodesLegacySourceAsManual() async throws {

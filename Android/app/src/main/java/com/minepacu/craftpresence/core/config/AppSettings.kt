@@ -164,6 +164,8 @@ data class PresencePreset(
     val smallImageKey: String = "",
     val smallImageText: String = "",
     val usesElapsedTime: Boolean = true,
+    val elapsedStartEpochSeconds: Long? = null,
+    val pausedElapsedDurationSeconds: Long? = null,
     val resetsElapsedTimeOnPublish: Boolean = true,
     val usesParty: Boolean = false,
     val partyCurrent: Int = 1,
@@ -182,6 +184,8 @@ data class PresencePreset(
         .put("smallImageKey", smallImageKey)
         .put("smallImageText", smallImageText)
         .put("usesElapsedTime", usesElapsedTime)
+        .put("elapsedStartEpochSeconds", elapsedStartEpochSeconds ?: JSONObject.NULL)
+        .put("pausedElapsedDurationSeconds", pausedElapsedDurationSeconds ?: JSONObject.NULL)
         .put("resetsElapsedTimeOnPublish", resetsElapsedTimeOnPublish)
         .put("usesParty", usesParty)
         .put("partyCurrent", partyCurrent)
@@ -218,6 +222,7 @@ data class PresencePreset(
                 partyID = partyID,
                 partyCurrent = partyID?.let { partyCurrent },
                 partyMax = partyID?.let { partyMax },
+                startEpochSeconds = elapsedStartEpochSeconds,
                 activityType = activityType,
             ),
             usesElapsedTime = usesElapsedTime,
@@ -306,6 +311,8 @@ data class PresencePreset(
             smallImageKey = json.optString("smallImageKey"),
             smallImageText = json.optString("smallImageText"),
             usesElapsedTime = json.optBoolean("usesElapsedTime", true),
+            elapsedStartEpochSeconds = json.optNullableLong("elapsedStartEpochSeconds"),
+            pausedElapsedDurationSeconds = json.optNullableLong("pausedElapsedDurationSeconds"),
             resetsElapsedTimeOnPublish = json.optBoolean("resetsElapsedTimeOnPublish", true),
             usesParty = json.optBoolean("usesParty", false),
             partyCurrent = json.optInt("partyCurrent", 1),
@@ -313,6 +320,17 @@ data class PresencePreset(
             isDefault = json.optBoolean("isDefault", false),
             updatedAt = json.optString("updatedAt").takeIf { it.isNotBlank() } ?: DEFAULT_UPDATED_AT,
         )
+    }
+
+    val pausedElapsedDurationForDisplaySeconds: Long?
+        get() = pausedElapsedDurationSeconds.takeIf {
+            usesElapsedTime && !resetsElapsedTimeOnPublish
+        }
+
+    fun pausedElapsedDurationForPublishSeconds(nowEpochSeconds: Long): Long? {
+        val start = elapsedStartEpochSeconds ?: return null
+        if (!usesElapsedTime || resetsElapsedTimeOnPublish) return null
+        return (nowEpochSeconds - start).coerceAtLeast(0)
     }
 }
 
@@ -414,6 +432,7 @@ private fun resolveCustomPresenceStartEpochSeconds(
 ): Long? {
     if (!usesElapsedTime) return null
     if (resetsElapsedTimeOnPublish) return nowEpochSeconds
+    nextPayload.startEpochSeconds?.let { return it }
     return previousPayload
         ?.takeIf { it.payloadKeyWithoutTimestamps() == nextPayload.payloadKeyWithoutTimestamps() }
         ?.startEpochSeconds

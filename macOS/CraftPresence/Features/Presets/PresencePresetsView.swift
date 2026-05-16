@@ -149,8 +149,13 @@ struct PresencePresetsView: View {
 
         Task {
             do {
-                let payload = AppliedPresencePayload(presencePreset: preset)
+                var publishedPreset = preset
+                let publishTime = Date()
+                publishedPreset.elapsedStartDate = publishedPreset.elapsedStartDateForPublish(now: publishTime)
+                publishedPreset.pausedElapsedDuration = publishedPreset.pausedElapsedDurationForPublish(now: publishTime)
+                let payload = AppliedPresencePayload(presencePreset: publishedPreset)
                 try await DiscordSDKManager.shared.publishAppliedPresence(payload)
+                _ = try await ConfigUtility.shared.upsertPresencePreset(publishedPreset)
                 _ = try await ConfigUtility.shared.setActivePresencePreset(id: preset.id)
                 await reload()
                 await MainActor.run {
@@ -294,7 +299,9 @@ private struct PresencePresetCard: View {
                 metadata(t(preset.usesElapsedTime ? "presets.metadata.elapsed_on" : "presets.metadata.elapsed_off"))
                 metadata(t(preset.resetsElapsedTimeOnPublish ? "presets.metadata.reset_on" : "presets.metadata.reset_off"))
                 metadata(preset.usesParty ? t("presets.metadata.party_format").replacingOccurrences(of: "%d/%d", with: "\(preset.partyCurrent)/\(preset.partyMax)") : t("presets.metadata.party_off"))
-                metadata(t("presets.metadata.paused_timestamp_placeholder"))
+                if let pausedElapsedDurationText {
+                    metadata(pausedElapsedDurationText)
+                }
             }
         }
         .padding(14)
@@ -351,6 +358,28 @@ private struct PresencePresetCard: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(Color.secondary.opacity(0.10), in: Capsule())
+    }
+
+    private var pausedElapsedDurationText: String? {
+        guard let pausedDuration = preset.pausedElapsedDurationForDisplay else { return nil }
+        return String(
+            format: t("presets.metadata.paused_duration_format"),
+            formatElapsedDuration(pausedDuration)
+        )
+    }
+
+    private func formatElapsedDuration(_ duration: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(duration.rounded()))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        if minutes > 0 {
+            return "\(minutes)m"
+        }
+        return "\(seconds)s"
     }
 
     private func t(_ key: String) -> String {

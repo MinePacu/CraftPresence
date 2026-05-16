@@ -55,7 +55,19 @@ final class CraftPresenceUITests: XCTestCase {
     }
 
     @MainActor
-    func testToolbarSettingsOpensSettingsWindowInsteadOfSheet() throws {
+    func testSidebarSettingsDisplaysSettingsPage() throws {
+        let app = makeApplication()
+        app.launch()
+
+        let settingsRow = element(in: app, identifier: "sidebar.settings")
+        XCTAssertTrue(settingsRow.waitForExistence(timeout: 5))
+        settingsRow.click()
+
+        XCTAssertTrue(element(in: app, identifier: "settings.root").waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    func testToolbarSettingsNavigatesToSettingsPage() throws {
         let app = makeApplication()
         app.launch()
 
@@ -63,8 +75,7 @@ final class CraftPresenceUITests: XCTestCase {
         XCTAssertTrue(settingsButton.waitForExistence(timeout: 5))
         settingsButton.click()
 
-        XCTAssertFalse(app.sheets.firstMatch.waitForExistence(timeout: 1))
-        XCTAssertTrue(app.windows.containing(.any, identifier: "settings.root").firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(element(in: app, identifier: "settings.root").waitForExistence(timeout: 5))
     }
 
     @MainActor
@@ -76,6 +87,10 @@ final class CraftPresenceUITests: XCTestCase {
 
     private func makeApplication() -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchArguments += [
+            "-discordOnboardingCompleted", "YES",
+            "-menuBarOnlyEnabled", "NO"
+        ]
         app.launchEnvironment["CRAFTPRESENCE_UI_TEST_MODE"] = "1"
         app.launchEnvironment["CRAFTPRESENCE_ACCESSIBILITY_TRUSTED"] = "1"
         app.launchEnvironment["CRAFTPRESENCE_DISABLE_PROGRAM_DETECTOR"] = "1"

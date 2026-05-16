@@ -16,62 +16,107 @@ struct SettingView: View {
     @EnvironmentObject private var localizationManager: LocalizationManager
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section(header: Text(t("settings.section.general"))) {
-                    Picker(t("settings.language"), selection: languageBinding) {
-                        ForEach(AppLanguage.allCases) { language in
-                            Text(languageLabel(for: language)).tag(language)
-                        }
-                    }
+        VStack(spacing: 0) {
+            HStack {
+                Text(t("settings.title"))
+                    .font(.title3.weight(.semibold))
+                    .accessibilityIdentifier("settings.title")
 
-                    Toggle(isOn: $menuBarOnlyEnabled.onChange(menuBarToggleChanged)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(t("settings.menu_bar_only.title"))
-                            Text(t("settings.menu_bar_only.description"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .help(t("settings.menu_bar_only.help"))
-
-                    Toggle(isOn: $presencePriorityEnabled.onChange(presencePriorityToggleChanged)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(t("settings.presence_priority.title"))
-                            Text(t("settings.presence_priority.description"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .help(t("settings.presence_priority.help"))
-                }
-
-                #if DEBUG
-                Section(header: Text(t("settings.section.debug"))) {
-                    Toggle(isOn: $debugLoggingEnabled) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(t("settings.debug_logging.title"))
-                            Text(t("settings.debug_logging.description"))
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Section(footer: Text(t("settings.debug_logging.footer"))) {
-                    EmptyView()
-                }
-                #endif
+                Spacer()
             }
-            .navigationTitle(t("settings.title"))
-            .accessibilityIdentifier("settings.root")
-            .onAppear {
-                // 설정 화면 진입 시 현재 저장된 상태를 보장 적용
-                applyMenuBarMode(menuBarOnlyEnabled)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    settingsSection(t("settings.section.general")) {
+                        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+                            GridRow {
+                                Text(t("settings.language"))
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .gridColumnAlignment(.trailing)
+
+                                Picker(t("settings.language"), selection: languageBinding) {
+                                    ForEach(AppLanguage.allCases) { language in
+                                        Text(languageLabel(for: language)).tag(language)
+                                    }
+                                }
+                                .labelsHidden()
+                                .frame(width: 160, alignment: .leading)
+                            }
+                        }
+
+                        Toggle(isOn: $menuBarOnlyEnabled.onChange(menuBarToggleChanged)) {
+                            settingLabel(
+                                title: t("settings.menu_bar_only.title"),
+                                description: t("settings.menu_bar_only.description")
+                            )
+                        }
+                        .help(t("settings.menu_bar_only.help"))
+
+                        Toggle(isOn: $presencePriorityEnabled.onChange(presencePriorityToggleChanged)) {
+                            settingLabel(
+                                title: t("settings.presence_priority.title"),
+                                description: t("settings.presence_priority.description")
+                            )
+                        }
+                        .help(t("settings.presence_priority.help"))
+                    }
+
+                    #if DEBUG
+                    settingsSection(t("settings.section.debug")) {
+                        Toggle(isOn: $debugLoggingEnabled) {
+                            settingLabel(
+                                title: t("settings.debug_logging.title"),
+                                description: t("settings.debug_logging.description")
+                            )
+                        }
+
+                        Text(t("settings.debug_logging.footer"))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    #endif
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .task {
-                presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
-            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("settings.root")
+        .onAppear {
+            // 설정 화면 진입 시 현재 저장된 상태를 보장 적용
+            applyMenuBarMode(menuBarOnlyEnabled)
+        }
+        .task {
+            presencePriorityEnabled = await ConfigUtility.shared.isPresencePriorityEnabled()
+        }
+    }
+
+    @ViewBuilder
+    private func settingsSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            content()
+        }
+    }
+
+    private func settingLabel(title: String, description: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.body.weight(.semibold))
+            Text(description)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

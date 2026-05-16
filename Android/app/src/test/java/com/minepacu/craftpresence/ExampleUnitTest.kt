@@ -141,6 +141,34 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun presencePresetPaginationClampsPastLastPageAfterListShrinks() {
+        val page = resolvePresencePresetPage(
+            itemCount = 7,
+            requestedPageIndex = 2,
+            pageSize = 6,
+        )
+
+        assertEquals(1, page.pageIndex)
+        assertEquals(2, page.pageCount)
+        assertEquals(6, page.fromIndex)
+        assertEquals(7, page.toIndex)
+    }
+
+    @Test
+    fun presencePresetPaginationUsesSinglePageForSmallLists() {
+        val page = resolvePresencePresetPage(
+            itemCount = 5,
+            requestedPageIndex = 3,
+            pageSize = 6,
+        )
+
+        assertEquals(0, page.pageIndex)
+        assertEquals(1, page.pageCount)
+        assertEquals(0, page.fromIndex)
+        assertEquals(5, page.toIndex)
+    }
+
+    @Test
     fun presencePresetRoundTripPreservesSharedSchemaFields() {
         val preset = PresencePreset(
             id = "11111111-1111-1111-1111-111111111111",
@@ -153,6 +181,8 @@ class ExampleUnitTest {
             smallImageKey = "small",
             smallImageText = "Small text",
             usesElapsedTime = true,
+            elapsedStartEpochSeconds = 1_000L,
+            pausedElapsedDurationSeconds = 3_900L,
             resetsElapsedTimeOnPublish = false,
             usesParty = true,
             partyCurrent = 2,
@@ -164,6 +194,35 @@ class ExampleUnitTest {
         val decoded = PresencePreset.fromJson(preset.toJson())
 
         assertEquals(preset, decoded)
+    }
+
+    @Test
+    fun presencePresetPausedElapsedDurationRequiresPreservedElapsedTime() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            usesElapsedTime = true,
+            pausedElapsedDurationSeconds = 3_900L,
+            resetsElapsedTimeOnPublish = false,
+        )
+
+        assertEquals(3_900L, preset.pausedElapsedDurationForDisplaySeconds)
+        assertEquals(null, preset.copy(resetsElapsedTimeOnPublish = true).pausedElapsedDurationForDisplaySeconds)
+        assertEquals(null, preset.copy(usesElapsedTime = false).pausedElapsedDurationForDisplaySeconds)
+        assertEquals(null, preset.copy(pausedElapsedDurationSeconds = null).pausedElapsedDurationForDisplaySeconds)
+    }
+
+    @Test
+    fun presencePresetCapturesPausedElapsedDurationAtPublishTime() {
+        val preset = PresencePreset(
+            id = "11111111-1111-1111-1111-111111111111",
+            title = "Focus",
+            usesElapsedTime = true,
+            elapsedStartEpochSeconds = 1_000L,
+            resetsElapsedTimeOnPublish = false,
+        )
+
+        assertEquals(3_900L, preset.pausedElapsedDurationForPublishSeconds(nowEpochSeconds = 4_900L))
     }
 
     @Test

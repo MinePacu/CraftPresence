@@ -190,6 +190,34 @@ private enum class SettingsPanel {
 }
 
 private const val UI_DETECTOR_OWNER = "craftpresence-ui"
+private const val PresencePresetPageSize = 6
+
+internal data class PresencePresetPage(
+    val pageIndex: Int,
+    val pageCount: Int,
+    val fromIndex: Int,
+    val toIndex: Int,
+)
+
+internal fun resolvePresencePresetPage(
+    itemCount: Int,
+    requestedPageIndex: Int,
+    pageSize: Int,
+): PresencePresetPage {
+    require(pageSize > 0) { "pageSize must be greater than zero." }
+    val safeItemCount = itemCount.coerceAtLeast(0)
+    val pageCount = maxOf(1, (safeItemCount + pageSize - 1) / pageSize)
+    val pageIndex = requestedPageIndex.coerceIn(0, pageCount - 1)
+    val fromIndex = minOf(pageIndex * pageSize, safeItemCount)
+    val toIndex = minOf(fromIndex + pageSize, safeItemCount)
+
+    return PresencePresetPage(
+        pageIndex = pageIndex,
+        pageCount = pageCount,
+        fromIndex = fromIndex,
+        toIndex = toIndex,
+    )
+}
 
 private data class InstalledAppInfo(
     val label: String,
@@ -1677,35 +1705,50 @@ private fun PresenceScreen(
     }
     var draft by remember { mutableStateOf(ProgramPresenceSettings()) }
     var displayName by remember { mutableStateOf("") }
+    var presetPageIndex by remember { mutableStateOf(0) }
     val selectedSettings = settings.programSettings[selectedPackage] ?: ProgramPresenceSettings()
     val selectedDisplayName = settings.appDisplayNames[selectedPackage]
         ?: selectedPackage.takeIf { it.isNotBlank() }?.let { appLabel(context, it) }
         ?: ""
+    val presetPage = resolvePresencePresetPage(
+        itemCount = settings.presencePresets.size,
+        requestedPageIndex = presetPageIndex,
+        pageSize = PresencePresetPageSize,
+    )
+    val visiblePresets = settings.presencePresets.subList(presetPage.fromIndex, presetPage.toIndex)
 
     fun publishPreset(preset: PresencePreset, activePresetID: String?) {
         scope.launch {
             val now = System.currentTimeMillis() / 1000L
             val normalizedPreset = preset.normalizedForStorage()
+            var publishedPreset = normalizedPreset
             val previousPayload = settings.appliedPresence
             runCatching {
-                discord.updateActivity(
-                    normalizedPreset.toDiscordActivity(
-                        nowEpochSeconds = now,
-                        previousPayload = previousPayload,
-                    ),
-                    DiscordPresenceSource.APP,
+                val activity = normalizedPreset.toDiscordActivity(
+                    nowEpochSeconds = now,
+                    previousPayload = previousPayload,
                 )
-                config.setAppliedPresence(
-                    AppliedPresencePayload.fromPreset(
-                        preset = normalizedPreset,
-                        nowEpochSeconds = now,
-                        previousPayload = previousPayload,
-                    ),
+                val appliedPayload = AppliedPresencePayload.fromPreset(
+                    preset = normalizedPreset,
+                    nowEpochSeconds = now,
+                    previousPayload = previousPayload,
                 )
+                publishedPreset = normalizedPreset
+                    .copy(elapsedStartEpochSeconds = appliedPayload.startEpochSeconds)
+                    .let { published ->
+                        published.copy(
+                            pausedElapsedDurationSeconds = published.pausedElapsedDurationForPublishSeconds(now),
+                        )
+                    }
+                discord.updateActivity(activity, DiscordPresenceSource.APP)
+                config.setAppliedPresence(appliedPayload)
+                if (activePresetID != null) {
+                    config.upsertPresencePreset(publishedPreset)
+                }
                 config.setActivePresencePresetID(activePresetID)
             }.onSuccess {
                 if (activePresetID != null) {
-                    customDraft = normalizedPreset
+                    customDraft = publishedPreset
                 }
                 message = text.presetPublished(normalizedPreset.title)
             }.onFailure {
@@ -1730,6 +1773,12 @@ private fun PresenceScreen(
     LaunchedEffect(activePreset?.id) {
         if (activePreset != null) {
             customDraft = activePreset
+        }
+    }
+
+    LaunchedEffect(presetPage.pageIndex) {
+        if (presetPageIndex != presetPage.pageIndex) {
+            presetPageIndex = presetPage.pageIndex
         }
     }
 
@@ -1832,7 +1881,7 @@ private fun PresenceScreen(
             if (settings.presencePresets.isEmpty()) {
                 Text(text.noPresets, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                settings.presencePresets.forEach { preset ->
+                visiblePresets.forEach { preset ->
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     PresencePresetRow(
                         preset = preset,
@@ -1846,6 +1895,33 @@ private fun PresenceScreen(
                             }
                         },
                     )
+                }
+                if (settings.presencePresets.size > PresencePresetPageSize) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(
+                            onClick = { presetPageIndex -= 1 },
+                            enabled = presetPage.pageIndex > 0,
+                        ) {
+                            Text(text.previousPage)
+                        }
+                        Text(
+                            text = text.presetPageLabel(presetPage.pageIndex + 1, presetPage.pageCount),
+                            modifier = Modifier.weight(1f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        OutlinedButton(
+                            onClick = { presetPageIndex += 1 },
+                            enabled = presetPage.pageIndex < presetPage.pageCount - 1,
+                        ) {
+                            Text(text.nextPage)
+                        }
+                    }
                 }
             }
         }
@@ -1999,6 +2075,15 @@ private fun PresencePresetRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                preset.pausedElapsedDurationForDisplaySeconds?.let { elapsedSeconds ->
+                    Text(
+                        text.pausedElapsedDuration(formatElapsedDuration(elapsedSeconds)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             StatusChip(activityTypeText(preset.activityType, text), MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -2360,10 +2445,24 @@ private fun PresencePreset.normalizedForStorage(): PresencePreset = copy(
     largeImageText = largeImageText.trim(),
     smallImageKey = smallImageKey.trim(),
     smallImageText = smallImageText.trim(),
+    elapsedStartEpochSeconds = elapsedStartEpochSeconds.takeIf { usesElapsedTime },
+    pausedElapsedDurationSeconds = pausedElapsedDurationSeconds.takeIf { usesElapsedTime },
     partyCurrent = partyCurrent.coerceAtLeast(0),
     partyMax = partyMax.coerceAtLeast(0),
     updatedAt = updatedAt.ifBlank { iso8601Now() },
 )
+
+private fun formatElapsedDuration(totalSeconds: Long): String {
+    val normalizedSeconds = totalSeconds.coerceAtLeast(0)
+    val hours = normalizedSeconds / 3_600
+    val minutes = (normalizedSeconds % 3_600) / 60
+    val seconds = normalizedSeconds % 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m"
+        minutes > 0 -> "${minutes}m"
+        else -> "${seconds}s"
+    }
+}
 
 private fun iso8601Now(): String {
     return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {

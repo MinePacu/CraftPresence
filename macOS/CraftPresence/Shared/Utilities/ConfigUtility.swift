@@ -226,6 +226,8 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var smallImageKey: String = ""
     public var smallImageText: String = ""
     public var usesElapsedTime: Bool = true
+    public var elapsedStartDate: Date?
+    public var pausedElapsedDuration: TimeInterval?
     public var resetsElapsedTimeOnPublish: Bool = true
     public var usesParty: Bool = false
     public var partyCurrent: Int = 1
@@ -244,6 +246,8 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
         case smallImageKey
         case smallImageText
         case usesElapsedTime
+        case elapsedStartDate
+        case pausedElapsedDuration
         case resetsElapsedTimeOnPublish
         case usesParty
         case partyCurrent
@@ -265,6 +269,8 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
         smallImageKey: String = "",
         smallImageText: String = "",
         usesElapsedTime: Bool = true,
+        elapsedStartDate: Date? = nil,
+        pausedElapsedDuration: TimeInterval? = nil,
         resetsElapsedTimeOnPublish: Bool = true,
         usesParty: Bool = false,
         partyCurrent: Int = 1,
@@ -282,6 +288,8 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.smallImageKey = smallImageKey
         self.smallImageText = smallImageText
         self.usesElapsedTime = usesElapsedTime
+        self.elapsedStartDate = elapsedStartDate
+        self.pausedElapsedDuration = pausedElapsedDuration
         self.resetsElapsedTimeOnPublish = resetsElapsedTimeOnPublish
         self.usesParty = usesParty
         self.partyCurrent = partyCurrent
@@ -303,6 +311,8 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
             smallImageKey: try container.decodeIfPresent(String.self, forKey: .smallImageKey) ?? "",
             smallImageText: try container.decodeIfPresent(String.self, forKey: .smallImageText) ?? "",
             usesElapsedTime: try container.decodeIfPresent(Bool.self, forKey: .usesElapsedTime) ?? true,
+            elapsedStartDate: try container.decodeIfPresent(Date.self, forKey: .elapsedStartDate),
+            pausedElapsedDuration: try container.decodeIfPresent(TimeInterval.self, forKey: .pausedElapsedDuration),
             resetsElapsedTimeOnPublish: try container.decodeIfPresent(Bool.self, forKey: .resetsElapsedTimeOnPublish) ?? true,
             usesParty: try container.decodeIfPresent(Bool.self, forKey: .usesParty) ?? false,
             partyCurrent: try container.decodeIfPresent(Int.self, forKey: .partyCurrent) ?? 1,
@@ -324,6 +334,8 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
         try container.encode(smallImageKey, forKey: .smallImageKey)
         try container.encode(smallImageText, forKey: .smallImageText)
         try container.encode(usesElapsedTime, forKey: .usesElapsedTime)
+        try container.encodeIfPresent(elapsedStartDate, forKey: .elapsedStartDate)
+        try container.encodeIfPresent(pausedElapsedDuration, forKey: .pausedElapsedDuration)
         try container.encode(resetsElapsedTimeOnPublish, forKey: .resetsElapsedTimeOnPublish)
         try container.encode(usesParty, forKey: .usesParty)
         try container.encode(partyCurrent, forKey: .partyCurrent)
@@ -333,6 +345,30 @@ public struct PresencePreset: Codable, Identifiable, Sendable, Equatable {
     }
 
     nonisolated public static let defaultUpdatedAt = Date(timeIntervalSince1970: 1_778_198_400)
+
+    nonisolated public var pausedElapsedDurationForDisplay: TimeInterval? {
+        guard usesElapsedTime,
+              !resetsElapsedTimeOnPublish,
+              let pausedElapsedDuration else {
+            return nil
+        }
+        return pausedElapsedDuration
+    }
+
+    nonisolated public func elapsedStartDateForPublish(now: Date = Date()) -> Date? {
+        guard usesElapsedTime else { return nil }
+        guard !resetsElapsedTimeOnPublish else { return now }
+        return elapsedStartDate ?? now
+    }
+
+    nonisolated public func pausedElapsedDurationForPublish(now: Date = Date()) -> TimeInterval? {
+        guard usesElapsedTime,
+              !resetsElapsedTimeOnPublish,
+              let elapsedStartDate else {
+            return nil
+        }
+        return max(0, now.timeIntervalSince(elapsedStartDate))
+    }
 
     nonisolated public static let defaults: [PresencePreset] = [
         PresencePreset(
@@ -478,7 +514,7 @@ public struct AppliedPresencePayload: Codable, Sendable, Equatable {
             partyID: partyID,
             partyCurrent: partyID == nil ? nil : preset.partyCurrent,
             partyMax: partyID == nil ? nil : preset.partyMax,
-            start: preset.usesElapsedTime ? Date() : nil,
+            start: preset.usesElapsedTime ? (preset.elapsedStartDate ?? preset.elapsedStartDateForPublish()) : nil,
             activityType: preset.activityType,
             source: source
         )

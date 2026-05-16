@@ -18,6 +18,8 @@
 "common.cancel" = "キャンセル";
 "common.ok" = "OK";
 "common.save" = "保存";
+"common.previous" = "前へ";
+"common.next" = "次へ";
 "common.loading" = "読み込み中...";
 "common.search" = "検索";
 "common.none" = "なし";
@@ -156,6 +158,7 @@
 "presets.party.summary_format" = "パーティー %d/%d";
 "presets.publish" = "公開";
 "presets.reorder" = "プリセットを並べ替え";
+"presets.page_format" = "%d / %d ページ";
 "presets.schedule.title" = "スケジュール";
 "presets.schedule.add" = "スケジュールを追加";
 "presets.schedule.summary_format" = "%d 件のスケジュール、有効 %d 件";
@@ -212,6 +215,7 @@
 "presets.editor.streaming_url_error_unsupported" = "配信 URL は YouTube または Twitch のリンクである必要があります。";
 "presets.editor.elapsed_time" = "経過時間を表示";
 "presets.editor.reset_elapsed_time_on_publish" = "公開時に経過時間をリセット";
+"presets.paused_elapsed_duration_format" = "一時停止時の経過: %@";
 "presets.editor.assets" = "画像アセット";
 "presets.editor.assets_help" = "大きい画像キーと小さい画像キーには、Discord Developer Portal の Rich Presence アセットキー、または公開 HTTPS 画像 URL を入力してください。この端末内の画像ファイルパスは Discord から読み込めません。";
 "presets.editor.party" = "パーティー";

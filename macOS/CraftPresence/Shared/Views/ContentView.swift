@@ -21,6 +21,7 @@ struct ContentView: View {
         case programs
         case presets
         case builtin
+        case settings
         case about
         case item(Item)
         case discordTest
@@ -33,6 +34,7 @@ struct ContentView: View {
             case (.programs, .programs): return true
             case (.presets, .presets): return true
             case (.builtin, .builtin): return true
+            case (.settings, .settings): return true
             case (.about, .about): return true
             case (.discordTest, .discordTest): return true
             case (.nowPlayingTest, .nowPlayingTest): return true
@@ -64,9 +66,6 @@ struct ContentView: View {
     // Settings presentation
     @AppStorage("menuBarOnlyEnabled") private var menuBarOnlyEnabled: Bool = false
     @EnvironmentObject private var localizationManager: LocalizationManager
-#if os(macOS)
-    @Environment(\.openSettings) private var openSettings
-#endif
 
     // MARK: Body
 
@@ -79,6 +78,7 @@ struct ContentView: View {
                 case .programs: return "programs"
                 case .presets: return "presets"
                 case .builtin: return "builtin"
+                case .settings: return "settings"
                 case .about: return "about"
                 case .discordTest: return "discordTest"
                 case .nowPlayingTest: return "nowPlayingTest"
@@ -92,6 +92,7 @@ struct ContentView: View {
                 else if key == "programs" { selection = .programs }
                 else if key == "presets" { selection = .presets }
                 else if key == "builtin" { selection = .builtin }
+                else if key == "settings" { selection = .settings }
                 else if key == "about" { selection = .about }
                 else if key == "discordTest" { selection = .discordTest }
                 else if key == "nowPlayingTest" { selection = .nowPlayingTest }
@@ -118,6 +119,9 @@ struct ContentView: View {
                     Label(t("sidebar.builtin"), systemImage: "bolt.fill")
                         .tag("builtin")
                         .accessibilityIdentifier("sidebar.builtin")
+                    Label(t("common.settings"), systemImage: "gearshape")
+                        .tag("settings")
+                        .accessibilityIdentifier("sidebar.settings")
                     Label(t("sidebar.about"), systemImage: "info.circle")
                         .tag("about")
                         .accessibilityIdentifier("sidebar.about")
@@ -172,6 +176,9 @@ struct ContentView: View {
                 // MARK: Detail - Built-in
                 case .builtin:
                     BuiltinView()
+                // MARK: Detail - Settings
+                case .settings:
+                    SettingView()
                 // MARK: Detail - About
                 case .about:
                     AboutView(
@@ -219,11 +226,12 @@ struct ContentView: View {
                 // 설정 버튼
                 ToolbarItem(placement: .automatic) {
                     Button {
-                        openSettings()
+                        navigate(to: .settings)
                     } label: {
                         Label(t("toolbar.settings"), systemImage: "gearshape")
                     }
                     .accessibilityIdentifier("toolbar.settings")
+                    .keyboardShortcut(",", modifiers: .command)
                 }
             }
     #endif
@@ -282,9 +290,18 @@ struct ContentView: View {
             // 앱이 보일 때 저장된 설정을 즉시 반영
             applyMenuBarMode(menuBarOnlyEnabled)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .showCraftPresenceSettingsPage)) { _ in
+            navigate(to: .settings)
+        }
     }
 
     // MARK: - Actions
+
+    private func navigate(to newSelection: DetailSelection) {
+        guard selection != newSelection else { return }
+        selectionStack.append(selection)
+        selection = newSelection
+    }
 
     /// Inserts a timestamped sample item into the local SwiftData store.
     private func addItem() {

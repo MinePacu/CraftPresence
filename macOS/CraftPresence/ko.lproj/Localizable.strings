@@ -19,6 +19,7 @@
 "common.duplicate" = "복제";
 "common.cancel" = "취소";
 "common.save" = "저장";
+"common.done" = "완료";
 "common.loading" = "불러오는 중...";
 "common.none" = "없음";
 "common.unknown" = "알 수 없음";
@@ -151,7 +152,7 @@
 "presets.metadata.reset_off" = "경과 시간 유지";
 "presets.metadata.party_format" = "파티 %d/%d";
 "presets.metadata.party_off" = "파티 꺼짐";
-"presets.metadata.paused_timestamp_placeholder" = "일시정지 시각 표시 예정";
+"presets.metadata.paused_duration_format" = "중단 당시 경과: %@";
 "presets.copy_title_format" = "%@ 복사본";
 "presets.default_delete_disabled_help" = "기본 프리셋은 복원할 수 있지만 라이브러리에서 삭제할 수 없습니다.";
 "presets.confirm_delete.title" = "이 프리셋을 삭제할까요?";

@@ -18,6 +18,8 @@
 "common.cancel" = "Cancel";
 "common.ok" = "OK";
 "common.save" = "Save";
+"common.previous" = "Previous";
+"common.next" = "Next";
 "common.loading" = "Loading...";
 "common.search" = "Search";
 "common.none" = "None";
@@ -156,6 +158,7 @@
 "presets.party.summary_format" = "Party %d/%d";
 "presets.publish" = "Publish";
 "presets.reorder" = "Reorder preset";
+"presets.page_format" = "Page %d / %d";
 "presets.schedule.title" = "Schedules";
 "presets.schedule.add" = "Add Schedule";
 "presets.schedule.summary_format" = "%d schedules, %d enabled";
@@ -212,6 +215,7 @@
 "presets.editor.streaming_url_error_unsupported" = "Streaming URL must be from YouTube or Twitch.";
 "presets.editor.elapsed_time" = "Show elapsed time";
 "presets.editor.reset_elapsed_time_on_publish" = "Reset elapsed time on publish";
+"presets.paused_elapsed_duration_format" = "Paused after %@ elapsed";
 "presets.editor.assets" = "Image assets";
 "presets.editor.assets_help" = "For large and small image keys, enter a Rich Presence asset key from the Discord Developer Portal or a public HTTPS image URL. Local image file paths on this device cannot be loaded by Discord.";
 "presets.editor.party" = "Party";

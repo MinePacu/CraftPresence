@@ -105,12 +105,14 @@ struct CraftPresenceApp: App {
             .environmentObject(discordManager)
         }
         .modelContainer(sharedModelContainer)
-
         #if os(macOS)
-        Settings {
-            SettingView()
-                .environmentObject(localizationManager)
-                .environment(\.locale, localizationManager.locale)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button(localizationManager.string("common.settings")) {
+                    NotificationCenter.default.post(name: .showCraftPresenceSettingsPage, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
         }
         #endif
     }

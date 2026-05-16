@@ -3,6 +3,9 @@ import UniformTypeIdentifiers
 #if os(iOS) && canImport(BackgroundTasks)
 import BackgroundTasks
 #endif
+#if os(iOS) && canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Settings Model
 /// Persisted root settings model stored on disk for tracked apps, localization, and per-program presence options.
@@ -368,6 +371,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
     public var smallImageText: String = ""
     public var usesElapsedTime: Bool = true
     public var elapsedStartDate: Date?
+    public var pausedElapsedDuration: TimeInterval?
     public var resetsElapsedTimeOnPublish: Bool = true
     public var usesParty: Bool = false
     public var partyCurrent: Int = 1
@@ -390,6 +394,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         case smallImageText
         case usesElapsedTime
         case elapsedStartDate
+        case pausedElapsedDuration
         case resetsElapsedTimeOnPublish
         case usesParty
         case partyCurrent
@@ -412,6 +417,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.smallImageText = try container.decodeIfPresent(String.self, forKey: .smallImageText) ?? ""
         self.usesElapsedTime = try container.decodeIfPresent(Bool.self, forKey: .usesElapsedTime) ?? true
         self.elapsedStartDate = try container.decodeIfPresent(Date.self, forKey: .elapsedStartDate)
+        self.pausedElapsedDuration = try container.decodeIfPresent(TimeInterval.self, forKey: .pausedElapsedDuration)
         self.resetsElapsedTimeOnPublish = try container.decodeIfPresent(Bool.self, forKey: .resetsElapsedTimeOnPublish) ?? true
         self.usesParty = try container.decodeIfPresent(Bool.self, forKey: .usesParty) ?? false
         self.partyCurrent = try container.decodeIfPresent(Int.self, forKey: .partyCurrent) ?? 1
@@ -434,6 +440,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         try container.encode(smallImageText, forKey: .smallImageText)
         try container.encode(usesElapsedTime, forKey: .usesElapsedTime)
         try container.encodeIfPresent(elapsedStartDate, forKey: .elapsedStartDate)
+        try container.encodeIfPresent(pausedElapsedDuration, forKey: .pausedElapsedDuration)
         try container.encode(resetsElapsedTimeOnPublish, forKey: .resetsElapsedTimeOnPublish)
         try container.encode(usesParty, forKey: .usesParty)
         try container.encode(partyCurrent, forKey: .partyCurrent)
@@ -455,6 +462,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         smallImageText: String = "",
         usesElapsedTime: Bool = true,
         elapsedStartDate: Date? = nil,
+        pausedElapsedDuration: TimeInterval? = nil,
         resetsElapsedTimeOnPublish: Bool = true,
         usesParty: Bool = false,
         partyCurrent: Int = 1,
@@ -474,6 +482,7 @@ public struct CustomPresencePreset: Codable, Identifiable, Sendable, Equatable {
         self.smallImageText = smallImageText
         self.usesElapsedTime = usesElapsedTime
         self.elapsedStartDate = elapsedStartDate
+        self.pausedElapsedDuration = pausedElapsedDuration
         self.resetsElapsedTimeOnPublish = resetsElapsedTimeOnPublish
         self.usesParty = usesParty
         self.partyCurrent = partyCurrent
@@ -1976,7 +1985,7 @@ public final class PresenceScheduleManager {
 @MainActor
 public final class PresenceScheduleBackgroundScheduler {
     public static let shared = PresenceScheduleBackgroundScheduler()
-    public static let taskIdentifier = "com.minepacu.CraftPresence.presence-schedule-refresh"
+    public nonisolated static let taskIdentifier = "com.minepacu.CraftPresence.presence-schedule-refresh"
 
     private var isRegistered = false
 
@@ -2006,9 +2015,17 @@ public final class PresenceScheduleBackgroundScheduler {
         }
 
         #if os(iOS) && canImport(BackgroundTasks)
+        let backgroundRefreshStatus = UIApplication.shared.backgroundRefreshStatus
+        guard Self.canSubmitBackgroundRefresh(status: backgroundRefreshStatus) else {
+            #if DEBUG
+            print("Skipping Presence background refresh scheduling after schedule update: \(Self.unavailableDiagnostic(status: backgroundRefreshStatus))")
+            #endif
+            return
+        }
         let request = BGAppRefreshTaskRequest(identifier: Self.taskIdentifier)
         request.earliestBeginDate = wakeDate
         do {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.taskIdentifier)
             try BGTaskScheduler.shared.submit(request)
         } catch {
             #if DEBUG
@@ -2031,6 +2048,25 @@ public final class PresenceScheduleBackgroundScheduler {
         await PresencePriorityController.shared.enforceAppliedPresenceIfNeeded()
         await scheduleNextWake()
         task.setTaskCompleted(success: true)
+    }
+    #endif
+
+    #if os(iOS) && canImport(UIKit)
+    public nonisolated static func canSubmitBackgroundRefresh(status: UIBackgroundRefreshStatus) -> Bool {
+        status == .available
+    }
+
+    public nonisolated static func unavailableDiagnostic(status: UIBackgroundRefreshStatus) -> String {
+        switch status {
+        case .available:
+            return "Background App Refresh is available."
+        case .denied:
+            return "Background App Refresh is denied for the app or device."
+        case .restricted:
+            return "Background App Refresh is restricted by the system."
+        @unknown default:
+            return "Background App Refresh is unavailable with an unknown status."
+        }
     }
     #endif
 }

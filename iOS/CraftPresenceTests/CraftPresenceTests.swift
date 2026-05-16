@@ -9,6 +9,30 @@ import XCTest
 @testable import CraftPresence
 
 final class CraftPresenceTests: XCTestCase {
+    func testPresencePresetPaginationClampsPastLastPageAfterListShrinks() {
+        let page = PresencePresetPagination.resolve(
+            itemCount: 7,
+            requestedPageIndex: 2,
+            pageSize: 6
+        )
+
+        XCTAssertEqual(page.pageIndex, 1)
+        XCTAssertEqual(page.pageCount, 2)
+        XCTAssertEqual(page.range, 6..<7)
+    }
+
+    func testPresencePresetPaginationUsesSinglePageForSmallLists() {
+        let page = PresencePresetPagination.resolve(
+            itemCount: 5,
+            requestedPageIndex: 3,
+            pageSize: 6
+        )
+
+        XCTAssertEqual(page.pageIndex, 0)
+        XCTAssertEqual(page.pageCount, 1)
+        XCTAssertEqual(page.range, 0..<5)
+    }
+
     func testElapsedStartDateResetsToPublishTimeWhenToggleIsEnabled() {
         let previousStart = Date(timeIntervalSince1970: 1_000)
         let publishTime = Date(timeIntervalSince1970: 2_000)
@@ -81,6 +105,67 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertEqual(
             draft.elapsedStartDateForPublish(now: publishTime, preserving: appliedPresence),
             previousStart
+        )
+    }
+
+    func testPausedElapsedDurationRequiresPreservedElapsedTime() {
+        let preservingPreset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            pausedElapsedDuration: 3_900,
+            resetsElapsedTimeOnPublish: false
+        )
+        let resettingPreset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            pausedElapsedDuration: 3_900,
+            resetsElapsedTimeOnPublish: true
+        )
+        let disabledPreset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: false,
+            pausedElapsedDuration: 3_900,
+            resetsElapsedTimeOnPublish: false
+        )
+        let missingDurationPreset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            pausedElapsedDuration: nil,
+            resetsElapsedTimeOnPublish: false
+        )
+
+        XCTAssertEqual(preservingPreset.pausedElapsedDurationForDisplay, 3_900)
+        XCTAssertNil(resettingPreset.pausedElapsedDurationForDisplay)
+        XCTAssertNil(disabledPreset.pausedElapsedDurationForDisplay)
+        XCTAssertNil(missingDurationPreset.pausedElapsedDurationForDisplay)
+    }
+
+    func testCapturesPausedElapsedDurationAtPublishTime() {
+        let preset = CustomPresencePreset(
+            title: "Focus",
+            activityType: .playing,
+            details: "Deep work",
+            state: "Writing",
+            usesElapsedTime: true,
+            elapsedStartDate: Date(timeIntervalSince1970: 1_000),
+            resetsElapsedTimeOnPublish: false
+        )
+
+        XCTAssertEqual(
+            preset.pausedElapsedDurationForPublish(now: Date(timeIntervalSince1970: 4_900)),
+            3_900
         )
     }
 
@@ -260,6 +345,37 @@ final class CraftPresenceTests: XCTestCase {
         XCTAssertFalse(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Music", source: .appleMusic)))
         XCTAssertFalse(PresencePriorityPolicy.shouldPeriodicallyReassert(AppliedPresencePayload(name: "Xcode", source: .xcode)))
     }
+
+    func testPresenceBackgroundRefreshIsDeclaredInInfoPlist() throws {
+        let infoPlistURL = try XCTUnwrap(Bundle.main.url(forResource: "Info", withExtension: "plist"))
+        let data = try Data(contentsOf: infoPlistURL)
+        let plistObject = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
+        let plist = try XCTUnwrap(plistObject as? [String: Any])
+
+        XCTAssertTrue((plist["UIBackgroundModes"] as? [String])?.contains("fetch") == true)
+        XCTAssertTrue(
+            (plist["BGTaskSchedulerPermittedIdentifiers"] as? [String])?.contains(PresenceScheduleBackgroundScheduler.taskIdentifier) == true
+        )
+    }
+
+    #if os(iOS)
+    func testPresenceBackgroundRefreshOnlySubmitsWhenAvailable() {
+        XCTAssertTrue(PresenceScheduleBackgroundScheduler.canSubmitBackgroundRefresh(status: .available))
+        XCTAssertFalse(PresenceScheduleBackgroundScheduler.canSubmitBackgroundRefresh(status: .denied))
+        XCTAssertFalse(PresenceScheduleBackgroundScheduler.canSubmitBackgroundRefresh(status: .restricted))
+    }
+
+    func testPresenceBackgroundRefreshUnavailableDiagnosticIncludesStatus() {
+        XCTAssertEqual(
+            PresenceScheduleBackgroundScheduler.unavailableDiagnostic(status: .denied),
+            "Background App Refresh is denied for the app or device."
+        )
+        XCTAssertEqual(
+            PresenceScheduleBackgroundScheduler.unavailableDiagnostic(status: .restricted),
+            "Background App Refresh is restricted by the system."
+        )
+    }
+    #endif
 
     #if canImport(ActivityKit)
     func testPresenceActivityContentStateDefaultsMissingContentOptions() throws {

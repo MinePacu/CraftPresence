@@ -84,8 +84,8 @@ final class LSUIElementController {
     }
 
     @objc private func openPreferences() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        showMainWindow()
+        NotificationCenter.default.post(name: .showCraftPresenceSettingsPage, object: nil)
     }
 
     @objc private func quitApp() {
