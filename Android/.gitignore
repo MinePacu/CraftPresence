@@ -18,3 +18,4 @@ app/build/
 app/.externalNativeBuild/
 app/.cxx/
 local.properties
+.superpowers/
