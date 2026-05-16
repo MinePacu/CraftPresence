@@ -1,0 +1,77 @@
+name: Apple CI
+
+on:
+  pull_request:
+    paths:
+      - "macOS/**"
+      - "iOS/**"
+      - "ci/secrets/discord-sdk-macos.zip.gpg"
+      - "ci/secrets/discord-sdk-ios.zip.gpg"
+      - "ci/scripts/restore-discord-sdk.sh"
+      - ".github/workflows/apple-ci.yml"
+  push:
+    branches:
+      - migration/repo
+      - main
+    paths:
+      - "macOS/**"
+      - "iOS/**"
+      - "ci/secrets/discord-sdk-macos.zip.gpg"
+      - "ci/secrets/discord-sdk-ios.zip.gpg"
+      - "ci/scripts/restore-discord-sdk.sh"
+      - ".github/workflows/apple-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS
+    runs-on: macos-26
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Restore Discord Social SDK
+        env:
+          DISCORD_SDK_MACOS_PASSPHRASE: ${{ secrets.DISCORD_SDK_MACOS_PASSPHRASE }}
+        run: ./ci/scripts/restore-discord-sdk.sh macos
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: List macOS project
+        working-directory: macOS
+        run: xcodebuild -list -project CraftPresence.xcodeproj
+
+      # Enable once the shared CI scheme and signing-independent build settings are confirmed:
+      # - name: Build macOS app
+      #   working-directory: macOS
+      #   run: xcodebuild -project CraftPresence.xcodeproj -scheme CraftPresence -configuration Debug build CODE_SIGNING_ALLOWED=NO
+
+  ios:
+    name: iOS
+    runs-on: macos-26
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Restore Discord Social SDK
+        env:
+          DISCORD_SDK_IOS_PASSPHRASE: ${{ secrets.DISCORD_SDK_IOS_PASSPHRASE }}
+        run: ./ci/scripts/restore-discord-sdk.sh ios
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: List iOS project
+        working-directory: iOS
+        run: xcodebuild -list -project CraftPresence.xcodeproj
+
+      # Enable once the shared CI scheme, simulator destination, and signing-independent build settings are confirmed:
+      # - name: Build iOS app
+      #   working-directory: iOS
+      #   run: xcodebuild -project CraftPresence.xcodeproj -scheme CraftPresence -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' build CODE_SIGNING_ALLOWED=NO

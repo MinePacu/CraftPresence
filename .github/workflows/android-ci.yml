@@ -1,0 +1,67 @@
+name: Android CI
+
+on:
+  pull_request:
+    paths:
+      - "Android/**"
+      - "ci/secrets/discord-sdk-android.zip.gpg"
+      - "ci/scripts/restore-discord-sdk.sh"
+      - ".github/workflows/android-ci.yml"
+  push:
+    branches:
+      - migration/repo
+      - main
+    paths:
+      - "Android/**"
+      - "ci/secrets/discord-sdk-android.zip.gpg"
+      - "ci/scripts/restore-discord-sdk.sh"
+      - ".github/workflows/android-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore Discord Social SDK
+        env:
+          DISCORD_SDK_ANDROID_PASSPHRASE: ${{ secrets.DISCORD_SDK_ANDROID_PASSPHRASE }}
+        run: ./ci/scripts/restore-discord-sdk.sh android
+
+      - name: Create Android local properties
+        working-directory: Android
+        env:
+          DISCORD_APPLICATION_ID: ${{ secrets.DISCORD_APPLICATION_ID }}
+        run: |
+          APP_ID="${DISCORD_APPLICATION_ID:-YOUR_APPLICATION_ID}"
+          printf 'DISCORD_APPLICATION_ID=%s\n' "$APP_ID" > local.properties
+
+      - name: Verify Discord Social SDK file
+        run: test -f Android/app/libs/discord_partner_sdk.aar
+
+      - name: Test and assemble debug APK
+        working-directory: Android
+        run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: craftpresence-android-debug-apk
+          path: Android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

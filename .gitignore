@@ -1,0 +1,22 @@
+# Local secrets and generated archives
+ci/secrets/*.zip
+ci/secrets/*.tar
+ci/secrets/*.tar.gz
+ci/secrets/*.tgz
+*.passphrase
+*.secret
+ci/secrets/*passphrase*
+ci/secrets/*secret*
+
+# Local app configuration
+local.properties
+**/local.properties
+
+# Discord Social SDK plaintext sources
+discord_social_sdk/
+Android/app/libs/discord_partner_sdk.aar
+macOS/CraftPresence/ThirdParty/DIscordSDK/
+iOS/CraftPresence/ThirdParty/DiscordSocialSDK/
+
+# macOS metadata
+.DS_Store
