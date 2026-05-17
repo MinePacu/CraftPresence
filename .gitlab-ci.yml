@@ -1,0 +1,131 @@
+stages:
+  - test
+  - package
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_COMMIT_BRANCH == "migration/repo"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+default:
+  interruptible: true
+
+variables:
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+  PNPM_HOME: "$CI_PROJECT_DIR/.pnpm-store"
+  DOCKER_TLS_CERTDIR: "/certs"
+
+.web_changes:
+  rules:
+    - changes:
+        - web/**/*
+        - .gitlab-ci.yml
+
+.android_changes:
+  rules:
+    - changes:
+        - Android/**/*
+        - ci/secrets/discord-sdk-android.zip.gpg
+        - ci/scripts/restore-discord-sdk.sh
+        - .gitlab-ci.yml
+
+.apple_changes:
+  rules:
+    - changes:
+        - macOS/**/*
+        - iOS/**/*
+        - ci/secrets/discord-sdk-macos.zip.gpg
+        - ci/secrets/discord-sdk-ios.zip.gpg
+        - ci/scripts/restore-discord-sdk.sh
+        - .gitlab-ci.yml
+
+web:
+  stage: test
+  extends: .web_changes
+  image: node:22-bookworm
+  cache:
+    key:
+      files:
+        - web/pnpm-lock.yaml
+    paths:
+      - web/node_modules/
+      - web/.pnpm-store/
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@9.15.0 --activate
+  script:
+    - cd web
+    - pnpm install --frozen-lockfile --store-dir .pnpm-store
+    - pnpm lint
+    - pnpm test
+    - pnpm build
+
+web-docker:
+  stage: package
+  extends: .web_changes
+  image: docker:27.5.1
+  services:
+    - name: docker:27.5.1-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  script:
+    - cd web
+    - docker compose config
+    - docker compose build
+
+android:
+  stage: package
+  extends: .android_changes
+  image: ghcr.io/cirruslabs/android-sdk:latest
+  cache:
+    key:
+      files:
+        - Android/gradle/wrapper/gradle-wrapper.properties
+        - Android/gradle/libs.versions.toml
+    paths:
+      - .gradle/caches/
+      - .gradle/wrapper/
+      - Android/.gradle/
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends gpg unzip
+  script:
+    - ./ci/scripts/restore-discord-sdk.sh android
+    - cd Android
+    - APP_ID="${DISCORD_APPLICATION_ID:-YOUR_APPLICATION_ID}"
+    - printf 'DISCORD_APPLICATION_ID=%s\n' "$APP_ID" > local.properties
+    - test -f app/libs/discord_partner_sdk.aar
+    - ./gradlew testDebugUnitTest assembleDebug --stacktrace
+  artifacts:
+    name: craftpresence-android-debug-apk
+    when: on_success
+    expire_in: 7 days
+    paths:
+      - Android/app/build/outputs/apk/debug/*.apk
+
+macos:
+  stage: test
+  extends: .apple_changes
+  tags:
+    - macos
+  script:
+    - ./ci/scripts/restore-discord-sdk.sh macos
+    - xcodebuild -version
+    - cd macOS
+    - xcodebuild -list -project CraftPresence.xcodeproj
+
+ios:
+  stage: test
+  extends: .apple_changes
+  tags:
+    - macos
+  script:
+    - ./ci/scripts/restore-discord-sdk.sh ios
+    - xcodebuild -version
+    - cd iOS
+    - xcodebuild -list -project CraftPresence.xcodeproj

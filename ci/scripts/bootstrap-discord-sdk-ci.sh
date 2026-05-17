@@ -301,6 +301,7 @@ if [[ "$git_add" -eq 1 ]]; then
     .github/workflows/android-ci.yml \
     .github/workflows/web-ci.yml \
     .github/workflows/apple-ci.yml \
+    .gitlab-ci.yml \
     .gitignore \
     docs/ci.md
   info "Staged generated archives and CI support files."

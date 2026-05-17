@@ -1,6 +1,6 @@
 # CI and Discord Social SDK Archives
 
-This repository keeps the Discord Social SDK plaintext files out of Git. GitHub Actions restores only the encrypted archive needed by each platform job.
+This repository keeps the Discord Social SDK plaintext files out of Git. GitHub Actions and GitLab CI restore only the encrypted archive needed by each platform job.
 
 ## Required GitHub Secrets
 
@@ -10,6 +10,19 @@ This repository keeps the Discord Social SDK plaintext files out of Git. GitHub 
 - `DISCORD_APPLICATION_ID`: optional Discord application ID
 
 GitHub does not generate these passphrases automatically. The bootstrap script generates one random passphrase per platform and registers it as a repository secret.
+
+## Required GitLab CI/CD Variables
+
+Create the same variables in GitLab under Settings -> CI/CD -> Variables:
+
+- `DISCORD_SDK_ANDROID_PASSPHRASE`: Android CI archive passphrase
+- `DISCORD_SDK_MACOS_PASSPHRASE`: macOS CI archive passphrase
+- `DISCORD_SDK_IOS_PASSPHRASE`: iOS CI archive passphrase
+- `DISCORD_APPLICATION_ID`: optional Discord application ID
+
+Use masked, protected variables when the pipeline only runs on protected branches. Merge request pipelines from forks do not receive protected variables.
+
+GitLab Linux shared runners can run the Web and Android jobs. The Web Docker image job requires Docker-in-Docker support. The macOS and iOS jobs require a GitLab runner on macOS with the `macos` tag because those jobs call `xcodebuild`.
 
 ## Platform Archives
 
@@ -149,6 +162,7 @@ Commit:
 - `.github/workflows/android-ci.yml`
 - `.github/workflows/web-ci.yml`
 - `.github/workflows/apple-ci.yml`
+- `.gitlab-ci.yml`
 - `.gitignore`
 - `docs/ci.md`
 
@@ -192,6 +206,7 @@ export DISCORD_SDK_IOS_PASSPHRASE="iOS archive passphrase"
 - Do not print passphrases or `local.properties` contents in logs.
 - Public fork pull requests do not receive repository secrets by default.
 - The bootstrap script requires an authenticated GitHub CLI for secret registration.
+- The bootstrap script does not register GitLab variables; add or rotate them in GitLab manually.
 - Check GitHub CLI login with `gh auth status`.
 - Missing platform SDK files fail bootstrap unless `--allow-missing` is passed.
 - You can bootstrap only the platforms whose SDK files are available locally.

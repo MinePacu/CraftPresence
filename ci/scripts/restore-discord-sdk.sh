@@ -45,6 +45,8 @@ esac
 
 if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
   workspace="$GITHUB_WORKSPACE"
+elif [[ -n "${CI_PROJECT_DIR:-}" ]]; then
+  workspace="$CI_PROJECT_DIR"
 else
   workspace="$(git rev-parse --show-toplevel)"
 fi
