@@ -122,6 +122,11 @@ import com.minepacu.craftpresence.core.presence.AppleMusicPresenceManager
 import com.minepacu.craftpresence.core.presence.ProgramPresenceManager
 import com.minepacu.craftpresence.core.programs.ProgramDetector
 import com.minepacu.craftpresence.core.programs.ForegroundAppMonitorService
+import com.minepacu.craftpresence.ui.care.CareHubActionTarget
+import com.minepacu.craftpresence.ui.care.CareHubHealthLevel
+import com.minepacu.craftpresence.ui.care.resolveCareHubHealth
+import com.minepacu.craftpresence.ui.care.resolvePermissionSummary
+import com.minepacu.craftpresence.ui.care.resolveTrackedAppsState
 import com.minepacu.craftpresence.ui.localization.LocalizedText
 import com.minepacu.craftpresence.ui.localization.LocalizedTextProvider
 import com.minepacu.craftpresence.ui.localization.rememberLocalizedText
@@ -253,6 +258,11 @@ private fun CraftPresenceApp() {
     var showSystemApps by remember { mutableStateOf(true) }
     val foregroundDisplayEnabled = settings.showForegroundAppIndicator
     val foregroundNotificationEnabled = settings.showForegroundAppNotification
+    val permissionSummary = resolvePermissionSummary(
+        usageGranted = permissions.hasUsageAccess(),
+        appNotificationGranted = permissions.hasPostNotificationsAccess(),
+        notificationListenerGranted = permissions.hasNotificationListenerAccess(),
+    )
     val shouldRunProgramPresence = settings.programPresenceEnabled &&
         settings.packageNames.isNotEmpty() &&
         settings.hasCompletedDiscordOnboarding
@@ -427,6 +437,7 @@ private fun CraftPresenceApp() {
                             foregroundTracked = foregroundDisplayEnabled && foreground.packageName in settings.packageNames,
                             musicTrack = musicState.currentTrack,
                             musicArtist = musicState.currentArtist,
+                            missingPermissionCount = permissionSummary.missingCount,
                             lastError = discordState.lastErrorMessage,
                             onOpenDiscord = {
                                 selectedTab = AppTab.SETTINGS
@@ -440,6 +451,11 @@ private fun CraftPresenceApp() {
                                 selectedTab = AppTab.SETTINGS
                                 settingsPanel = SettingsPanel.MAIN
                             },
+                            onOpenPermissions = {
+                                selectedTab = AppTab.SETTINGS
+                                settingsPanel = SettingsPanel.PERMISSIONS
+                            },
+                            onOpenMusic = { selectedTab = AppTab.MUSIC },
                             onOpenPresence = { selectedTab = AppTab.PRESENCE },
                         )
                     }
@@ -514,6 +530,12 @@ private fun CraftPresenceApp() {
                             }
                         }
                         SettingsPanel.PROGRAMS -> {
+                            val trackedAppsState = resolveTrackedAppsState(
+                                foregroundDetectionEnabled = foregroundDisplayEnabled,
+                                registeredAppCount = settings.packageNames.size,
+                                currentPackageName = if (foregroundDisplayEnabled) foreground.packageName.orEmpty() else "",
+                                currentPackageRegistered = foregroundDisplayEnabled && foreground.packageName in settings.packageNames,
+                            )
                             item {
                                 SettingsSubpageHeader(
                                     title = text.tabPrograms,
@@ -594,6 +616,7 @@ private fun CraftPresenceApp() {
                                         foregroundDisplayEnabled = foregroundDisplayEnabled,
                                         foregroundPackage = if (foregroundDisplayEnabled) foreground.packageName.orEmpty() else "",
                                         foregroundApp = if (foregroundDisplayEnabled) foreground.appName.orEmpty() else "",
+                                        canAddCurrentApp = trackedAppsState.canAddCurrentApp,
                                         config = config,
                                         onChooseInstalledApp = {
                                             showInstalledAppPicker = true
@@ -620,6 +643,7 @@ private fun CraftPresenceApp() {
                                         settings = settings.programSettings[packageName] ?: ProgramPresenceSettings(),
                                         savedDisplayName = settings.appDisplayNames[packageName].orEmpty(),
                                         config = config,
+                                        canEdit = trackedAppsState.canEditRegisteredApps,
                                     )
                                 }
                             }
@@ -884,35 +908,44 @@ private fun OverviewScreen(
     foregroundTracked: Boolean,
     musicTrack: String,
     musicArtist: String,
+    missingPermissionCount: Int,
     lastError: String?,
     onOpenDiscord: () -> Unit,
     onOpenPrograms: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenPermissions: () -> Unit,
+    onOpenMusic: () -> Unit,
     onOpenPresence: () -> Unit,
 ) {
     val text = LocalizedTextProvider.current
     val discordReady = discordStatus == DiscordDashboardStatus.READY
     val hasRegisteredApps = settings.packageNames.isNotEmpty()
-    val primaryAction = when {
-        !discordReady -> OverviewAction(
+    val health = resolveCareHubHealth(
+        discordReady = discordReady,
+        registeredAppCount = settings.packageNames.size,
+        foregroundDetectionEnabled = foregroundDisplayEnabled,
+        missingPermissionCount = missingPermissionCount,
+    )
+    val primaryAction = when (health.actionTarget) {
+        CareHubActionTarget.DISCORD -> OverviewAction(
             title = text.discordConnect,
             detail = text.discordOnboardingBody,
             button = if (settings.hasCompletedDiscordOnboarding) text.reconnect else text.connectAccount,
             onClick = onOpenDiscord,
         )
-        !hasRegisteredApps -> OverviewAction(
-            title = text.appToRegister,
-            detail = text.appRegistrationDescription,
-            button = text.chooseInstalledApp,
+        CareHubActionTarget.TRACKED_APPS -> OverviewAction(
+            title = if (hasRegisteredApps) text.showForegroundApp else text.appToRegister,
+            detail = if (hasRegisteredApps) text.showForegroundAppDescription else text.appRegistrationDescription,
+            button = if (hasRegisteredApps) text.tabPrograms else text.chooseInstalledApp,
             onClick = onOpenPrograms,
         )
-        !foregroundDisplayEnabled -> OverviewAction(
-            title = text.showForegroundApp,
-            detail = text.showForegroundAppDescription,
-            button = text.tabSettings,
-            onClick = onOpenSettings,
+        CareHubActionTarget.PERMISSIONS -> OverviewAction(
+            title = text.nextRequiredPermission,
+            detail = text.setupHealthNeedsAttention,
+            button = text.openSettings,
+            onClick = onOpenPermissions,
         )
-        else -> OverviewAction(
+        CareHubActionTarget.PRESENCE -> OverviewAction(
             title = text.presenceCustomizer,
             detail = text.presenceCustomizerDescription,
             button = text.tabPresence,
@@ -921,58 +954,95 @@ private fun OverviewScreen(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        OverviewActionCard(primaryAction)
+        CareHubStatusHeader(
+            healthLevel = health.level,
+            action = primaryAction,
+        )
 
-        InfoCard(text.requirements) {
-            ChecklistRow(
-                title = "Discord",
-                detail = discordUser ?: dashboardStatusText(discordStatus, text),
-                complete = discordReady,
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            CareHubStatusTile(
+                icon = Icons.Filled.SportsEsports,
+                label = text.tabDiscord,
+                value = discordUser ?: dashboardStatusText(discordStatus, text),
+                tint = if (discordReady) Color(0xFF2E7D32) else Color(0xFFC62828),
+                modifier = Modifier.weight(1f),
+                onClick = onOpenDiscord,
             )
-            ChecklistRow(
-                title = text.registeredApps,
-                detail = text.countItems(settings.packageNames.size),
-                complete = hasRegisteredApps,
+            CareHubStatusTile(
+                icon = Icons.Filled.Edit,
+                label = text.tabPresence,
+                value = if (programEnabled) text.appPresence else if (musicEnabled) text.musicPresence else text.standby,
+                tint = if (programEnabled || musicEnabled) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenPresence,
             )
-            ChecklistRow(
-                title = text.showForegroundApp,
-                detail = if (foregroundDisplayEnabled) text.on else text.off,
-                complete = foregroundDisplayEnabled,
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            CareHubStatusTile(
+                icon = Icons.Filled.Apps,
+                label = text.tabPrograms,
+                value = if (foregroundDisplayEnabled) text.countItems(settings.packageNames.size) else text.appDetectionStopped,
+                tint = if (foregroundDisplayEnabled && hasRegisteredApps) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenPrograms,
             )
-            ChecklistRow(
-                title = text.appRichPresence,
-                detail = if (programEnabled) text.running else text.stopped,
-                complete = programEnabled,
+            CareHubStatusTile(
+                icon = Icons.Filled.Security,
+                label = text.tabPermissions,
+                value = if (missingPermissionCount == 0) text.granted else text.settingsRequired,
+                tint = if (missingPermissionCount == 0) Color(0xFF2E7D32) else Color(0xFFC62828),
+                modifier = Modifier.weight(1f),
+                onClick = onOpenPermissions,
             )
         }
 
-        InfoCard(text.actions) {
-            OverviewShortcutRow(
+        CareHubSection(text.actions) {
+            CareHubActionRow(
+                icon = Icons.Filled.Edit,
+                title = text.presenceCustomizer,
+                detail = text.presenceCustomizerDescription,
+                onClick = onOpenPresence,
+            )
+            HorizontalDivider()
+            CareHubActionRow(
+                icon = Icons.Filled.Apps,
+                title = text.tabPrograms,
+                detail = if (foregroundDisplayEnabled) text.countItems(settings.packageNames.size) else text.enableForegroundHint,
+                onClick = onOpenPrograms,
+            )
+            HorizontalDivider()
+            CareHubActionRow(
+                icon = Icons.Filled.Security,
+                title = text.tabPermissions,
+                detail = if (missingPermissionCount == 0) text.permissionReadyMessage else text.setupHealthNeedsAttention,
+                onClick = onOpenPermissions,
+            )
+        }
+
+        CareHubSection(text.settingsDestinations) {
+            CareHubActionRow(
                 icon = Icons.Filled.SportsEsports,
                 title = text.tabDiscord,
                 detail = discordUser ?: dashboardStatusText(discordStatus, text),
                 onClick = onOpenDiscord,
             )
             HorizontalDivider()
-            OverviewShortcutRow(
-                icon = Icons.Filled.Apps,
-                title = text.registeredApps,
-                detail = text.countItems(settings.packageNames.size),
-                onClick = onOpenPrograms,
+            CareHubActionRow(
+                icon = Icons.Filled.MusicNote,
+                title = text.tabMusic,
+                detail = if (musicTrack.isBlank()) {
+                    if (musicEnabled) text.active else text.standby
+                } else {
+                    "$musicTrack - $musicArtist"
+                },
+                onClick = onOpenMusic,
             )
             HorizontalDivider()
-            OverviewShortcutRow(
-                icon = Icons.Filled.Settings,
-                title = text.tabSettings,
-                detail = if (foregroundDisplayEnabled) text.showForegroundApp else text.setupHealthNeedsAttention,
+            CareHubActionRow(
+                icon = Icons.Filled.FileUpload,
+                title = text.backupAndRestore,
+                detail = text.backupAndRestoreDescription,
                 onClick = onOpenSettings,
-            )
-            HorizontalDivider()
-            OverviewShortcutRow(
-                icon = Icons.Filled.Edit,
-                title = text.tabPresence,
-                detail = text.presenceCustomizerDescription,
-                onClick = onOpenPresence,
             )
         }
 
@@ -1045,6 +1115,180 @@ private fun OverviewScreen(
 
         if (!lastError.isNullOrBlank()) {
             WarningCard(title = text.lastError, message = lastError)
+        }
+    }
+}
+
+@Composable
+private fun CareHubStatusHeader(
+    healthLevel: CareHubHealthLevel,
+    action: OverviewAction,
+) {
+    val text = LocalizedTextProvider.current
+    val good = healthLevel == CareHubHealthLevel.GOOD
+    val container = if (good) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
+    val content = if (good) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
+    val iconTint = if (good) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = iconTint.copy(alpha = 0.16f),
+                contentColor = iconTint,
+            ) {
+                Icon(
+                    if (good) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                    contentDescription = null,
+                    modifier = Modifier.padding(16.dp).size(34.dp),
+                )
+            }
+            Text(
+                if (good) text.setupHealthReady else text.setupHealthNeedsAttention,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = content,
+            )
+            Text(
+                action.detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = content.copy(alpha = 0.82f),
+            )
+            Button(onClick = action.onClick) {
+                Text(action.button)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CareHubStatusTile(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(999.dp),
+                color = tint.copy(alpha = 0.18f),
+            ) {
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CareHubSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun CareHubActionRow(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    val contentAlpha = if (enabled) 1f else 0.45f
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = contentAlpha),
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.padding(10.dp).size(20.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha))
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (enabled) {
+                Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CareDetailHeader(
+    title: String,
+    summary: String,
+    detail: String,
+    chips: @Composable () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(summary, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                chips()
+            }
         }
     }
 }
@@ -1337,6 +1581,7 @@ private fun AddProgramCard(
     foregroundDisplayEnabled: Boolean,
     foregroundPackage: String,
     foregroundApp: String,
+    canAddCurrentApp: Boolean,
     config: ConfigUtility,
     onChooseInstalledApp: () -> Unit,
 ) {
@@ -1386,7 +1631,7 @@ private fun AddProgramCard(
             }
             OutlinedButton(
                 onClick = { scope.launch { config.addPackageName(foregroundPackage, foregroundApp) } },
-                enabled = foregroundDisplayEnabled && foregroundPackage.isNotBlank() && foregroundPackage !in settings.packageNames,
+                enabled = canAddCurrentApp,
             ) {
                 Text(text.addCurrentApp)
             }
@@ -1513,6 +1758,7 @@ private fun ProgramRow(
     settings: ProgramPresenceSettings,
     savedDisplayName: String,
     config: ConfigUtility,
+    canEdit: Boolean,
 ) {
     val text = LocalizedTextProvider.current
     val scope = rememberCoroutineScope()
@@ -1539,10 +1785,17 @@ private fun ProgramRow(
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { showEditor = true }) { Text(text.presenceSettings) }
+                Button(onClick = { showEditor = true }, enabled = canEdit) { Text(text.presenceSettings) }
                 OutlinedButton(onClick = { scope.launch { config.removePackageName(packageName) } }) {
                     Text(text.delete)
                 }
+            }
+            if (!canEdit) {
+                Text(
+                    text.enableForegroundHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -2652,45 +2905,62 @@ private fun PermissionsScreen(permissions: PermissionService) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        SetupHealthCard(
-            title = if (permissionAction == null) text.setupHealth else text.nextRequiredPermission,
-            message = permissionAction?.destination ?: text.permissionReadyMessage,
-            actionLabel = permissionAction?.let { text.openSettings },
-            onAction = permissionAction?.onOpen,
-            complete = permissionAction == null,
-        )
-        PermissionSetupGuideCard(
+        val summary = resolvePermissionSummary(
             usageGranted = usageGranted,
             appNotificationGranted = appNotificationGranted,
-            notificationGranted = notificationGranted,
-            action = permissionAction,
+            notificationListenerGranted = notificationGranted,
         )
-        PermissionCard(
-            title = text.usageAccess,
-            description = text.usageAccessDescription,
-            granted = usageGranted,
-            onOpen = { context.startActivity(permissions.usageAccessSettingsIntent()) },
-        )
-        PermissionCard(
-            title = text.appNotificationPermission,
-            description = text.appNotificationPermissionDescription,
-            granted = appNotificationGranted,
-            onOpen = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    context.startActivity(permissions.appNotificationSettingsIntent())
-                }
-            },
-        )
-        PermissionCard(
-            title = text.notificationAccess,
-            description = text.notificationAccessDescription,
-            granted = notificationGranted,
-            onOpen = { context.startActivity(permissions.notificationListenerSettingsIntent()) },
-        )
-        OutlinedButton(onClick = { refreshKey += 1 }) {
-            Text(text.refreshPermissionStatus)
+        CareDetailHeader(
+            title = text.tabPermissions,
+            summary = if (summary.complete) text.permissionReadyMessage else text.nextRequiredPermission,
+            detail = if (summary.complete) text.setupHealthReady else text.setupHealthNeedsAttention,
+        ) {
+            StatusChip(text.usageAccess, if (usageGranted) Color(0xFF2E7D32) else Color(0xFFC62828))
+            StatusChip(text.appNotificationPermission, if (appNotificationGranted) Color(0xFF2E7D32) else Color(0xFFC62828))
+            StatusChip(text.notificationAccess, if (notificationGranted) Color(0xFF2E7D32) else Color(0xFFC62828))
+        }
+        if (permissionAction != null) {
+            SetupHealthCard(
+                title = text.nextRequiredPermission,
+                message = "${permissionAction.title}: ${permissionAction.destination}",
+                actionLabel = text.openSettings,
+                onAction = permissionAction.onOpen,
+                complete = false,
+            )
+        }
+        CareHubSection(text.requirements) {
+            PermissionActionRow(
+                title = text.usageAccess,
+                description = text.usageAccessDescription,
+                granted = usageGranted,
+                onOpen = { context.startActivity(permissions.usageAccessSettingsIntent()) },
+            )
+            HorizontalDivider()
+            PermissionActionRow(
+                title = text.appNotificationPermission,
+                description = text.appNotificationPermissionDescription,
+                granted = appNotificationGranted,
+                onOpen = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        context.startActivity(permissions.appNotificationSettingsIntent())
+                    }
+                },
+            )
+            HorizontalDivider()
+            PermissionActionRow(
+                title = text.notificationAccess,
+                description = text.notificationAccessDescription,
+                granted = notificationGranted,
+                onOpen = { context.startActivity(permissions.notificationListenerSettingsIntent()) },
+            )
+        }
+        CareHubSection(text.howItWorks) {
+            Text(text.permissionReturnHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedButton(onClick = { refreshKey += 1 }) {
+                Text(text.refreshPermissionStatus)
+            }
         }
     }
 }
@@ -2761,6 +3031,30 @@ private fun PermissionCard(title: String, description: String, granted: Boolean,
         Spacer(Modifier.height(10.dp))
         Button(onClick = onOpen, enabled = !granted) {
             Text(text.openSettings)
+        }
+    }
+}
+
+@Composable
+private fun PermissionActionRow(title: String, description: String, granted: Boolean, onOpen: () -> Unit) {
+    val text = LocalizedTextProvider.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (granted) {
+            StatusChip(text.granted, Color(0xFF2E7D32))
+        } else {
+            Button(onClick = onOpen) {
+                Text(text.openSettings)
+            }
         }
     }
 }
