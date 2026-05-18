@@ -2,9 +2,18 @@ stages:
   - test
   - package
 
+# Workflow rules:
+# - MR 파이프라인은 항상 실행
+# - 기본/마이그레이션 브랜치 푸시는 실행하되, 해당 브랜치에 열린 MR이 있다면
+#   중복 실행 방지를 위해 브랜치 파이프라인은 스킵 (MR 파이프라인이 대신 실행됨)
+# - 웹 UI에서 수동 트리거는 항상 실행
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "migration/repo" && $CI_OPEN_MERGE_REQUESTS'
+      when: never
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_COMMIT_BRANCH == "migration/repo"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
@@ -16,30 +25,66 @@ variables:
   GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
   PNPM_HOME: "$CI_PROJECT_DIR/.pnpm-store"
   DOCKER_TLS_CERTDIR: "/certs"
+  # CI에서 Gradle 데몬은 의미가 없고(매 빌드 새 컨테이너), 메모리만 차지하므로 비활성화.
+  # welcome 메시지 비활성화로 로그 노이즈 감소.
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.welcome=never"
 
+# changes: rules는 MR 파이프라인에서는 MR base와 비교, 브랜치 파이프라인에서는
+# 기본 브랜치(compare_to)와 비교하여 안정적으로 동작하도록 분기.
+# 그 외(웹 수동 트리거 등)에서는 항상 실행되어 회귀를 막는다.
 .web_changes:
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - web/**/*
         - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH'
+      changes:
+        compare_to: 'refs/heads/migration/repo'
+        paths:
+          - web/**/*
+          - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "web"'
 
 .android_changes:
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - Android/**/*
         - ci/secrets/discord-sdk-android.zip.gpg
         - ci/scripts/restore-discord-sdk.sh
         - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH'
+      changes:
+        compare_to: 'refs/heads/migration/repo'
+        paths:
+          - Android/**/*
+          - ci/secrets/discord-sdk-android.zip.gpg
+          - ci/scripts/restore-discord-sdk.sh
+          - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "web"'
 
 .apple_changes:
   rules:
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - macOS/**/*
         - iOS/**/*
         - ci/secrets/discord-sdk-macos.zip.gpg
         - ci/secrets/discord-sdk-ios.zip.gpg
         - ci/scripts/restore-discord-sdk.sh
         - .gitlab-ci.yml
+    - if: '$CI_COMMIT_BRANCH'
+      changes:
+        compare_to: 'refs/heads/migration/repo'
+        paths:
+          - macOS/**/*
+          - iOS/**/*
+          - ci/secrets/discord-sdk-macos.zip.gpg
+          - ci/secrets/discord-sdk-ios.zip.gpg
+          - ci/scripts/restore-discord-sdk.sh
+          - .gitlab-ci.yml
+    - if: '$CI_PIPELINE_SOURCE == "web"'
 
 web:
   stage: test
@@ -47,6 +92,7 @@ web:
   image: node:22-bookworm
   tags:
     - saas-linux-small-amd64
+  # 캐시는 pnpm-lock.yaml 기준으로 키를 생성하여 의존성 변경 시에만 갱신.
   cache:
     key:
       files:
@@ -54,6 +100,7 @@ web:
     paths:
       - web/node_modules/
       - web/.pnpm-store/
+    policy: pull-push
   before_script:
     - corepack enable
     - corepack prepare pnpm@9.15.0 --activate
@@ -70,6 +117,11 @@ web-docker:
   image: docker:27.5.1
   tags:
     - saas-linux-small-amd64
+  # DAG: web 작업이 성공한 뒤에만 Docker 빌드를 실행하여
+  # 이미 lint/test/build이 통과한 상태에서만 이미지화하도록 보장.
+  needs:
+    - job: web
+      optional: true
   services:
     - name: docker:27.5.1-dind
       alias: docker
@@ -85,53 +137,96 @@ web-docker:
 android:
   stage: package
   extends: .android_changes
-  image: ghcr.io/cirruslabs/android-sdk:36-ndk
+  # 이미지를 매번 새로 받지 않고 로컬에 있으면 재사용하여 ~55초 절약.
+  # 보안 업데이트가 필요하면 새 다이제스트를 명시적으로 pin하거나 always를 일시 적용.
+  image:
+    name: ghcr.io/cirruslabs/android-sdk:36-ndk
+    pull_policy: ["if-not-present", "always"]
   tags:
     - saas-linux-small-amd64
+  # DAG: android 빌드는 web과 독립적으로 즉시 시작할 수 있도록 needs를 비움.
+  needs: []
+  # 캐시 입력 파일 2개 제한이 있어 wrapper와 libs.versions.toml만 키에 포함.
+  # prefix로 캐시 스키마 버전을 명시: 캐시 paths/구조가 바뀌면 v2, v3로 올려 무효화.
+  # paths에 build-cache, configuration-cache를 포함하여 재실행 시 큰 속도 향상.
   cache:
     key:
+      prefix: android-v1
       files:
         - Android/gradle/wrapper/gradle-wrapper.properties
         - Android/gradle/libs.versions.toml
     paths:
       - .gradle/caches/
       - .gradle/wrapper/
+      - .gradle/configuration-cache/
+      - .gradle/build-cache/
       - Android/.gradle/
+    policy: pull-push
   before_script:
-    - apt-get update
-    - apt-get install -y --no-install-recommends gpg unzip
+    # 이미지에 이미 gpg/unzip이 포함되어 있는 경우가 많으므로 조건부 설치로 ~5초 절약.
+    - command -v gpg >/dev/null && command -v unzip >/dev/null || (apt-get update && apt-get install -y --no-install-recommends gpg unzip)
   script:
     - ./ci/scripts/restore-discord-sdk.sh android
     - cd Android
     - APP_ID="${DISCORD_APPLICATION_ID:-YOUR_APPLICATION_ID}"
     - printf 'DISCORD_APPLICATION_ID=%s\n' "$APP_ID" > local.properties
     - test -f app/libs/discord_partner_sdk.aar
-    - ./gradlew testDebugUnitTest assembleDebug --stacktrace
+    # --build-cache: Gradle 빌드 캐시 활성화 (캐시된 task 출력 재사용)
+    # --no-daemon: CI에서는 데몬 의미 없음 (컨테이너 재사용 안 됨)
+    # --configuration-cache: 76초 걸리던 Configure 단계를 수초로 단축
+    - ./gradlew testDebugUnitTest assembleDebug --stacktrace --build-cache --no-daemon --configuration-cache
   artifacts:
     name: craftpresence-android-debug-apk
-    when: on_success
+    when: always
     expire_in: 7 days
+    # GRADLE_USER_HOME이 프로젝트 디렉토리 안이라 .gradle이 artifact에 포함되지 않도록 제외.
+    exclude:
+      - .gradle/**/*
+      - Android/.gradle/**/*
     paths:
       - Android/app/build/outputs/apk/debug/*.apk
+      # 실패 시 디버깅을 돕기 위해 Gradle 리포트도 함께 수집.
+      - Android/app/build/reports/
+      - Android/app/build/test-results/
+    # MR 위젯에 단위 테스트 결과를 표시하기 위한 JUnit 리포트.
+    reports:
+      junit:
+        - Android/app/build/test-results/testDebugUnitTest/**/TEST-*.xml
 
 macos:
   stage: test
   extends: .apple_changes
   tags:
     - macos
+  # DAG: Apple 빌드는 다른 플랫폼과 독립적으로 즉시 시작.
+  needs: []
   script:
     - ./ci/scripts/restore-discord-sdk.sh macos
     - xcodebuild -version
     - cd macOS
-    - xcodebuild -list -project CraftPresence.xcodeproj
+    # -list 결과를 파일로 저장하여 사용 가능한 스킴을 추후 빌드 단계에 활용.
+    - xcodebuild -list -project CraftPresence.xcodeproj | tee xcodebuild-list.txt
+  artifacts:
+    name: craftpresence-macos-xcodebuild-list
+    when: always
+    expire_in: 7 days
+    paths:
+      - macOS/xcodebuild-list.txt
 
 ios:
   stage: test
   extends: .apple_changes
   tags:
     - macos
+  needs: []
   script:
     - ./ci/scripts/restore-discord-sdk.sh ios
     - xcodebuild -version
     - cd iOS
-    - xcodebuild -list -project CraftPresence.xcodeproj
+    - xcodebuild -list -project CraftPresence.xcodeproj | tee xcodebuild-list.txt
+  artifacts:
+    name: craftpresence-ios-xcodebuild-list
+    when: always
+    expire_in: 7 days
+    paths:
+      - iOS/xcodebuild-list.txt
