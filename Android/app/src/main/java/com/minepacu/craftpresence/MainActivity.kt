@@ -596,6 +596,8 @@ private fun CraftPresenceApp() {
                                         lastError = programState.lastErrorMessage,
                                         activeAppName = programState.activeAppName,
                                         activePackageName = programState.activePackageName,
+                                        registeredAppCount = trackedAppsState.registeredAppCount,
+                                        foregroundDetectionEnabled = foregroundDisplayEnabled,
                                         onStart = {
                                             scope.launch {
                                                 config.setSettings(settings.copy(programPresenceEnabled = true))
@@ -1046,73 +1048,6 @@ private fun OverviewScreen(
             )
         }
 
-        InfoCard(text.actualPresence) {
-            KeyValueRow(text.discordStatus, dashboardStatusText(discordStatus, text))
-            if (!discordReady) {
-                Text(text.presenceDisconnected, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else if (currentActivity == null) {
-                Text(text.inactivePresence, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(text.presenceSource, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    StatusChip(
-                        text = presenceSourceText(currentActivitySource, text),
-                        tint = presenceSourceTint(currentActivitySource),
-                    )
-                }
-                KeyValueRow(text.activityType, activityTypeText(currentActivity.activityType, text))
-                KeyValueRow(text.displayName, optionalPresenceValue(currentActivity.name, text))
-                KeyValueRow(text.detailText, optionalPresenceValue(currentActivity.details, text))
-                KeyValueRow(text.stateText, optionalPresenceValue(currentActivity.state, text))
-                HorizontalDivider()
-                Text(text.timestamps, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                KeyValueRow(text.startTimestamp, timestampPresenceText(currentActivity.startEpochSeconds, text))
-                KeyValueRow(text.endTimestamp, timestampPresenceText(currentActivity.endEpochSeconds, text))
-                HorizontalDivider()
-                KeyValueRow(
-                    text.largeImage,
-                    imagePresenceText(
-                        key = currentActivity.largeImageKey,
-                        hoverText = currentActivity.largeImageText,
-                        text = text,
-                    ),
-                )
-                KeyValueRow(
-                    text.smallImage,
-                    imagePresenceText(
-                        key = currentActivity.smallImageKey,
-                        hoverText = currentActivity.smallImageText,
-                        text = text,
-                    ),
-                )
-            }
-        }
-
-        InfoCard(text.currentPresence) {
-            KeyValueRow(text.discordStatus, dashboardStatusText(discordStatus, text))
-            KeyValueRow(text.currentApp, if (foregroundDisplayEnabled) foregroundApp.ifBlank { text.unknown } else text.hidden)
-            KeyValueRow(text.registrationStatus, if (!foregroundDisplayEnabled) text.hidden else if (foregroundTracked) text.tracked else text.untracked)
-            KeyValueRow(
-                text.music,
-                if (musicTrack.isBlank()) {
-                    if (musicEnabled) text.active else text.standby
-                } else {
-                    "$musicTrack - $musicArtist"
-                },
-            )
-        }
-
-        InfoCard(text.currentDetectionInfo) {
-            KeyValueRow(text.display, if (foregroundDisplayEnabled) text.on else text.off)
-            KeyValueRow(text.appName, if (foregroundDisplayEnabled) foregroundApp.ifBlank { text.unknown } else text.hidden)
-            KeyValueRow(text.packageName, if (foregroundDisplayEnabled) foregroundPackage.ifBlank { text.unknown } else text.hidden)
-            KeyValueRow(text.registrationStatus, if (!foregroundDisplayEnabled) text.hidden else if (foregroundTracked) text.tracked else text.untracked)
-        }
-
         if (!lastError.isNullOrBlank()) {
             WarningCard(title = text.lastError, message = lastError)
         }
@@ -1126,44 +1061,43 @@ private fun CareHubStatusHeader(
 ) {
     val text = LocalizedTextProvider.current
     val good = healthLevel == CareHubHealthLevel.GOOD
-    val container = if (good) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.primaryContainer
-    val content = if (good) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
-    val iconTint = if (good) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = container),
+    val iconTint = if (good) Color(0xFF2FCF5B) else MaterialTheme.colorScheme.primary
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Surface(
+            shape = CircleShape,
+            color = iconTint.copy(alpha = 0.18f),
+            contentColor = iconTint,
         ) {
-            Surface(
-                shape = CircleShape,
-                color = iconTint.copy(alpha = 0.16f),
-                contentColor = iconTint,
-            ) {
-                Icon(
-                    if (good) Icons.Filled.CheckCircle else Icons.Filled.Info,
-                    contentDescription = null,
-                    modifier = Modifier.padding(16.dp).size(34.dp),
-                )
-            }
-            Text(
-                if (good) text.setupHealthReady else text.setupHealthNeedsAttention,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = content,
+            Icon(
+                if (good) Icons.Filled.CheckCircle else Icons.Filled.Info,
+                contentDescription = null,
+                modifier = Modifier.padding(14.dp).size(34.dp),
             )
-            Text(
-                action.detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = content.copy(alpha = 0.82f),
-            )
-            Button(onClick = action.onClick) {
-                Text(action.button)
-            }
+        }
+        Text(
+            if (good) text.ready else action.title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = iconTint,
+        )
+        Text(
+            action.detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Button(
+            onClick = action.onClick,
+            modifier = Modifier.widthIn(min = 156.dp),
+        ) {
+            Text(action.button)
         }
     }
 }
@@ -1179,13 +1113,13 @@ private fun CareHubStatusTile(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.height(88.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
@@ -1193,18 +1127,12 @@ private fun CareHubStatusTile(
             }
             Text(
                 value,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                color = tint,
             )
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(999.dp),
-                color = tint.copy(alpha = 0.18f),
-            ) {
-                Spacer(Modifier.height(6.dp))
-            }
         }
     }
 }
@@ -1555,22 +1483,59 @@ private fun ProgramPresenceControls(
     lastError: String?,
     activeAppName: String,
     activePackageName: String,
+    registeredAppCount: Int,
+    foregroundDetectionEnabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
 ) {
     val text = LocalizedTextProvider.current
-    InfoCard(text.appRichPresence) {
-        KeyValueRow(text.operation, if (stateEnabled) text.running else text.stopped)
-        KeyValueRow(text.status, presenceStatusText(status, text))
-        KeyValueRow(text.currentApp, activeAppName.ifBlank { text.notDetected })
-        KeyValueRow(text.packageName, activePackageName.ifBlank { text.notDetected })
-        if (!lastError.isNullOrBlank()) {
-            Text(lastError, color = MaterialTheme.colorScheme.error)
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        CareDetailHeader(
+            title = text.tabPrograms,
+            summary = if (foregroundDetectionEnabled) text.countItems(registeredAppCount) else text.appDetectionStopped,
+            detail = if (foregroundDetectionEnabled) text.trackedAppsSettingsDescription else text.enableForegroundHint,
+        ) {
+            StatusChip(
+                if (stateEnabled) text.appDetectionRunning else text.appDetectionStopped,
+                if (stateEnabled) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            StatusChip(
+                presenceStatusText(status, text),
+                if (stateEnabled) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        Spacer(Modifier.height(10.dp))
+        CareHubSection(text.currentApp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(activeAppName.ifBlank { text.notDetected }, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        activePackageName.ifBlank { text.notDetected },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.MiddleEllipsis,
+                    )
+                }
+                StatusChip(
+                    if (activePackageName.isBlank()) text.untracked else text.currentDetected,
+                    if (activePackageName.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF2E7D32),
+                )
+            }
+            if (!lastError.isNullOrBlank()) {
+                Text(lastError, color = MaterialTheme.colorScheme.error)
+            }
+        }
+        CareHubSection(text.appRichPresence) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onStart, enabled = !stateEnabled) { Text(text.startDetection) }
             OutlinedButton(onClick = onStop, enabled = stateEnabled) { Text(text.stop) }
+        }
         }
     }
 }
@@ -1590,9 +1555,51 @@ private fun AddProgramCard(
     var packageName by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
 
-    InfoCard(text.appToRegister) {
-        Text(text.appRegistrationDescription)
-        Spacer(Modifier.height(10.dp))
+    CareHubSection(text.appToRegister) {
+        Text(text.appRegistrationDescription, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!foregroundDisplayEnabled) {
+            Text(
+                text.enableForegroundHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (foregroundPackage.isNotBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text.currentDetected, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        foregroundApp.ifBlank { foregroundPackage },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = { scope.launch { config.addPackageName(foregroundPackage, foregroundApp) } },
+                    enabled = canAddCurrentApp,
+                ) {
+                    Text(text.addCurrentApp)
+                }
+            }
+            HorizontalDivider()
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onChooseInstalledApp) {
+                Text(text.chooseInstalledApp)
+            }
+            OutlinedButton(
+                onClick = { scope.launch { config.addPackageName("com.apple.android.music", "Apple Music") } },
+                enabled = "com.apple.android.music" !in settings.packageNames,
+            ) {
+                Text(text.addAppleMusic)
+            }
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
         OutlinedTextField(
             value = packageName,
             onValueChange = { packageName = it },
@@ -1601,7 +1608,6 @@ private fun AddProgramCard(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(10.dp))
         OutlinedTextField(
             value = displayName,
             onValueChange = { displayName = it },
@@ -1610,13 +1616,7 @@ private fun AddProgramCard(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(10.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = onChooseInstalledApp,
-            ) {
-                Text(text.chooseInstalledApp)
-            }
             OutlinedButton(
                 onClick = {
                     scope.launch {
@@ -1629,33 +1629,6 @@ private fun AddProgramCard(
             ) {
                 Text(text.addManually)
             }
-            OutlinedButton(
-                onClick = { scope.launch { config.addPackageName(foregroundPackage, foregroundApp) } },
-                enabled = canAddCurrentApp,
-            ) {
-                Text(text.addCurrentApp)
-            }
-            OutlinedButton(
-                onClick = { scope.launch { config.addPackageName("com.apple.android.music", "Apple Music") } },
-                enabled = "com.apple.android.music" !in settings.packageNames,
-            ) {
-                Text(text.addAppleMusic)
-            }
-        }
-        if (!foregroundDisplayEnabled) {
-            Text(
-                text.enableForegroundHint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        } else if (foregroundPackage.isNotBlank()) {
-            Text(
-                text.currentDetectedValue(foregroundApp.ifBlank { foregroundPackage }),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
         }
     }
 }
@@ -3173,12 +3146,26 @@ private fun SettingsDestinationRow(
 @Composable
 private fun SettingsSubpageHeader(title: String, onBack: () -> Unit) {
     val text = LocalizedTextProvider.current
-    InfoCard(title) {
-        OutlinedButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = text.tabSettings)
-            Spacer(Modifier.width(6.dp))
-            Text(text.tabSettings)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Surface(
+            onClick = onBack,
+            shape = CircleShape,
+            color = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = text.tabSettings,
+                modifier = Modifier.padding(8.dp).size(20.dp),
+            )
         }
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
     }
 }
 

@@ -15,6 +15,28 @@ fail() {
   exit 1
 }
 
+patch_ios_discord_sdk_module() {
+  local sdk_root="$1"
+  local modulemap_path
+  local umbrella_path
+
+  for modulemap_path in "$sdk_root"/discord_partner_sdk.xcframework/*/discord_partner_sdk.framework/Modules/module.modulemap; do
+    [[ -f "$modulemap_path" ]] || continue
+    cat > "$modulemap_path" <<'MODULEMAP'
+framework module discord_partner_sdk {
+  header "cdiscord.h"
+  export *
+}
+MODULEMAP
+  done
+
+  for umbrella_path in "$sdk_root"/discord_partner_sdk.xcframework/*/discord_partner_sdk.framework/Headers/discord_partner_sdk.h; do
+    [[ -f "$umbrella_path" ]] || continue
+    grep -v 'discordpp.h' "$umbrella_path" > "$umbrella_path.tmp"
+    mv "$umbrella_path.tmp" "$umbrella_path"
+  done
+}
+
 if [[ $# -ne 1 ]]; then
   usage
   exit 1
@@ -86,5 +108,9 @@ gpg --quiet --batch --yes --pinentry-mode loopback \
 unzip -q -o "$zip_path" -d "$workspace" || fail "failed to unzip Discord SDK archive for $platform"
 
 [[ -e "$verify_path" ]] || fail "Discord SDK restore completed, but expected path is missing: $verify_rel"
+
+if [[ "$platform" == "ios" ]]; then
+  patch_ios_discord_sdk_module "$verify_path"
+fi
 
 printf 'Discord SDK archive restored for %s.\n' "$platform"
