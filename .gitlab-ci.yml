@@ -1,3 +1,19 @@
+include:
+  # GitLab 공식 SAST 컴포넌트.
+  # 이 프로젝트는 Swift/Kotlin/TS/C++ 코드를 포함하므로 semgrep-sast 분석기가 자동 활성화됨.
+  # enable_mr_pipelines: true → MR 파이프라인에서도 실행되며, 동시에 브랜치 파이프라인 중복은
+  # 컴포넌트 자체 rules에 의해 방지됨 (현재 workflow:rules와 호환).
+  - component: gitlab.com/components/sast/sast@main
+    inputs:
+      enable_mr_pipelines: true
+      stage: test
+  # GitLab 공식 Secret Detection 컴포넌트.
+  # 커밋 히스토리에서 API 키, 토큰, 비밀번호 등을 자동 검출.
+  - component: gitlab.com/components/secret-detection/secret-detection@main
+    inputs:
+      enable_mr_pipelines: true
+      stage: test
+
 stages:
   - test
   - package
